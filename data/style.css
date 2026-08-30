@@ -1,0 +1,102 @@
+/* hypr-shell default theme.
+ * Override anything here in ~/.config/hypr-shell/style.css — it is hot-reloaded. */
+
+window.bar {
+  background: transparent;
+}
+
+.bar-inner {
+  background: alpha(#11111b, 0.88);
+  border-bottom: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 3px 10px;
+  font-family: "Fira Sans"; /* Noctalia's fontDefault */
+}
+
+.module {
+  padding: 0 10px;
+  font-size: 13px;
+  color: #cdd6f4;
+}
+
+/* workspaces */
+.workspaces {
+  padding: 0 4px;
+}
+
+/* circular buttons: keep min-width == min-height and padding 0 */
+.workspaces button {
+  min-width: 24px;
+  min-height: 24px;
+  margin: 2px;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  box-shadow: none;
+  background: alpha(#cdd6f4, 0.08);
+  color: #a6adc8;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 150ms ease;
+}
+
+.workspaces button:hover {
+  background: alpha(#cdd6f4, 0.18);
+}
+
+/* has windows but not focused: accent-tinted */
+.workspaces button.occupied {
+  background: alpha(#89b4fa, 0.32);
+  color: #cdd6f4;
+}
+
+.workspaces button.occupied:hover {
+  background: alpha(#89b4fa, 0.45);
+}
+
+/* focused workspace: solid accent */
+.workspaces button.active {
+  background: #89b4fa;
+  color: #11111b;
+}
+
+.workspaces button.active:hover {
+  background: #a5c6fb;
+}
+
+/* focused window title */
+.active-window {
+  color: #a6adc8;
+  font-size: 12px;
+}
+
+/* status icons (right of bar, before clock) */
+.icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 18px;
+  color: #cdd6f4;
+}
+
+.network,
+.volume,
+.battery {
+  padding: 0 5px;
+}
+
+/* battery: win11-style Segoe Fluent glyph + percent text */
+.battery .icon {
+  font-family: "Segoe Fluent Icons";
+  font-size: 26px;
+}
+
+.battery.charging .icon-fill {
+  color: #9fd89f; /* win11 green fill; frame glyph above stays foreground-colored */
+}
+
+.battery.saver .icon-fill {
+  color: #eaa300; /* win11 amber fill under the BatterySaver leaf frame */
+}
+
+/* clock */
+.clock {
+  font-weight: 700;
+}
