@@ -1,5 +1,6 @@
 #include "bar/modules/battery.hpp"
 
+#include "services/config.hpp"
 #include "services/power_profiles.hpp"
 #include "services/upower.hpp"
 
@@ -34,9 +35,57 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     overlay_.set_valign(Gtk::Align::CENTER);
     append(overlay_);
 
+    // click opens the battery panel (power profile / brightness / refresh rate).
+    // Parented to the overlay, NOT the module box and NOT the fill label: the
+    // box allocates an open popover child inline (module blows up by the
+    // popover's width and slides out of its bar section), and on the fill
+    // label — covered by the frame_ overlay child — the popover unmaps
+    // immediately after popup(). The overlay anchor shows neither problem.
+    panel_ = Gtk::make_managed<BatteryPanel>();
+    popover_.set_child(*panel_);
+    popover_.set_parent(overlay_);
+    popover_.set_has_arrow(false);
+    popover_.add_css_class("battery-popover");
+    set_cursor(Gdk::Cursor::create("pointer"));
+    auto click = Gtk::GestureClick::create();
+    click->signal_released().connect([this](int, double, double) {
+        // keep the panel on the free side of the bar
+        switch (Config::get().bar_position()) {
+        case Config::BarPosition::Top:
+            popover_.set_position(Gtk::PositionType::BOTTOM);
+            break;
+        case Config::BarPosition::Bottom:
+            popover_.set_position(Gtk::PositionType::TOP);
+            break;
+        case Config::BarPosition::Left:
+            popover_.set_position(Gtk::PositionType::RIGHT);
+            break;
+        case Config::BarPosition::Right:
+            popover_.set_position(Gtk::PositionType::LEFT);
+            break;
+        }
+        panel_->refresh();
+        popover_.popup();
+    });
+    add_controller(click);
+
+    // dev hook: HS_OPEN_BATTERY=1 pops the panel shortly after startup
+    if (g_getenv("HS_OPEN_BATTERY") != nullptr) {
+        Glib::signal_timeout().connect_once(
+            [this] {
+                panel_->refresh();
+                popover_.popup();
+            },
+            800);
+    }
+
     UPower::get().signal_changed().connect(sigc::mem_fun(*this, &Battery::update));
     PowerProfiles::get().signal_changed().connect(sigc::mem_fun(*this, &Battery::update));
     update();
+}
+
+Battery::~Battery() {
+    popover_.unparent();
 }
 
 void Battery::update() {

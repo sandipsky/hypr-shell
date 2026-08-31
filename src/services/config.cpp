@@ -61,12 +61,16 @@ void Config::load() {
     bar_visibility_ = BarVisibility::Visible;
     bar_show_on_ws_switch_ = true;
     bar_show_when_ws_empty_ = false;
+    bar_background_opacity_ = 0.88;
     modules_.clear();
     for (auto& section : layout_)
         section.clear();
     workspaces_mode_ = WorkspacesMode::Dynamic;
     workspaces_fixed_count_ = 5;
     workspaces_scroll_wrap_ = true;
+    battery_show_profiles_ = true;
+    battery_show_brightness_ = true;
+    battery_show_refresh_ = true;
     clock_first_day_of_week_ = 0;
     clock_format_horizontal_ = "%H:%M %a, %b %d";
     clock_format_vertical_ = "%H %M";
@@ -118,6 +122,8 @@ void Config::load() {
             bar_visibility_ = BarVisibility::AutoHide;
         bar_show_on_ws_switch_ = bar.value("show_on_workspace_switch", true);
         bar_show_when_ws_empty_ = bar.value("show_when_workspace_empty", false);
+        bar_background_opacity_ =
+            std::clamp(bar.value("background_opacity", 0.88), 0.0, 1.0);
         if (auto it = bar.find("modules"); it != bar.end() && it->is_object())
             for (const auto& [name, v] : it->items())
                 if (v.is_boolean())
@@ -142,6 +148,11 @@ void Config::load() {
                         : empty == "none"  ? ActiveWindowEmpty::None
                                            : ActiveWindowEmpty::Default;
             aw_show_icon_ = it->value("show_icon", true);
+        }
+        if (auto it = bar.find("battery"); it != bar.end() && it->is_object()) {
+            battery_show_profiles_ = it->value("show_power_profiles", true);
+            battery_show_brightness_ = it->value("show_brightness", true);
+            battery_show_refresh_ = it->value("show_refresh_rate", true);
         }
         if (auto it = bar.find("clock"); it != bar.end() && it->is_object()) {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);

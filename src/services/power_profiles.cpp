@@ -24,6 +24,27 @@ PowerProfiles::PowerProfiles() {
         });
 }
 
+void PowerProfiles::set_profile(const std::string& profile) {
+    if (!available_ || !proxy_)
+        return;
+    profile_ = profile; // optimistic — keeps the UI from bouncing
+    changed_.emit();
+    auto conn = proxy_->get_connection();
+    conn->call(
+        "/net/hadess/PowerProfiles", "org.freedesktop.DBus.Properties", "Set",
+        Glib::Variant<std::tuple<Glib::ustring, Glib::ustring, Glib::VariantBase>>::
+            create({"net.hadess.PowerProfiles", "ActiveProfile",
+                    Glib::Variant<Glib::ustring>::create(profile)}),
+        [conn](Glib::RefPtr<Gio::AsyncResult>& result) {
+            try {
+                conn->call_finish(result);
+            } catch (const Glib::Error& e) {
+                g_warning("failed to set power profile: %s", e.what());
+            }
+        },
+        "net.hadess.PowerProfiles");
+}
+
 void PowerProfiles::read_properties() {
     Glib::VariantBase value;
     proxy_->get_cached_property(value, "ActiveProfile");

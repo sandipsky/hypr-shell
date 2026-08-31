@@ -60,6 +60,8 @@ src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::D
 src/services/network_manager.{hpp,cpp}  NM primary connection + wifi strength (Gio::DBus)
 src/services/power_profiles.{hpp,cpp}   active profile from power-profiles-daemon (Gio::DBus)
 src/services/pulse.{hpp,cpp}            default-sink volume/mute (libpulse-glib)
+src/services/brightness.{hpp,cpp}       backlight: sysfs reads + logind SetBrightness
+src/bar/battery_panel.{hpp,cpp}         battery click panel (profile/brightness/rate)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -148,9 +150,9 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       bus name: mako/dunst/Noctalia's daemon must be disabled when this ships.
 - [ ] **Phase 4 — Panels & OSD**: volume/brightness OSD, calendar popover,
       control-center panel.
-      *(pulled forward 2026-08-31: calendar popover on clock click landed —
-      1:1 port of Noctalia's calendar panel; volume/brightness OSD and
-      control center remain)*
+      *(pulled forward 2026-08-31: calendar popover on clock click, and the
+      battery panel on battery click (power profile / brightness / refresh
+      rate) landed; volume/brightness OSD and control center remain)*
 - [ ] **Phase 5 — Lock & idle**: lock screen via ext-session-lock
       (gtk4-layer-shell's session-lock API) + PAM auth; idle service via
       ext-idle-notify-v1 (dim → lock → dpms off) with inhibitor support.
@@ -277,6 +279,35 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   workspace switch shows then restarts the hide cycle. Note: opening the
   calendar needs the pointer on the bar surface itself — a popup grab from the
   1px trigger's input serial is denied and the popover instantly dismisses.
+- 2026-08-31 — `bar.background_opacity` (0..1, default 0.88 = the theme's alpha,
+  Noctalia's backgroundOpacity): the shell regenerates a one-rule CSS provider
+  (`.bar-inner { background-color: alpha(#11111b, X); }`) at APPLICATION+1
+  priority on every config reload — above the built-in theme, below the user's
+  style.css. The alpha is formatted with g_ascii_dtostr (locale-proof: a
+  decimal comma would break CSS parsing). Settings: GtkScale suffix in an
+  AdwActionRow (libadwaita has no slider row), whole percents.
+- 2026-08-31 — Battery click panel (`src/bar/battery_panel.{hpp,cpp}`), Noctalia's
+  BatteryPanel.qml with the calendar's design language: charge card (level bar,
+  "Plugged in"/time text), power-profile slider (3 snapped stops, leaf/scale/
+  gauge tabler icons — written as C++ `\uXXXX` escapes, never literal PUA
+  glyphs), brightness slider, refresh-rate pill buttons. Backends: profile via
+  writable ActiveProfile property (optimistic local update so the slider
+  doesn't bounce); brightness via a new service — sysfs reads (no inotify on
+  sysfs → explicit refresh() when the panel opens) + logind Session.SetBrightness
+  on session "auto" (session owner needs no polkit), 100ms write debounce;
+  refresh rate via `eval hl.monitor({ output, mode = "WxH@R", position, scale })`
+  (Hyprland 0.56 rejects `keyword monitor`; only an "ok" reply counts, then
+  re-query j/monitors), rates = distinct Hz among availableModes at the current
+  resolution, card hidden with <2 rates. Cards toggle via `bar.battery.show_*`
+  (default true) with a Battery settings subpage. GTK gotcha: rounded scale/
+  progressbar CSS needs explicit min-width/min-height on highlight/progress
+  nodes or GTK warns about -2 min sizes. Dev hook: HS_OPEN_BATTERY=1.
+  **Popover-anchor gotcha**: a popover parented to a module's Gtk::Box gets
+  allocated INLINE by the box while open — the module grew by the popover's
+  width and slid out of its bar section (a Gtk::Label anchor like the clock's
+  is fine); parented to the battery's fill label (which sits under the frame_
+  overlay child) the popover unmapped right after popup(). Anchor module
+  popovers to a Label or a Gtk::Overlay, never to the module Box itself.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

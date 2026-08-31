@@ -88,6 +88,27 @@ void Hyprland::focus_workspace(const std::string& selector) {
     dispatch("hl.dsp.focus({ workspace = \"" + selector + "\" })");
 }
 
+void Hyprland::set_monitor_mode(const std::string& output, int width, int height,
+                                int rate, double scale, int transform, int x, int y,
+                                std::function<void(bool)> on_done) {
+    char scale_buf[G_ASCII_DTOSTR_BUF_SIZE];
+    g_ascii_dtostr(scale_buf, sizeof scale_buf, scale); // locale-proof "1.25"
+    std::string lua = "hl.monitor({ output = \"" + output + "\", mode = \"" +
+                      std::to_string(width) + "x" + std::to_string(height) + "@" +
+                      std::to_string(rate) + "\", position = \"" + std::to_string(x) +
+                      "x" + std::to_string(y) + "\", scale = " + scale_buf;
+    if (transform != 0)
+        lua += ", transform = " + std::to_string(transform);
+    lua += " })";
+    request("eval " + lua, [lua, on_done](const std::string& reply) {
+        const bool ok = reply.rfind("ok", 0) == 0;
+        if (!ok)
+            g_warning("eval '%s' failed: %s", lua.c_str(), reply.c_str());
+        if (on_done)
+            on_done(ok);
+    });
+}
+
 void Hyprland::connect_event_stream() {
     auto client = Gio::SocketClient::create();
     auto address = Gio::UnixSocketAddress::create(socket_dir_ + "/.socket2.sock");

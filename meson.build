@@ -26,7 +26,9 @@ dependencies = [
 sources = files(
   'src/main.cpp',
   'src/bar/bar.cpp',
+  'src/bar/battery_panel.cpp',
   'src/bar/calendar.cpp',
+  'src/services/brightness.cpp',
   'src/services/config.cpp',
   'src/bar/modules/active_window.cpp',
   'src/bar/modules/battery.cpp',

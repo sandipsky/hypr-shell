@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/battery_panel.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -12,6 +14,7 @@ namespace hyprshell {
 class Battery : public Gtk::Box {
 public:
     Battery();
+    ~Battery() override;
 
 private:
     void update();
@@ -19,6 +22,8 @@ private:
     Gtk::Overlay overlay_;
     Gtk::Label fill_;
     Gtk::Label frame_;
+    Gtk::Popover popover_; // click opens the battery panel
+    BatteryPanel* panel_ = nullptr;
 };
 
 } // namespace hyprshell

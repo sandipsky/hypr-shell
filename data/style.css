@@ -14,6 +14,8 @@ window.bar-trigger {
 }
 
 .bar-inner {
+  /* the alpha here is the fallback — bar.background_opacity in config.json
+   * overrides it via a generated provider (user style.css still wins) */
   background: alpha(#11111b, 0.88);
   border-bottom: 1px solid alpha(#cdd6f4, 0.07);
   padding: 3px 10px;
@@ -239,4 +241,121 @@ button.cal-icon-btn:hover {
   background: #c5c4dd; /* mSecondary */
   color: #2e2f42; /* mOnSecondary */
   font-weight: 700;
+}
+
+/* battery panel — power profile / brightness / refresh rate cards, same
+ * design language (and Noctalia color snapshot) as the calendar popover */
+popover.battery-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.bp-card {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.bp-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.bp-value {
+  font-size: 13px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.bp-percent {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+}
+
+.bp-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 16px;
+  color: #e5e1e6;
+}
+
+.bp-profile-icon {
+  font-size: 14px;
+  color: #c7c5d0;
+}
+
+.bp-profile-icon.active {
+  color: #bfc2ff; /* mPrimary */
+}
+
+/* sliders: rounded mPrimary track like Noctalia's NSlider */
+scale.bp-slider {
+  padding: 6px 0;
+}
+
+scale.bp-slider trough {
+  background: #131316; /* mSurface */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px;
+}
+
+scale.bp-slider highlight {
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px; /* GTK warns about -2 min sizes without these */
+  min-width: 10px;
+}
+
+scale.bp-slider slider {
+  background: #e5e1e6;
+  border: none;
+  box-shadow: 0 1px 3px alpha(#000000, 0.4);
+  border-radius: 999px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: -4px;
+}
+
+/* battery charge level */
+progressbar.bp-level trough {
+  background: #131316;
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+}
+
+progressbar.bp-level progress {
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+  min-width: 8px; /* GTK warns about a -2 min width without this */
+}
+
+/* refresh-rate buttons: filled when active, outlined otherwise */
+button.bp-rate-btn {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+  background: transparent;
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.bp-rate-btn:hover {
+  background: alpha(#e5e1e6, 0.08);
+}
+
+button.bp-rate-btn.active {
+  background: #bfc2ff; /* mPrimary */
+  border-color: #bfc2ff;
+  color: #202578; /* mOnPrimary */
 }

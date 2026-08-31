@@ -19,6 +19,9 @@ public:
     // "power-saver", "balanced" or "performance"
     const std::string& profile() const { return profile_; }
     bool saver() const { return profile_ == "power-saver"; }
+    // Write ActiveProfile; the local cache updates optimistically and the
+    // daemon's PropertiesChanged confirms (or corrects) it.
+    void set_profile(const std::string& profile);
 
     sigc::signal<void()>& signal_changed() { return changed_; }
 

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +57,7 @@ struct Settings {
     AdwComboRow* visibility = nullptr; // Always show / Always hide / Auto hide
     AdwSwitchRow* show_ws_switch = nullptr; // auto-hide: peek on workspace switch
     AdwSwitchRow* show_ws_empty = nullptr;  // auto-hide: stay while workspace empty
+    GtkAdjustment* opacity = nullptr;       // background opacity slider, 0..100 %
     AdwSwitchRow* modules[kModuleCount] = {};
 
     AdwComboRow* ws_mode = nullptr; // Dynamic / Fixed number
@@ -65,6 +67,10 @@ struct Settings {
     AdwComboRow* clock_fdow = nullptr; // Sunday / Monday
     AdwEntryRow* clock_fmt_h = nullptr;
     AdwEntryRow* clock_fmt_v = nullptr;
+
+    AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
+    AdwSwitchRow* bat_brightness = nullptr;
+    AdwSwitchRow* bat_refresh = nullptr;
 
     AdwComboRow* aw_hide = nullptr;      // Always visible / Hidden / Transparent
     AdwSwitchRow* aw_show_title = nullptr;
@@ -125,6 +131,7 @@ void populate(Settings* s) {
     std::string position = "top";
     std::string visibility = "visible";
     bool ws_switch = true, ws_empty = false;
+    double opacity = 0.88;
     bool enabled[kModuleCount];
     for (auto& e : enabled)
         e = true;
@@ -135,6 +142,7 @@ void populate(Settings* s) {
         visibility = bar.value("visibility", visibility);
         ws_switch = bar.value("show_on_workspace_switch", ws_switch);
         ws_empty = bar.value("show_when_workspace_empty", ws_empty);
+        opacity = std::clamp(bar.value("background_opacity", opacity), 0.0, 1.0);
         const json modules = bar.value("modules", json::object());
         for (gsize i = 0; i < kModuleCount; ++i)
             enabled[i] = modules.value(kModules[i].key, true);
@@ -150,6 +158,16 @@ void populate(Settings* s) {
         ws_mode = ws.value("mode", ws_mode);
         ws_count = std::clamp(ws.value("fixed_count", ws_count), 1, 50);
         ws_wrap = ws.value("scroll_wrap", ws_wrap);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
+    bool bat_profiles = true, bat_brightness = true, bat_refresh = true;
+    try {
+        const json bat = s->root.value("bar", json::object()).value("battery", json::object());
+        bat_profiles = bat.value("show_power_profiles", true);
+        bat_brightness = bat.value("show_brightness", true);
+        bat_refresh = bat.value("show_refresh_rate", true);
     } catch (const json::exception&) {
         // defaults
     }
@@ -191,6 +209,7 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->visibility, i);
     adw_switch_row_set_active(s->show_ws_switch, ws_switch);
     adw_switch_row_set_active(s->show_ws_empty, ws_empty);
+    gtk_adjustment_set_value(s->opacity, opacity * 100.0);
     update_bar_visibility_rows(s);
     for (gsize i = 0; i < kModuleCount; ++i)
         adw_switch_row_set_active(s->modules[i], enabled[i]);
@@ -198,6 +217,9 @@ void populate(Settings* s) {
     adw_spin_row_set_value(s->ws_count, ws_count);
     gtk_widget_set_sensitive(GTK_WIDGET(s->ws_count), ws_mode == "fixed");
     adw_switch_row_set_active(s->ws_wrap, ws_wrap);
+    adw_switch_row_set_active(s->bat_profiles, bat_profiles);
+    adw_switch_row_set_active(s->bat_brightness, bat_brightness);
+    adw_switch_row_set_active(s->bat_refresh, bat_refresh);
     adw_combo_row_set_selected(s->clock_fdow, clock_fdow);
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_h), fmt_h.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_v), fmt_v.c_str());
@@ -246,6 +268,22 @@ void on_ws_wrap_toggled(GObject*, GParamSpec*, gpointer data) {
     if (s->loading)
         return;
     workspaces_object(s)["scroll_wrap"] = adw_switch_row_get_active(s->ws_wrap) != FALSE;
+    save(s);
+}
+
+json& battery_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["battery"].is_object())
+        bar["battery"] = json::object();
+    return bar["battery"];
+}
+
+void on_battery_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "battery-key"));
+    battery_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
 }
 
@@ -509,6 +547,16 @@ void on_show_ws_empty_toggled(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
+void on_opacity_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    // store as 0..1 like Noctalia's backgroundOpacity, in whole percents
+    bar_object(s)["background_opacity"] =
+        std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
+    save(s);
+}
+
 void on_position_changed(GObject*, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     if (s->loading)
@@ -588,6 +636,27 @@ void on_activate(GtkApplication* app, gpointer) {
         "Keep the bar visible while the active workspace has no windows.");
     s->show_ws_empty = ADW_SWITCH_ROW(ws_empty_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(bar_group), ws_empty_row);
+
+    GtkWidget* opacity_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(opacity_row),
+                                  "Background opacity");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(opacity_row),
+                                "Transparency of the bar background.");
+    s->opacity = gtk_adjustment_new(88, 0, 100, 1, 10, 0);
+    GtkWidget* opacity_scale =
+        gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->opacity);
+    gtk_scale_set_draw_value(GTK_SCALE(opacity_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(opacity_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(opacity_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(opacity_scale, 200, -1);
+    gtk_widget_set_valign(opacity_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(opacity_row), opacity_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(bar_group), opacity_row);
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                              ADW_PREFERENCES_GROUP(bar_group));
@@ -758,6 +827,40 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(aw_page), ADW_PREFERENCES_GROUP(aw_group));
 
+    // -- Battery subpage -------------------------------------------------------
+    GtkWidget* bat_page = adw_preferences_page_new();
+    GtkWidget* bat_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(bat_group), "Battery panel");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(bat_group),
+        "Cards shown when clicking the battery icon. A card also needs its "
+        "backend (power-profiles-daemon, a backlight, multiple display modes).");
+
+    struct BatRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } bat_rows[] = {
+        {"show_power_profiles", "Power profile",
+         "Slider for power-saver, balanced and performance.", &s->bat_profiles},
+        {"show_brightness", "Brightness", "Screen brightness slider.",
+         &s->bat_brightness},
+        {"show_refresh_rate", "Refresh rate",
+         "Switch the display's refresh rate.", &s->bat_refresh},
+    };
+    for (const auto& info : bat_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "battery-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(bat_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_battery_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(bat_page),
+                             ADW_PREFERENCES_GROUP(bat_group));
+
     populate(s);
     g_signal_connect(pos_row, "notify::selected", G_CALLBACK(on_position_changed), s);
     g_signal_connect(vis_row, "notify::selected", G_CALLBACK(on_visibility_changed), s);
@@ -765,6 +868,7 @@ void on_activate(GtkApplication* app, gpointer) {
                      G_CALLBACK(on_show_ws_switch_toggled), s);
     g_signal_connect(ws_empty_row, "notify::active",
                      G_CALLBACK(on_show_ws_empty_toggled), s);
+    g_signal_connect(s->opacity, "value-changed", G_CALLBACK(on_opacity_changed), s);
     g_signal_connect(ws_mode_row, "notify::selected", G_CALLBACK(on_ws_mode_changed), s);
     g_signal_connect(ws_count_row, "notify::value", G_CALLBACK(on_ws_count_changed), s);
     g_signal_connect(ws_wrap_row, "notify::active", G_CALLBACK(on_ws_wrap_toggled), s);
@@ -805,6 +909,26 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
                             adw_navigation_page_new_with_tag(aw_view, "Active window",
                                                              "active_window"));
+
+    GtkWidget* bat_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(bat_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(bat_view), bat_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(bat_view, "Battery",
+                                                             "battery"));
+
+    // cog on the Battery module row (kModules[4])
+    GtkWidget* bat_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(bat_cog, "flat");
+    gtk_widget_set_valign(bat_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(bat_cog, "Battery settings");
+    g_signal_connect(bat_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
+                                                         "battery");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[4]), bat_cog);
 
     // cog on the Active window module row (kModules[1])
     GtkWidget* aw_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");

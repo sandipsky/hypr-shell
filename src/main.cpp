@@ -37,6 +37,9 @@ protected:
         hold();
 
         load_css();
+        apply_bar_opacity();
+        Config::get().signal_changed().connect(
+            sigc::mem_fun(*this, &App::apply_bar_opacity));
         bar_ = std::make_unique<Bar>();
         add_window(*bar_);
         // bar.visibility = "hidden" starts the shell with no bar mapped;
@@ -75,6 +78,24 @@ private:
             });
     }
 
+    // bar.background_opacity, applied as a one-rule CSS provider just above
+    // the built-in theme so ~/.config/hypr-shell/style.css (USER priority)
+    // still overrides it. #11111b is the default theme's bar color — becomes
+    // a theme token when theming lands.
+    void apply_bar_opacity() {
+        if (!opacity_provider_) {
+            opacity_provider_ = Gtk::CssProvider::create();
+            Gtk::StyleProvider::add_provider_for_display(
+                Gdk::Display::get_default(), opacity_provider_,
+                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+        }
+        // g_ascii_dtostr: locale-independent "0.88" (never a decimal comma)
+        char buf[G_ASCII_DTOSTR_BUF_SIZE];
+        g_ascii_dtostr(buf, sizeof buf, Config::get().bar_background_opacity());
+        opacity_provider_->load_from_data(Glib::ustring::compose(
+            ".bar-inner { background-color: alpha(#11111b, %1); }", buf));
+    }
+
     void reload_user_css() {
         try {
             if (Glib::file_test(user_css_path_, Glib::FileTest::EXISTS)) {
@@ -88,6 +109,7 @@ private:
     }
 
     std::unique_ptr<Bar> bar_;
+    Glib::RefPtr<Gtk::CssProvider> opacity_provider_;
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;
     std::string user_css_path_;

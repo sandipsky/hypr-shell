@@ -35,6 +35,9 @@ public:
     BarVisibility bar_visibility() const { return bar_visibility_; }
     bool bar_show_on_workspace_switch() const { return bar_show_on_ws_switch_; }
     bool bar_show_when_workspace_empty() const { return bar_show_when_ws_empty_; }
+    // bar.background_opacity: 0..1 alpha of the bar background (Noctalia's
+    // backgroundOpacity). 0.88 matches the default theme's alpha.
+    double bar_background_opacity() const { return bar_background_opacity_; }
     // Modules absent from bar.modules are enabled, so new modules default on.
     bool module_enabled(const std::string& name) const;
     // Ordered module names for one bar section, resolved from bar.layout:
@@ -61,6 +64,12 @@ public:
     ActiveWindowEmpty active_window_empty_text() const { return aw_empty_; }
     bool active_window_show_icon() const { return aw_show_icon_; }
 
+    // bar.battery.* — which cards the battery click panel shows (all default
+    // on; each also needs its backend to be available)
+    bool battery_show_power_profiles() const { return battery_show_profiles_; }
+    bool battery_show_brightness() const { return battery_show_brightness_; }
+    bool battery_show_refresh_rate() const { return battery_show_refresh_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -81,11 +90,15 @@ private:
     BarVisibility bar_visibility_ = BarVisibility::Visible;
     bool bar_show_on_ws_switch_ = true;
     bool bar_show_when_ws_empty_ = false;
+    double bar_background_opacity_ = 0.88;
     std::map<std::string, bool> modules_;
     std::array<std::vector<std::string>, 3> layout_;
     WorkspacesMode workspaces_mode_ = WorkspacesMode::Dynamic;
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
+    bool battery_show_profiles_ = true;
+    bool battery_show_brightness_ = true;
+    bool battery_show_refresh_ = true;
     int clock_first_day_of_week_ = 0;
     std::string clock_format_horizontal_ = "%H:%M %a, %b %d";
     std::string clock_format_vertical_ = "%H %M";

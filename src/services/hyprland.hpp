@@ -42,6 +42,13 @@ public:
     void focus_workspace(int id);
     void focus_workspace(const std::string& selector);
 
+    // Apply a monitor mode via the Lua config API (`eval hl.monitor{...}`) —
+    // Hyprland >= 0.56 rejects the old `keyword monitor` grammar. `output`
+    // must not contain quotes. on_done(true) only on an explicit "ok" reply.
+    void set_monitor_mode(const std::string& output, int width, int height, int rate,
+                          double scale, int transform, int x, int y,
+                          std::function<void(bool)> on_done);
+
     // Raw event from the event socket, e.g. ("workspace", "3").
     sigc::signal<void(const std::string&, const std::string&)>& signal_event() {
         return event_signal_;
