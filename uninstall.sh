@@ -18,8 +18,9 @@ if [[ -f build/build.ninja ]]; then
     echo ":: Removing installed files (ninja uninstall)"
     ninja -C build uninstall >/dev/null
 else
-    echo ":: Removing $PREFIX/bin/hypr-shell"
-    rm -f "$PREFIX/bin/hypr-shell"
+    echo ":: Removing $PREFIX/bin/hypr-shell{,-settings}"
+    rm -f "$PREFIX/bin/hypr-shell" "$PREFIX/bin/hypr-shell-settings"
+    rm -f "$PREFIX/share/applications/hypr-shell-settings.desktop"
 fi
 rm -rf "$PREFIX/share/fonts/hypr-shell"
 

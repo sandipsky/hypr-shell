@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$(realpath "$0")")"
 
 PREFIX="${PREFIX:-$HOME/.local}"
-DEPS=(gcc pkgconf meson ninja glib2 glib2-devel gtk4 gtk4-layer-shell gtkmm-4.0 nlohmann-json libpulse)
+DEPS=(gcc pkgconf meson ninja glib2 glib2-devel gtk4 gtk4-layer-shell gtkmm-4.0 nlohmann-json libpulse libadwaita)
 
 info() { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32mok\033[0m %s\n' "$*"; }
@@ -64,6 +64,7 @@ cat <<EOF
 
 Try it now:   $PREFIX/bin/hypr-shell &
 Autostart:    add to hyprland.conf:  exec-once = $PREFIX/bin/hypr-shell
+Settings:     $PREFIX/bin/hypr-shell-settings (applies live via config.json)
 Custom CSS:   ~/.config/hypr-shell/style.css (hot-reloaded while running)
 Uninstall:    ./uninstall.sh [--purge]
 EOF

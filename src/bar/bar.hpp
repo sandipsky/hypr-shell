@@ -16,6 +16,8 @@ public:
     Bar();
 
 private:
+    void apply_config();
+
     Gtk::CenterBox layout_;
     Workspaces workspaces_;
     ActiveWindow active_window_;

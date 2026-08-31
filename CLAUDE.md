@@ -12,6 +12,13 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
   it with the user first.
 - When a phase (or notable sub-step) lands: tick the roadmap checkbox and, for any
   non-obvious choice, add a line to the decision log at the bottom.
+- **Keep the settings app in sync with the shell.** Whenever a change introduces or
+  alters user-facing customizable behavior (a new module, a position/size/format/
+  threshold choice, a toggleable feature), wire it through `config.json`
+  (`Services.Config`) **and** add the matching control to `hypr-shell-settings` in the
+  same session. Decide sensible candidates yourself — hard-coded look-and-feel values
+  a Noctalia/Waybar user would expect to tweak are candidates; internal constants are
+  not — and the user may also name specific ones to expose.
 - Verify with `meson compile -C build`, then test inside the live Hyprland session
   (see dev loop below).
 
@@ -27,9 +34,9 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
 - **nlohmann-json** — Hyprland IPC replies; later the config file.
   meson dependency name: `nlohmann_json`.
 - **meson + ninja**, install prefix `~/.local` (no sudo needed beyond pacman).
-- **libadwaita** — later, for the settings app only (GNOME-Settings look & UX). There is
-  no official libadwaitamm: plan is to call the libadwaita C API directly from C++ for
-  Adw widgets (standard practice), or reassess when phase 6 starts.
+- **libadwaita** — for the settings app only (GNOME-Settings look & UX). There is no
+  official libadwaitamm, so `hypr-shell-settings` calls the libadwaita C API directly
+  from C++ (standard practice); it depends only on libadwaita + nlohmann-json, no gtkmm.
   The shell itself stays plain GTK4 + custom CSS.
 - Target platform: **Arch Linux + Hyprland** only (Hyprland 0.56+ at time of writing).
 
@@ -40,17 +47,20 @@ meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
 data/style.css                 default theme (embedded via GResource)
 data/hypr-shell.gresource.xml
+data/hypr-shell-settings.desktop
 data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (workspaces, active_window,
                                clock, network, volume, battery)
+src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
 src/services/network_manager.{hpp,cpp}  NM primary connection + wifi strength (Gio::DBus)
 src/services/power_profiles.{hpp,cpp}   active profile from power-profiles-daemon (Gio::DBus)
 src/services/pulse.{hpp,cpp}            default-sink volume/mute (libpulse-glib)
+src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
 ## Build / run / dev loop
@@ -123,6 +133,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
 - [ ] **Phase 1 — Config system**: `~/.config/hypr-shell/config.json` + hot reload;
       bar position (top/bottom), height, module toggles & order; per-monitor bars
       (monitor add/remove handling).
+      *(pulled forward 2026-08-31: config.json + hot reload, bar position/height,
+      module toggles landed; module order + per-monitor bars remain)*
 - [ ] **Phase 2 — More bar modules**: battery (UPower), network (NetworkManager),
       bluetooth (BlueZ), audio (PipeWire), system tray (StatusNotifierItem + DBusMenu),
       keyboard layout, system stats.
@@ -139,6 +151,9 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
 - [ ] **Phase 6 — Settings app**: `hypr-shell-settings` (GTK4 + libadwaita,
       GNOME-Settings-style sidebar + search) editing the same config.json; the shell
       applies changes live.
+      *(pulled forward 2026-08-31: the executable exists — single bar page with
+      position/height/module toggles, instant apply; the sidebar + search layout and
+      full option coverage come with this phase)*
 - [ ] **Phase 7 — Noctalia-parity extras** (as desired): app launcher, wallpaper
       handling, screenshot helpers, systemd user units.
 
@@ -182,3 +197,16 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   PA_CONTEXT_NOFAIL so a PipeWire restart self-heals. Battery shows all three
   win11 looks: plugged (bolt frame E85A, green fill) wins over power-saver
   (leaf frame E863, amber fill, via net.hadess.PowerProfiles) wins over plain.
+- 2026-08-31 — Settings app pulled forward from phase 6 (user request), bringing the
+  config.json core of phase 1 with it so the settings have something to edit. Schema so
+  far: `bar.position` ("top"/"bottom"), `bar.height` (px, 0 = automatic CSS height),
+  `bar.modules.<name>` (bool; **absent = enabled**, so new modules default on).
+  Instant-apply, GNOME-style: every widget change writes config.json (unknown keys
+  preserved), the shell's Config service hot-reloads it — no IPC between the binaries.
+  UI is AdwToolbarView + AdwPreferencesPage (AdwPreferencesWindow avoided — deprecated
+  since libadwaita 1.6); AdwSwitchRow/AdwSpinRow need libadwaita >= 1.4.
+- 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
+  before the first frame so the bar doesn't flash defaults) — accepted deviation from
+  the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls
+  back to defaults rather than crashing or keeping stale state. Bottom-positioned bar
+  gets a `bottom` CSS class on the window so the theme can flip the hairline border.

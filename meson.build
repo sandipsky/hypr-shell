@@ -26,6 +26,7 @@ dependencies = [
 sources = files(
   'src/main.cpp',
   'src/bar/bar.cpp',
+  'src/services/config.cpp',
   'src/bar/modules/active_window.cpp',
   'src/bar/modules/battery.cpp',
   'src/bar/modules/clock.cpp',
@@ -62,4 +63,22 @@ executable(
   dependencies: dependencies,
   include_directories: include_directories('src'),
   install: true,
+)
+
+# Settings app: plain C++ over the libadwaita C API (no gtkmm — see CLAUDE.md).
+# Talks to the shell only through config.json, which the shell hot-reloads.
+executable(
+  'hypr-shell-settings',
+  files('src/settings/main.cpp'),
+  dependencies: [
+    dependency('libadwaita-1', version: '>= 1.4'),
+    dependency('nlohmann_json'),
+  ],
+  include_directories: include_directories('src'),
+  install: true,
+)
+
+install_data(
+  'data/hypr-shell-settings.desktop',
+  install_dir: get_option('datadir') / 'applications',
 )

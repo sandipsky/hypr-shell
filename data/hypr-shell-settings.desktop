@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=hypr-shell Settings
+Comment=Configure the hypr-shell desktop shell
+Exec=hypr-shell-settings
+Icon=preferences-desktop
+Terminal=false
+Categories=Settings;DesktopSettings;
