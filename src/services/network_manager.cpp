@@ -1,10 +1,29 @@
 #include "services/network_manager.hpp"
 
+#include <algorithm>
+#include <map>
+#include <sstream>
+
 namespace hyprshell {
 
 namespace {
 
 constexpr const char* kBusName = "org.freedesktop.NetworkManager";
+
+// nmcli -t fields are ':'-separated with literal ':' escaped as "\:"
+std::vector<std::string> split_terse(const std::string& line) {
+    std::vector<std::string> out(1);
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (c == '\\' && i + 1 < line.size())
+            out.back() += line[++i];
+        else if (c == ':')
+            out.emplace_back();
+        else
+            out.back() += c;
+    }
+    return out;
+}
 
 template <typename T>
 bool get_cached(const Glib::RefPtr<Gio::DBus::Proxy>& proxy, const char* name, T& out) {
@@ -68,6 +87,8 @@ void NetworkManager::read_root_properties() {
     max_bitrate_ = 0;
     connection_id_.clear();
 
+    check_ethernet(resolve_serial_);
+
     if (primary.empty() || primary == "/") {
         kind_ = Kind::none;
         notify();
@@ -77,6 +98,45 @@ void NetworkManager::read_root_properties() {
     kind_ = type == "802-11-wireless" ? Kind::wifi : Kind::ethernet;
     resolve_active_connection(primary);
     notify();
+}
+
+// Is ANY active connection ethernet? (the primary may still be wifi)
+void NetworkManager::check_ethernet(std::uint64_t serial) {
+    std::vector<Glib::DBusObjectPathString> paths;
+    if (!get_cached(root_proxy_, "ActiveConnections", paths))
+        return;
+    if (paths.empty()) {
+        if (ethernet_connected_) {
+            ethernet_connected_ = false;
+            notify();
+        }
+        return;
+    }
+    auto pending = std::make_shared<std::size_t>(paths.size());
+    auto found = std::make_shared<bool>(false);
+    for (const auto& path : paths) {
+        Gio::DBus::Proxy::create_for_bus(
+            Gio::DBus::BusType::SYSTEM, kBusName, path,
+            "org.freedesktop.NetworkManager.Connection.Active",
+            [this, serial, pending, found](Glib::RefPtr<Gio::AsyncResult>& result) {
+                try {
+                    auto active = Gio::DBus::Proxy::create_for_bus_finish(result);
+                    Glib::ustring type;
+                    std::uint32_t state = 0;
+                    get_cached(active, "Type", type);
+                    get_cached(active, "State", state);
+                    if (type == "802-3-ethernet" && state == 2) // ACTIVATED
+                        *found = true;
+                } catch (const Glib::Error&) {
+                    // connection went away mid-lookup
+                }
+                if (--*pending == 0 && serial == resolve_serial_ &&
+                    ethernet_connected_ != *found) {
+                    ethernet_connected_ = *found;
+                    notify();
+                }
+            });
+    }
 }
 
 void NetworkManager::resolve_active_connection(const std::string& path) {
@@ -151,6 +211,138 @@ void NetworkManager::resolve_access_point(const std::string& path, std::uint64_t
 
 void NetworkManager::notify() {
     changed_.emit();
+}
+
+// -- wifi management (nmcli) --------------------------------------------------
+
+void NetworkManager::run_nmcli(const std::vector<std::string>& argv,
+                               std::function<void(bool, std::string)> on_done) {
+    try {
+        auto proc = Gio::Subprocess::create(
+            argv, Gio::Subprocess::Flags::STDOUT_PIPE | Gio::Subprocess::Flags::STDERR_MERGE);
+        proc->communicate_utf8_async(
+            "",
+            [proc, on_done](Glib::RefPtr<Gio::AsyncResult>& result) {
+                Glib::ustring out;
+                try {
+                    out = proc->communicate_utf8_finish(result).first;
+                } catch (const Glib::Error& e) {
+                    on_done(false, e.what());
+                    return;
+                }
+                std::string trimmed = out.raw();
+                while (!trimmed.empty() && (trimmed.back() == '\n' || trimmed.back() == ' '))
+                    trimmed.pop_back();
+                on_done(proc->get_successful(), trimmed);
+            },
+            {});
+    } catch (const Glib::Error& e) {
+        on_done(false, e.what());
+    }
+}
+
+void NetworkManager::scan() {
+    if (scanning_)
+        return;
+    scanning_ = true;
+    networks_changed_.emit();
+    // saved profile names first, then the (slow) rescan list
+    run_nmcli({"nmcli", "-t", "-f", "NAME", "connection", "show"},
+              [this](bool ok, std::string out) {
+                  if (ok) {
+                      saved_names_.clear();
+                      std::istringstream lines(out);
+                      for (std::string line; std::getline(lines, line);)
+                          if (!line.empty())
+                              saved_names_.insert(split_terse(line)[0]);
+                  }
+                  run_nmcli({"nmcli", "-t", "-f", "SSID,SECURITY,SIGNAL,IN-USE", "device",
+                             "wifi", "list", "--rescan", "yes"},
+                            [this](bool list_ok, std::string list_out) {
+                                scanning_ = false;
+                                if (!list_ok) {
+                                    networks_changed_.emit();
+                                    return;
+                                }
+                                // strongest entry per SSID (nmcli lists every BSS)
+                                std::map<std::string, WifiNetwork> best;
+                                std::istringstream lines(list_out);
+                                for (std::string line; std::getline(lines, line);) {
+                                    const auto f = split_terse(line);
+                                    if (f.size() < 4 || f[0].empty())
+                                        continue;
+                                    WifiNetwork net;
+                                    net.ssid = f[0];
+                                    net.security = f[1];
+                                    net.signal = std::atoi(f[2].c_str());
+                                    net.in_use = f[3] == "*";
+                                    net.saved = saved_names_.count(net.ssid) > 0;
+                                    auto it = best.find(net.ssid);
+                                    if (it == best.end() || net.in_use ||
+                                        (!it->second.in_use && net.signal > it->second.signal))
+                                        best[net.ssid] = net;
+                                }
+                                networks_.clear();
+                                for (auto& [ssid, net] : best)
+                                    networks_.push_back(std::move(net));
+                                std::sort(networks_.begin(), networks_.end(),
+                                          [](const WifiNetwork& a, const WifiNetwork& b) {
+                                              if (a.in_use != b.in_use)
+                                                  return a.in_use;
+                                              return a.signal > b.signal;
+                                          });
+                                networks_changed_.emit();
+                            });
+              });
+}
+
+void NetworkManager::wifi_connect(const std::string& ssid, const std::string& password) {
+    std::vector<std::string> argv;
+    const bool saved = saved_names_.count(ssid) > 0;
+    if (saved && password.empty())
+        argv = {"nmcli", "connection", "up", "id", ssid};
+    else {
+        argv = {"nmcli", "device", "wifi", "connect", ssid};
+        if (!password.empty()) {
+            argv.emplace_back("password");
+            argv.emplace_back(password);
+        }
+    }
+    run_nmcli(argv, [this](bool ok, std::string out) {
+        // nmcli exits 0 with an "Error:" body on some failures — check the text
+        if (ok && out.find("Error") != std::string::npos)
+            ok = false;
+        action_done_.emit(ok, out);
+        scan();
+    });
+}
+
+void NetworkManager::wifi_disconnect(const std::string& ssid) {
+    run_nmcli({"nmcli", "connection", "down", "id", ssid},
+              [this](bool ok, std::string out) {
+                  action_done_.emit(ok, out);
+                  scan();
+              });
+}
+
+void NetworkManager::set_wifi_enabled(bool enabled) {
+    if (!available_ || !root_proxy_)
+        return;
+    wifi_enabled_ = enabled; // optimistic — PropertiesChanged confirms
+    notify();
+    auto conn = root_proxy_->get_connection();
+    conn->call(
+        "/org/freedesktop/NetworkManager", "org.freedesktop.DBus.Properties", "Set",
+        Glib::Variant<std::tuple<Glib::ustring, Glib::ustring, Glib::VariantBase>>::create(
+            {kBusName, "WirelessEnabled", Glib::Variant<bool>::create(enabled)}),
+        [conn](Glib::RefPtr<Gio::AsyncResult>& result) {
+            try {
+                conn->call_finish(result);
+            } catch (const Glib::Error& e) {
+                g_warning("failed to toggle wifi: %s", e.what());
+            }
+        },
+        kBusName);
 }
 
 } // namespace hyprshell

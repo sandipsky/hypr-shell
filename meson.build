@@ -28,6 +28,7 @@ sources = files(
   'src/bar/bar.cpp',
   'src/bar/audio_panel.cpp',
   'src/bar/battery_panel.cpp',
+  'src/bar/network_panel.cpp',
   'src/bar/calendar.cpp',
   'src/services/brightness.cpp',
   'src/services/config.cpp',

@@ -63,6 +63,7 @@ src/services/pulse.{hpp,cpp}            default-sink volume/mute (libpulse-glib)
 src/services/brightness.{hpp,cpp}       backlight: sysfs reads + logind SetBrightness
 src/bar/battery_panel.{hpp,cpp}         battery click panel (profile/brightness/rate)
 src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
+src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -320,6 +321,32 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   count from its last info callback; local state updates optimistically
   before the server round-trip. Popover anchored to the icon label (see the
   popover-anchor gotcha). Dev hook: HS_OPEN_AUDIO=1.
+- 2026-08-31 — Wi-Fi selector on network click (`src/bar/network_panel.{hpp,cpp}`,
+  Noctalia's Wi-Fi panel in the shared theme): header with wifi-radio switch
+  (WirelessEnabled via DBus property Set; styled dark trough + primary knob),
+  Connected card (mPrimary bg, Disconnect), scrolled Available list (signal
+  glyph, lock + security, Connect), inline password card for new secured
+  networks. Transient "Scanning…"/"Connecting…" text lives at the right of
+  the section header row so the panel height never jumps. While the radio is
+  off the whole list swaps for a Noctalia-style disabled card (big wifi-off
+  glyph, "Wi-Fi is disabled"); the swap happens on the enabled-state edge in
+  update_state, since scans don't run while disabled. **Popover-resize
+  gotcha**: on Hyprland a mapped popover surface never resizes — content
+  shrinking leaves dead space, growing gets clipped. Any panel whose content
+  changes while open must therefore have a FIXED size (this one is 330x440,
+  like Noctalia's fixed 440x460 panel): the list scroller vexpands into it
+  and the disabled card centers in it. Wifi
+  management shells out to **nmcli** via Gio::Subprocess (async, LC-safe terse
+  parsing with "\:"-escape handling; strongest BSS per SSID; saved profiles
+  from `connection show` decide `connection up id` vs `device wifi connect
+  [password]`; nmcli can exit 0 on failure so the output is checked for
+  "Error") — NM's raw DBus connect flow (settings matching, secrets agent)
+  isn't worth reimplementing. The Connected card reads NM's DBus primary
+  connection (instant) and falls back to the scan list, which refreshes only
+  after each action's rescan. Bar icon: `ethernet_connected()` (any ACTIVATED
+  802-3-ethernet among ActiveConnections) wins over wifi, like Noctalia; the
+  ethernet tab/traffic stats of Noctalia's panel were NOT ported. Dev hook:
+  HS_OPEN_NETWORK=1.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

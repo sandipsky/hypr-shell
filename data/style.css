@@ -366,6 +366,156 @@ button.ap-mute-btn:hover {
   background: alpha(#e5e1e6, 0.16);
 }
 
+/* network panel — Wi-Fi selector, Noctalia layout in the shared theme */
+popover.network-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+}
+
+.np-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.np-section {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e1e6;
+  margin-top: 3px;
+}
+
+.np-connected {
+  background: #bfc2ff; /* mPrimary */
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.np-connected-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 17px;
+  color: #202578; /* mOnPrimary */
+}
+
+.np-connected-ssid {
+  font-size: 14px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.np-connected-sub {
+  font-size: 12px;
+  color: alpha(#202578, 0.7);
+}
+
+button.np-disconnect {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+  background: #131316; /* mSurface: dark pill on the primary card */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.np-disconnect:hover {
+  background: #201f23;
+}
+
+.np-net-row {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 8px 12px;
+}
+
+.np-ssid {
+  font-size: 14px;
+  color: #e5e1e6;
+}
+
+.np-security {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant; leading lock is a tabler glyph */
+  font-family: "noctalia-tabler-icons", "Fira Sans";
+}
+
+button.np-connect {
+  font-size: 13px;
+  font-weight: 700;
+  color: #202578; /* mOnPrimary */
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 14px;
+}
+
+button.np-connect:hover {
+  background: #d3d5ff;
+}
+
+/* radio off: centered wifi-off glyph + explanation, like Noctalia */
+.np-disabled {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 24px 12px;
+}
+
+.np-disabled-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 42px;
+  color: #e5e1e6;
+}
+
+.np-disabled-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e1e6;
+}
+
+/* wifi toggle: dark pill trough, round primary knob when on */
+.network-panel switch {
+  background: #201f23;
+  border: none;
+  box-shadow: none;
+  min-width: 44px;
+  min-height: 24px;
+  border-radius: 999px;
+}
+
+.network-panel switch:checked {
+  background: #201f23;
+}
+
+.network-panel switch slider {
+  background: #c7c5d0; /* mOnSurfaceVariant while off */
+  border: none;
+  box-shadow: none;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 3px;
+  border-radius: 999px;
+}
+
+.network-panel switch:checked slider {
+  background: #bfc2ff; /* mPrimary */
+}
+
+.network-panel entry {
+  background: #131316;
+  color: #e5e1e6;
+  border: 1px solid #46464f; /* mOutline */
+  border-radius: 12px;
+  padding: 6px 9px;
+  caret-color: #bfc2ff;
+}
+
 /* refresh-rate buttons: filled when active, outlined otherwise */
 button.bp-rate-btn {
   font-size: 13px;
