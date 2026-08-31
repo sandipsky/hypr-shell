@@ -5,6 +5,14 @@ window.bar {
   background: transparent;
 }
 
+/* invisible 1px strip that reveals an auto-hidden bar on hover.
+ * NOT `transparent`: a fully transparent GTK4 window never commits a real
+ * buffer, and the layer surface then sizes to the 200px window fallback
+ * instead of its 1px request. ~1/255 alpha is invisible but keeps it 1px. */
+window.bar-trigger {
+  background: rgba(0, 0, 0, 0.01);
+}
+
 .bar-inner {
   background: alpha(#11111b, 0.88);
   border-bottom: 1px solid alpha(#cdd6f4, 0.07);
@@ -16,6 +24,24 @@ window.bar {
 window.bar.bottom .bar-inner {
   border-bottom: none;
   border-top: 1px solid alpha(#cdd6f4, 0.07);
+}
+
+/* vertical bars: hairline moves to the inner edge, paddings rotate */
+window.bar.left .bar-inner {
+  border-bottom: none;
+  border-right: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 10px 3px;
+}
+
+window.bar.right .bar-inner {
+  border-bottom: none;
+  border-left: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 10px 3px;
+}
+
+window.bar.left .module,
+window.bar.right .module {
+  padding: 8px 0;
 }
 
 .module {
@@ -49,30 +75,33 @@ window.bar.bottom .bar-inner {
   background: alpha(#cdd6f4, 0.18);
 }
 
-/* has windows but not focused: accent-tinted */
+/* GNOME-overview-style pills: white active, mid-gray occupied, faint empty.
+ * The "white" is #e0eaff — cool-tinted to cancel the user's hyprsunset 5919K
+ * night-light warming, so the pill reads neutral white on screen. Use plain
+ * #ffffff if night light is off. */
 .workspaces button.occupied {
-  background: alpha(#89b4fa, 0.32);
-  color: #cdd6f4;
+  background: alpha(#e0eaff, 0.35);
+  color: #ffffff;
 }
 
 .workspaces button.occupied:hover {
-  background: alpha(#89b4fa, 0.45);
+  background: alpha(#e0eaff, 0.48);
 }
 
-/* focused workspace: solid accent */
+/* focused workspace: solid white */
 .workspaces button.active {
-  background: #89b4fa;
+  background: #e0eaff;
   color: #11111b;
 }
 
 .workspaces button.active:hover {
-  background: #a5c6fb;
+  background: alpha(#e0eaff, 0.88);
 }
 
 /* focused window title */
 .active-window {
   color: #a6adc8;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 /* status icons (right of bar, before clock) */
@@ -94,6 +123,12 @@ window.bar.bottom .bar-inner {
   font-size: 26px;
 }
 
+/* the battery glyph is the widest thing on a vertical bar — shrink it there */
+window.bar.left .battery .icon,
+window.bar.right .battery .icon {
+  font-size: 23px;
+}
+
 .battery.charging .icon-fill {
   color: #9fd89f; /* win11 green fill; frame glyph above stays foreground-colored */
 }
@@ -104,5 +139,104 @@ window.bar.bottom .bar-inner {
 
 /* clock */
 .clock {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* calendar popover — 1:1 port of the Noctalia calendar panel; colors are the
+ * user's noctalia colors.json (mPrimary #bfc2ff, mOnPrimary #202578, ...) */
+popover.calendar-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.cal-header {
+  background: #bfc2ff; /* mPrimary */
+  border-radius: 20px;
+  padding: 9px 18px;
+  min-height: 60px;
+}
+
+.cal-day-big {
+  font-size: 42px;
+  font-weight: 700;
+  color: #202578; /* mOnPrimary */
+}
+
+.cal-month {
+  font-size: 22px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.cal-year {
+  font-size: 15px;
+  font-weight: 700;
+  color: alpha(#202578, 0.7);
+}
+
+.cal-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.cal-body {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 9px;
+}
+
+.cal-nav-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+separator.cal-divider {
+  background: #46464f; /* mOutline */
+  min-height: 1px;
+}
+
+button.cal-icon-btn {
+  font-family: "noctalia-tabler-icons";
+  font-size: 15px;
+  color: #e5e1e6;
+  background: alpha(#e5e1e6, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.cal-icon-btn:hover {
+  background: alpha(#e5e1e6, 0.16);
+}
+
+.cal-weekday {
+  font-size: 13px;
+  font-weight: 700;
+  color: #bfc2ff; /* mPrimary */
+}
+
+.cal-day {
+  font-size: 15px;
+  font-weight: 500;
+  color: #e5e1e6; /* mOnSurface */
+  border-radius: 16px;
+}
+
+.cal-day.dim {
+  color: alpha(#c7c5d0, 0.4); /* mOnSurfaceVariant, faded like Noctalia */
+}
+
+.cal-day.today {
+  background: #c5c4dd; /* mSecondary */
+  color: #2e2f42; /* mOnSecondary */
   font-weight: 700;
 }

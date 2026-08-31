@@ -1,4 +1,5 @@
 #include "bar/bar.hpp"
+#include "services/config.hpp"
 
 #include <gtk4-layer-shell.h>
 #include <gtkmm.h>
@@ -31,10 +32,17 @@ protected:
             return;
         }
 
+        // A shell must outlive its windows: bar.visibility = "hidden" unmaps
+        // every window, and GTK would otherwise quit the application.
+        hold();
+
         load_css();
         bar_ = std::make_unique<Bar>();
         add_window(*bar_);
-        bar_->present();
+        // bar.visibility = "hidden" starts the shell with no bar mapped;
+        // the Bar itself re-shows when the config changes.
+        if (Config::get().bar_visibility() != Config::BarVisibility::Hidden)
+            bar_->present();
     }
 
 private:

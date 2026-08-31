@@ -26,6 +26,7 @@ dependencies = [
 sources = files(
   'src/main.cpp',
   'src/bar/bar.cpp',
+  'src/bar/calendar.cpp',
   'src/services/config.cpp',
   'src/bar/modules/active_window.cpp',
   'src/bar/modules/battery.cpp',
@@ -78,7 +79,15 @@ executable(
   install: true,
 )
 
+# Launchers resolve Exec against the session PATH, which does not include
+# ~/.local/bin — bake the absolute bindir into the desktop entry.
+desktop_conf = configuration_data()
+desktop_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 install_data(
-  'data/hypr-shell-settings.desktop',
+  configure_file(
+    input: 'data/hypr-shell-settings.desktop.in',
+    output: 'hypr-shell-settings.desktop',
+    configuration: desktop_conf,
+  ),
   install_dir: get_option('datadir') / 'applications',
 )

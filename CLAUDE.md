@@ -47,7 +47,7 @@ meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
 data/style.css                 default theme (embedded via GResource)
 data/hypr-shell.gresource.xml
-data/hypr-shell-settings.desktop
+data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
 data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
@@ -133,8 +133,11 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
 - [ ] **Phase 1 — Config system**: `~/.config/hypr-shell/config.json` + hot reload;
       bar position (top/bottom), height, module toggles & order; per-monitor bars
       (monitor add/remove handling).
-      *(pulled forward 2026-08-31: config.json + hot reload, bar position/height,
-      module toggles landed; module order + per-monitor bars remain)*
+      *(pulled forward 2026-08-31: config.json + hot reload, bar position
+      (top/bottom/left/right — left/right are vertical bars), module toggles,
+      module layout (section + order), and bar visibility (always show /
+      always hide / auto-hide with Noctalia semantics) landed; per-monitor
+      bars remain. bar.height was removed 2026-08-31 — CSS owns sizing)*
 - [ ] **Phase 2 — More bar modules**: battery (UPower), network (NetworkManager),
       bluetooth (BlueZ), audio (PipeWire), system tray (StatusNotifierItem + DBusMenu),
       keyboard layout, system stats.
@@ -145,6 +148,9 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       bus name: mako/dunst/Noctalia's daemon must be disabled when this ships.
 - [ ] **Phase 4 — Panels & OSD**: volume/brightness OSD, calendar popover,
       control-center panel.
+      *(pulled forward 2026-08-31: calendar popover on clock click landed —
+      1:1 port of Noctalia's calendar panel; volume/brightness OSD and
+      control center remain)*
 - [ ] **Phase 5 — Lock & idle**: lock screen via ext-session-lock
       (gtk4-layer-shell's session-lock API) + PAM auth; idle service via
       ext-idle-notify-v1 (dim → lock → dpms off) with inhibitor support.
@@ -168,11 +174,11 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   persistent/pinned workspace display deferred to the phase-1 config.
 - 2026-08-30 — Config will be a JSON file (not GSettings/dconf): dotfile-friendly,
   same hot-reload path serves both manual edits and the future settings app.
-- 2026-08-30 — Workspace scroll uses Hyprland's relative selector `"e+1"`/`"e-1"`
-  (existing workspaces, all monitors, wraps — same as common `mouse_down` binds)
-  rather than local next/prev math; revisit `m+1`-style per-monitor cycling when
-  phase 1 brings per-monitor bars. Smooth deltas are accumulated to one switch per
-  wheel notch.
+- 2026-08-30 — Workspace scroll originally used Hyprland's `"e+1"`/`"e-1"`
+  selectors; **superseded 2026-08-31** by local stepping over the displayed
+  workspace list, because fixed mode must navigate placeholder workspaces and
+  the wrap-around toggle needs clamping Hyprland doesn't offer. Smooth deltas
+  are still accumulated to one switch per wheel notch.
 - 2026-08-30 — Hyprland 0.56 turned `.socket.sock` actions into Lua (see cheat
   sheet); the old `dispatch workspace 3` grammar silently broke every dispatch
   (bar clicks included — the g_warning was invisible because install.sh's restart
@@ -205,6 +211,72 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   preserved), the shell's Config service hot-reloads it — no IPC between the binaries.
   UI is AdwToolbarView + AdwPreferencesPage (AdwPreferencesWindow avoided — deprecated
   since libadwaita 1.6); AdwSwitchRow/AdwSpinRow need libadwaita >= 1.4.
+- 2026-08-31 — Desktop entries must carry an **absolute Exec path** (meson
+  configure_file from `.desktop.in`): the session/systemd-user PATH that app
+  launchers resolve Exec against does not include ~/.local/bin, so a bare
+  `Exec=hypr-shell-settings` silently launched nothing outside a shell.
+- 2026-08-31 — Module placement lives in `bar.layout` = `{left:[], center:[],
+  right:[]}` (ordered name lists). Resolution: unknown names dropped, duplicates
+  keep first placement, modules missing from every list append to their default
+  section — so hand-edited partial configs and future modules keep working. The
+  bar applies "enabled" by (un)parenting modules, not set_visible(): modules
+  keep set_visible() for their own service availability (battery with no UPower
+  etc.) without fighting the config — an enabled-but-hidden fight was a real
+  bug. Settings app: per-module up/down + section dropdown, groups per section.
+- 2026-08-31 — Per-module settings live under `bar.<module>` objects (first:
+  `bar.workspaces` = mode "dynamic"/"fixed", fixed_count, scroll_wrap — semantics
+  copied from Noctalia's workspaceMode/fixedWorkspaces: fixed shows 1..N with
+  placeholders, keeps real workspaces beyond N, click on a placeholder creates
+  it). In the settings app each such module gets an AdwNavigationView subpage,
+  opened by a cog suffix on its module row; `HS_SETTINGS_PAGE=<tag>` opens a
+  subpage directly (dev/screenshot hook).
+- 2026-08-31 — Calendar popover (`src/bar/calendar.{hpp,cpp}`, opened by
+  clicking the clock) is a 1:1 port of Noctalia's CalendarHeaderCard +
+  CalendarMonthCard, including the seconds-progress ring (Gtk::DrawingArea /
+  cairo) and scroll-to-change-month. Colors are hardcoded from a snapshot of
+  the user's `~/.config/noctalia/colors.json` (mPrimary #bfc2ff etc.) — theme
+  tokens become config when theming lands. GTK popovers with autohide grabs
+  work fine on Hyprland layer surfaces. `bar.clock.first_day_of_week` (0=Sun
+  default, 1=Mon) has a Clock settings subpage; calendar events (khal/EDS)
+  were NOT ported. Dev hook: `HS_OPEN_CALENDAR=1` pops it on startup.
+- 2026-08-31 — Vertical bars (`bar.position` left/right): all boxes flip
+  orientation, anchors span top..bottom, css classes `left`/`right` flip the
+  hairline + rotate paddings, active_window draws its title rotated 90°
+  (book-spine, PangoCairo in a Gtk::DrawingArea — GTK4 labels can't rotate;
+  icon stays upright above it), and the clock uses `bar.clock.format_vertical`
+  (Noctalia
+  semantics: strftime, space-separated tokens render stacked) vs
+  `format_horizontal` (default "%H:%M %a, %b %d" ≙ Noctalia's
+  "HH:mm ddd, MMM dd"). `bar.height` was dropped — CSS owns bar thickness.
+  Invalid strftime input (mid-typing in settings) falls back to "%H:%M".
+- 2026-08-31 — ActiveWindow gained Noctalia's widget settings (minus color):
+  `bar.active_window` = hide_mode visible/hidden/transparent (default hidden,
+  transparent keeps its space at opacity 0), show_title, title_mode
+  title/appname (appname = desktop-entry display name), no_window_text
+  default/desktop/none, show_icon. The module is now a Box (Gtk::Image +
+  label); icons resolve via Gio::DesktopAppInfo from the window class
+  (exact + lowercased "<class>.desktop", fallback generic executable icon).
+  Settings subpage rows 3–4 hide when show_title is off, like Noctalia.
+- 2026-08-31 — Bar visibility: `bar.visibility` = visible/hidden/auto_hide plus
+  `bar.show_on_workspace_switch` (default true) and `bar.show_when_workspace_empty`
+  (default false), semantics and timings copied from Noctalia's displayMode
+  (hide 500ms after unhover, show 150ms after hover, ~200ms slide — ease-in-quad
+  out, ease-out-cubic in). Auto-hide slides the bar off-screen via a **negative
+  layer-shell margin** on its anchored edge (window stays mapped → no remap
+  latency; off-screen surfaces get no input) with exclusive zone forced to 0;
+  a second 1px layer window (`hypr-shell-trigger`) on the same edge re-reveals
+  it on hover. Two hard-won gotchas: (1) a **fully transparent GTK4 window never
+  commits a real buffer** and the layer surface then sizes to GtkWindow's 200px
+  fallback instead of its 1px request — the trigger is painted rgba(0,0,0,0.01),
+  ~1/255 alpha, invisible but sized correctly (plain `background: transparent`,
+  `opacity: 0` in CSS, and `set_opacity(0)` all break it); (2) hiding every
+  window (visibility=hidden) made GTK quit the app — `App::on_activate` now
+  calls `hold()`. An open popover (calendar) blocks hiding via a 500ms re-check
+  poll; the active workspace's emptiness comes from `j/activeworkspace` on
+  workspace/openwindow/closewindow/movewindow events, serial-guarded. Peek on
+  workspace switch shows then restarts the hide cycle. Note: opening the
+  calendar needs the pointer on the bar surface itself — a popup grab from the
+  1px trigger's input serial is denied and the popover instantly dismisses.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

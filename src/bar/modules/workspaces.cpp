@@ -1,5 +1,6 @@
 #include "bar/modules/workspaces.hpp"
 
+#include "services/config.hpp"
 #include "services/hyprland.hpp"
 
 #include <nlohmann/json.hpp>
@@ -20,6 +21,7 @@ Workspaces::Workspaces() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_controller(scroll);
 
     Hyprland::get().signal_event().connect(sigc::mem_fun(*this, &Workspaces::on_event));
+    Config::get().signal_changed().connect(sigc::mem_fun(*this, &Workspaces::refresh));
     refresh();
 }
 
@@ -29,12 +31,40 @@ bool Workspaces::on_scroll(double /*dx*/, double dy) {
     scroll_accum_ += dy;
     if (scroll_accum_ >= 1.0) {
         scroll_accum_ = 0.0;
-        Hyprland::get().focus_workspace("e+1");
+        step(+1);
     } else if (scroll_accum_ <= -1.0) {
         scroll_accum_ = 0.0;
-        Hyprland::get().focus_workspace("e-1");
+        step(-1);
     }
     return true;
+}
+
+// Step through the displayed workspaces (locally, not via Hyprland's e+1 —
+// fixed mode navigates placeholders too, and wrap-around is configurable).
+void Workspaces::step(int dir) {
+    if (shown_ids_.empty()) {
+        return;
+    }
+    const bool wrap = Config::get().workspaces_scroll_wrap();
+    int target = -1;
+    if (dir > 0) {
+        auto it = std::upper_bound(shown_ids_.begin(), shown_ids_.end(), active_id_);
+        if (it != shown_ids_.end()) {
+            target = *it;
+        } else if (wrap) {
+            target = shown_ids_.front();
+        }
+    } else {
+        auto it = std::lower_bound(shown_ids_.begin(), shown_ids_.end(), active_id_);
+        if (it != shown_ids_.begin()) {
+            target = *(it - 1);
+        } else if (wrap) {
+            target = shown_ids_.back();
+        }
+    }
+    if (target >= 0 && target != active_id_) {
+        Hyprland::get().focus_workspace(target);
+    }
 }
 
 void Workspaces::on_event(const std::string& name, const std::string& /*data*/) {
@@ -83,10 +113,39 @@ void Workspaces::refresh() {
 }
 
 void Workspaces::rebuild(const std::vector<Entry>& entries, int active_id) {
+    set_orientation(Config::get().bar_vertical() ? Gtk::Orientation::VERTICAL
+                                                 : Gtk::Orientation::HORIZONTAL);
+    // Fixed mode (Noctalia semantics): always show 1..count, placeholders for
+    // ids that don't exist yet, and keep real workspaces beyond the range so
+    // the focused one never disappears. Clicking a placeholder creates it.
+    std::vector<Entry> shown = entries;
+    auto& cfg = Config::get();
+    if (cfg.workspaces_mode() == Config::WorkspacesMode::Fixed) {
+        const int count = cfg.workspaces_fixed_count();
+        shown.clear();
+        for (int n = 1; n <= count; ++n) {
+            auto match = std::find_if(entries.begin(), entries.end(),
+                                      [n](const Entry& e) { return e.id == n; });
+            shown.push_back(match != entries.end() ? *match
+                                                   : Entry{n, std::to_string(n), 0});
+        }
+        for (const auto& entry : entries) {
+            if (entry.id > count) {
+                shown.push_back(entry);
+            }
+        }
+    }
+
+    shown_ids_.clear();
+    for (const auto& entry : shown) {
+        shown_ids_.push_back(entry.id);
+    }
+    active_id_ = active_id;
+
     while (auto* child = get_first_child()) {
         remove(*child);
     }
-    for (const auto& entry : entries) {
+    for (const auto& entry : shown) {
         auto* button = Gtk::make_managed<Gtk::Button>(entry.name);
         if (entry.id == active_id) {
             button->add_css_class("active");
