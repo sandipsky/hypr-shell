@@ -1,5 +1,6 @@
 #include "bar/modules/volume.hpp"
 
+#include "services/config.hpp"
 #include "services/pulse.hpp"
 
 #include <cmath>
@@ -22,8 +23,60 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     icon_.add_css_class("icon");
     append(icon_);
 
+    // left click opens the audio panel; anchored to the icon label because a
+    // Gtk::Box parent allocates an open popover inline (see battery module)
+    panel_ = Gtk::make_managed<AudioPanel>();
+    popover_.set_child(*panel_);
+    popover_.set_parent(icon_);
+    popover_.set_has_arrow(false);
+    popover_.add_css_class("audio-popover");
+    set_cursor(Gdk::Cursor::create("pointer"));
+
+    auto click = Gtk::GestureClick::create();
+    click->signal_released().connect([this](int, double, double) {
+        // keep the panel on the free side of the bar
+        switch (Config::get().bar_position()) {
+        case Config::BarPosition::Top:
+            popover_.set_position(Gtk::PositionType::BOTTOM);
+            break;
+        case Config::BarPosition::Bottom:
+            popover_.set_position(Gtk::PositionType::TOP);
+            break;
+        case Config::BarPosition::Left:
+            popover_.set_position(Gtk::PositionType::RIGHT);
+            break;
+        case Config::BarPosition::Right:
+            popover_.set_position(Gtk::PositionType::LEFT);
+            break;
+        }
+        panel_->refresh();
+        popover_.popup();
+    });
+    add_controller(click);
+
+    // right click toggles output mute
+    auto right_click = Gtk::GestureClick::create();
+    right_click->set_button(GDK_BUTTON_SECONDARY);
+    right_click->signal_released().connect(
+        [](int, double, double) { Pulse::get().set_muted(!Pulse::get().muted()); });
+    add_controller(right_click);
+
+    // dev hook: HS_OPEN_AUDIO=1 pops the panel shortly after startup
+    if (g_getenv("HS_OPEN_AUDIO") != nullptr) {
+        Glib::signal_timeout().connect_once(
+            [this] {
+                panel_->refresh();
+                popover_.popup();
+            },
+            800);
+    }
+
     Pulse::get().signal_changed().connect(sigc::mem_fun(*this, &Volume::update));
     update();
+}
+
+Volume::~Volume() {
+    popover_.unparent();
 }
 
 void Volume::update() {

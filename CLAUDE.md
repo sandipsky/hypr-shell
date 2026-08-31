@@ -62,6 +62,7 @@ src/services/power_profiles.{hpp,cpp}   active profile from power-profiles-daemo
 src/services/pulse.{hpp,cpp}            default-sink volume/mute (libpulse-glib)
 src/services/brightness.{hpp,cpp}       backlight: sysfs reads + logind SetBrightness
 src/bar/battery_panel.{hpp,cpp}         battery click panel (profile/brightness/rate)
+src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -308,6 +309,17 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   is fine); parented to the battery's fill label (which sits under the frame_
   overlay child) the popover unmapped right after popup(). Anchor module
   popovers to a Label or a Gtk::Overlay, never to the module Box itself.
+- 2026-08-31 — Audio panel on volume click (`src/bar/audio_panel.{hpp,cpp}`,
+  Noctalia's AudioPanel output/input cards, bp-* styles): per card
+  "<Kind> - <device description>", slider, %, round mute-toggle button
+  (volume/mic glyphs, slider dims at 0.5 opacity while muted). Right click on
+  the volume module toggles output mute (user request; Noctalia opens a
+  context menu there instead). Pulse service extended to the default source
+  (SOURCE subscription, get_source_info_by_name) plus setters
+  set_[input_]volume/muted via the by-name pa APIs with the device's channel
+  count from its last info callback; local state updates optimistically
+  before the server round-trip. Popover anchored to the icon label (see the
+  popover-anchor gotcha). Dev hook: HS_OPEN_AUDIO=1.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

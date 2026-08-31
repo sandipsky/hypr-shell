@@ -337,6 +337,35 @@ progressbar.bp-level progress {
   min-width: 8px; /* GTK warns about a -2 min width without this */
 }
 
+/* audio panel — output/input cards, shares the bp-* styles above */
+popover.audio-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.ap-kind {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bfc2ff; /* mPrimary, like Noctalia's Output/Input labels */
+}
+
+button.ap-mute-btn {
+  background: alpha(#e5e1e6, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.ap-mute-btn:hover {
+  background: alpha(#e5e1e6, 0.16);
+}
+
 /* refresh-rate buttons: filled when active, outlined otherwise */
 button.bp-rate-btn {
   font-size: 13px;
