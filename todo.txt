@@ -1,0 +1,45 @@
+--settings 
+
+- User Interface
+    - font selection
+    - font size 
+    - accent color selection 
+    - dark mode toggle
+
+- Wallpaper 
+
+- Display
+
+- On-Screen Display
+
+- Lock Screen 
+ 
+- Idle
+
+- Launcher
+
+- VPN 
+
+- Hotspot
+
+- Session Menu
+
+
+-- Bar 
+
+ - Clock settings 
+  - ad / bs date type on calendar mode
+  - tooltip format
+
+ - App menu (grid style with search on top)
+  -- customize icon ( use rocket icon default of nocatilia), icon + text , text only
+  -- view mode grid or list (default grid)
+  -- buttons to show next to search settings (opens hypr shell settings),
+     session button dropdown 
+
+
+ - Launcher module ( use search icon and no customize in bar because it has separate section for customize)
+
+ - taskbar module 
+
+ - control center
