@@ -2,5 +2,9 @@
 <gresources>
   <gresource prefix="/dev/hyprshell/Shell">
     <file>style.css</file>
+    <file>css/bar.css</file>
+    <file>css/calendar.css</file>
+    <file>css/panels.css</file>
+    <file>css/notifications.css</file>
   </gresource>
 </gresources>

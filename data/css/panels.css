@@ -1,0 +1,323 @@
+/* click panels (battery bp-*, audio ap-*, network np-*, bluetooth bt-*):
+ * shared design language — bp-* and np-* primitives are reused across
+ * panels, plus the NToggle switch port and pill buttons */
+
+/* battery panel — power profile / brightness / refresh rate cards, same
+ * design language (and Noctalia color snapshot) as the calendar popover */
+popover.battery-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.bp-card {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.bp-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.bp-value {
+  font-size: 13px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.bp-percent {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+}
+
+.bp-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 16px;
+  color: #e5e1e6;
+}
+
+.bp-profile-icon {
+  font-size: 14px;
+  color: #c7c5d0;
+}
+
+.bp-profile-icon.active {
+  color: #bfc2ff; /* mPrimary */
+}
+
+/* sliders: rounded mPrimary track like Noctalia's NSlider */
+scale.bp-slider {
+  padding: 6px 0;
+}
+
+scale.bp-slider trough {
+  background: #131316; /* mSurface */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px;
+}
+
+scale.bp-slider highlight {
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px; /* GTK warns about -2 min sizes without these */
+  min-width: 10px;
+}
+
+scale.bp-slider slider {
+  background: #e5e1e6;
+  border: none;
+  box-shadow: 0 1px 3px alpha(#000000, 0.4);
+  border-radius: 999px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: -4px;
+}
+
+/* battery charge level */
+progressbar.bp-level trough {
+  background: #131316;
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+}
+
+progressbar.bp-level progress {
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+  min-width: 8px; /* GTK warns about a -2 min width without this */
+}
+
+/* audio panel — output/input cards, shares the bp-* styles above */
+popover.audio-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.ap-kind {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bfc2ff; /* mPrimary, like Noctalia's Output/Input labels */
+}
+
+button.ap-mute-btn {
+  background: alpha(#e5e1e6, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.ap-mute-btn:hover {
+  background: alpha(#e5e1e6, 0.16);
+}
+
+/* network panel — Wi-Fi selector, Noctalia layout in the shared theme */
+popover.network-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+}
+
+.np-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.np-section {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e5e1e6;
+  margin-top: 3px;
+}
+
+.np-connected {
+  background: #bfc2ff; /* mPrimary */
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.np-connected-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 17px;
+  color: #202578; /* mOnPrimary */
+}
+
+.np-connected-ssid {
+  font-size: 14px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.np-connected-sub {
+  font-size: 12px;
+  color: alpha(#202578, 0.7);
+}
+
+button.np-disconnect {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+  background: #131316; /* mSurface: dark pill on the primary card */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.np-disconnect:hover {
+  background: #201f23;
+}
+
+.np-net-row {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 8px 12px;
+}
+
+.np-ssid {
+  font-size: 14px;
+  color: #e5e1e6;
+}
+
+.np-security {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant; leading lock is a tabler glyph */
+  font-family: "noctalia-tabler-icons", "Fira Sans";
+}
+
+button.np-connect {
+  font-size: 13px;
+  font-weight: 700;
+  color: #202578; /* mOnPrimary */
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 14px;
+}
+
+button.np-connect:hover {
+  background: #d3d5ff;
+}
+
+/* radio off: centered wifi-off glyph + explanation, like Noctalia */
+.np-disabled {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 24px 12px;
+}
+
+.np-disabled-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 42px;
+  color: #e5e1e6;
+}
+
+.np-disabled-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e1e6;
+}
+
+/* bluetooth panel — Noctalia's bluetooth panel in the shared theme; the
+ * lists reuse the np-* row/card styles above */
+popover.bluetooth-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+}
+
+.bt-sub {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+/* radio toggles: 1:1 Noctalia NToggle (bluetooth-panel size, base 33*0.65):
+ * 36x22 outlined pill, primary track when on, 18px knob with a surface ring
+ * (primary knob while off, on-primary knob while on) */
+.bluetooth-panel switch,
+.network-panel switch {
+  background: #131316; /* mSurface while off */
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: none;
+  min-width: 34px; /* + border = 36x22, Noctalia's rounded sizes */
+  min-height: 20px;
+  border-radius: 999px;
+}
+
+.bluetooth-panel switch:checked,
+.network-panel switch:checked {
+  background: #bfc2ff; /* mPrimary */
+}
+
+.bluetooth-panel switch slider,
+.network-panel switch slider {
+  background: #bfc2ff; /* mPrimary while off */
+  border: none;
+  /* NToggle's knob ring, drawn WITHOUT border so both states share identical
+   * box metrics — a border here made the knob grow for a frame mid-toggle */
+  box-shadow: inset 0 0 0 2px #131316; /* mSurface ring */
+  min-width: 18px;
+  min-height: 18px;
+  margin: 1px;
+  border-radius: 999px;
+}
+
+.bluetooth-panel switch:checked slider,
+.network-panel switch:checked slider {
+  background: #202578; /* mOnPrimary */
+  box-shadow: none; /* no ring on the primary track */
+}
+
+.network-panel entry {
+  background: #131316;
+  color: #e5e1e6;
+  border: 1px solid #46464f; /* mOutline */
+  border-radius: 12px;
+  padding: 6px 9px;
+  caret-color: #bfc2ff;
+}
+
+/* refresh-rate buttons: filled when active, outlined otherwise */
+button.bp-rate-btn {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+  background: transparent;
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.bp-rate-btn:hover {
+  background: alpha(#e5e1e6, 0.08);
+}
+
+button.bp-rate-btn.active {
+  background: #bfc2ff; /* mPrimary */
+  border-color: #bfc2ff;
+  color: #202578; /* mOnPrimary */
+}

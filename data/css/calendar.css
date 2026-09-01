@@ -1,0 +1,97 @@
+/* calendar popover — 1:1 port of the Noctalia calendar panel; colors are the
+ * user's noctalia colors.json (mPrimary #bfc2ff, mOnPrimary #202578, ...) */
+popover.calendar-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 9px;
+}
+
+.cal-header {
+  background: #bfc2ff; /* mPrimary */
+  border-radius: 20px;
+  padding: 9px 18px;
+  min-height: 60px;
+}
+
+.cal-day-big {
+  font-size: 42px;
+  font-weight: 700;
+  color: #202578; /* mOnPrimary */
+}
+
+.cal-month {
+  font-size: 22px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.cal-year {
+  font-size: 15px;
+  font-weight: 700;
+  color: alpha(#202578, 0.7);
+}
+
+.cal-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: #202578;
+}
+
+.cal-body {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 9px;
+}
+
+.cal-nav-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+separator.cal-divider {
+  background: #46464f; /* mOutline */
+  min-height: 1px;
+}
+
+button.cal-icon-btn {
+  font-family: "noctalia-tabler-icons";
+  font-size: 15px;
+  color: #e5e1e6;
+  background: alpha(#e5e1e6, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.cal-icon-btn:hover {
+  background: alpha(#e5e1e6, 0.16);
+}
+
+.cal-weekday {
+  font-size: 13px;
+  font-weight: 700;
+  color: #bfc2ff; /* mPrimary */
+}
+
+.cal-day {
+  font-size: 15px;
+  font-weight: 500;
+  color: #e5e1e6; /* mOnSurface */
+  border-radius: 16px;
+}
+
+.cal-day.dim {
+  color: alpha(#c7c5d0, 0.4); /* mOnSurfaceVariant, faded like Noctalia */
+}
+
+.cal-day.today {
+  background: #c5c4dd; /* mSecondary */
+  color: #2e2f42; /* mOnSecondary */
+  font-weight: 700;
+}

@@ -1057,7 +1057,7 @@ void on_activate(GtkApplication* app, gpointer) {
     load(s);
 
     GtkWidget* win = adw_application_window_new(app);
-    gtk_window_set_title(GTK_WINDOW(win), "hypr-shell Settings");
+    gtk_window_set_title(GTK_WINDOW(win), "Settings");
     gtk_window_set_default_size(GTK_WINDOW(win), 860, 640);
     g_object_set_data_full(G_OBJECT(win), "settings-state", s,
                            [](gpointer p) { delete static_cast<Settings*>(p); });
@@ -1708,7 +1708,7 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), adw_header_bar_new());
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(view), page);
     adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
-                            adw_navigation_page_new(view, "hypr-shell Settings"));
+                            adw_navigation_page_new(view, "Bar"));
 
     GtkWidget* ws_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(ws_view), adw_header_bar_new());
@@ -1835,7 +1835,12 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // -- GNOME-Settings-style sidebar: Bar, then Notifications ---------------
     GtkWidget* nd_view = adw_toolbar_view_new();
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nd_view), adw_header_bar_new());
+    GtkWidget* nd_header = adw_header_bar_new();
+    // inside a plain GtkStack there is no per-page AdwNavigationPage title —
+    // set this header's title directly
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nd_header),
+                                    adw_window_title_new("Notifications", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nd_view), nd_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nd_view), nd_page);
 
     GtkWidget* stack = gtk_stack_new();
@@ -1873,7 +1878,7 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* split = adw_navigation_split_view_new();
     adw_navigation_split_view_set_sidebar(
         ADW_NAVIGATION_SPLIT_VIEW(split),
-        adw_navigation_page_new(sidebar_view, "hypr-shell"));
+        adw_navigation_page_new(sidebar_view, "Settings"));
     adw_navigation_split_view_set_content(
         ADW_NAVIGATION_SPLIT_VIEW(split), adw_navigation_page_new(stack, "Settings"));
     adw_navigation_split_view_set_min_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),

@@ -45,7 +45,10 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
 ```
 meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
-data/style.css                 default theme (embedded via GResource)
+data/style.css                 default theme entry — @imports data/css/* (GResource)
+data/css/*.css                 per-area theme files: bar, calendar, panels,
+                               notifications (GTK resolves the imports inside
+                               the resource bundle)
 data/hypr-shell.gresource.xml
 data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
 data/fonts/                    noctalia-tabler-icons.ttf (installed to
@@ -234,6 +237,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   configure_file from `.desktop.in`): the session/systemd-user PATH that app
   launchers resolve Exec against does not include ~/.local/bin, so a bare
   `Exec=hypr-shell-settings` silently launched nothing outside a shell.
+- 2026-09-01 — Settings app presents as plain "Settings" (desktop Name, window
+  title, sidebar header) with `Icon=org.gnome.Settings` — the GNOME Control
+  Center icon, which hypr-shell does NOT ship: the user installs the svg
+  themselves as org.gnome.Settings.svg in the icon theme path.
+  StartupWMClass=dev.hyprshell.Settings maps the running window to the entry
+  so docks pick up the same icon.
 - 2026-08-31 — Module placement lives in `bar.layout` = `{left:[], center:[],
   right:[]}` (ordered name lists). Resolution: unknown names dropped, duplicates
   keep first placement, modules missing from every list append to their default

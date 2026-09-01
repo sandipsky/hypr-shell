@@ -1,0 +1,157 @@
+/* bar window + modules (workspaces, active window, status icons,
+ * battery glyphs, clock, notification bell badge) */
+
+window.bar {
+  background: transparent;
+}
+
+/* invisible 1px strip that reveals an auto-hidden bar on hover.
+ * NOT `transparent`: a fully transparent GTK4 window never commits a real
+ * buffer, and the layer surface then sizes to the 200px window fallback
+ * instead of its 1px request. ~1/255 alpha is invisible but keeps it 1px. */
+window.bar-trigger {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.bar-inner {
+  /* the alpha here is the fallback — bar.background_opacity in config.json
+   * overrides it via a generated provider (user style.css still wins) */
+  background: alpha(#11111b, 0.88);
+  border-bottom: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 3px 10px;
+  font-family: "Fira Sans"; /* Noctalia's fontDefault */
+}
+
+/* bar.position = "bottom" in config.json: hairline sits on the top edge */
+window.bar.bottom .bar-inner {
+  border-bottom: none;
+  border-top: 1px solid alpha(#cdd6f4, 0.07);
+}
+
+/* vertical bars: hairline moves to the inner edge, paddings rotate */
+window.bar.left .bar-inner {
+  border-bottom: none;
+  border-right: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 10px 3px;
+}
+
+window.bar.right .bar-inner {
+  border-bottom: none;
+  border-left: 1px solid alpha(#cdd6f4, 0.07);
+  padding: 10px 3px;
+}
+
+window.bar.left .module,
+window.bar.right .module {
+  padding: 8px 0;
+}
+
+.module {
+  padding: 0 10px;
+  font-size: 13px;
+  color: #cdd6f4;
+}
+
+/* workspaces */
+.workspaces {
+  padding: 0 4px;
+}
+
+/* circular buttons: keep min-width == min-height and padding 0 */
+.workspaces button {
+  min-width: 24px;
+  min-height: 24px;
+  margin: 2px;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  box-shadow: none;
+  background: alpha(#cdd6f4, 0.08);
+  color: #a6adc8;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 150ms ease;
+}
+
+.workspaces button:hover {
+  background: alpha(#cdd6f4, 0.18);
+}
+
+/* GNOME-overview-style pills: white active, mid-gray occupied, faint empty.
+ * The "white" is #e0eaff — cool-tinted to cancel the user's hyprsunset 5919K
+ * night-light warming, so the pill reads neutral white on screen. Use plain
+ * #ffffff if night light is off. */
+.workspaces button.occupied {
+  background: alpha(#e0eaff, 0.35);
+  color: #ffffff;
+}
+
+.workspaces button.occupied:hover {
+  background: alpha(#e0eaff, 0.48);
+}
+
+/* focused workspace: solid white */
+.workspaces button.active {
+  background: #e0eaff;
+  color: #11111b;
+}
+
+.workspaces button.active:hover {
+  background: alpha(#e0eaff, 0.88);
+}
+
+/* focused window title */
+.active-window {
+  color: #a6adc8;
+  font-size: 16px;
+}
+
+/* status icons (right of bar, before clock) */
+.icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 18px;
+  color: #cdd6f4;
+}
+
+.network,
+.bluetooth,
+.volume,
+.battery {
+  padding: 0 5px;
+}
+
+/* battery: win11-style Segoe Fluent glyph + percent text */
+.battery .icon {
+  font-family: "Segoe Fluent Icons";
+  font-size: 26px;
+}
+
+/* the battery glyph is the widest thing on a vertical bar — shrink it there */
+window.bar.left .battery .icon,
+window.bar.right .battery .icon {
+  font-size: 23px;
+}
+
+.battery.charging .icon-fill {
+  color: #9fd89f; /* win11 green fill; frame glyph above stays foreground-colored */
+}
+
+.battery.saver .icon-fill {
+  color: #eaa300; /* win11 amber fill under the BatterySaver leaf frame */
+}
+
+/* clock */
+.clock {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* notifications: unread badge dot over the bell icon (Noctalia's badge,
+ * default color primary; the border matches the bar background) */
+.notifications .notif-badge {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 4px;
+  background: #bfc2ff; /* mPrimary */
+  border: 1px solid #11111b;
+}

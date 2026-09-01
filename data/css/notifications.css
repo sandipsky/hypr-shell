@@ -1,0 +1,171 @@
+/* notification history panel (notif-*) and toast popups (notif-popup*) */
+
+/* notification panel — Noctalia's NotificationHistoryPanel in the shared
+ * theme: header card with DND toggle + Clear All, then notification cards */
+popover.notification-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+}
+
+.notif-header {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.notif-header-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 20px;
+  color: #bfc2ff; /* mPrimary, like Noctalia's header bell */
+}
+
+button.notif-clear {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e5e1e6;
+  background: transparent;
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.notif-clear:hover {
+  background: alpha(#e5e1e6, 0.08);
+}
+
+.notif-clear-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 13px;
+  color: #e5e1e6;
+}
+
+.notif-card {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.notif-icon {
+  background: #131316; /* mSurface, under transparent app icons */
+  border-radius: 14px;
+}
+
+.notif-icon-fallback {
+  font-family: "noctalia-tabler-icons";
+  font-size: 20px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.notif-dot {
+  min-width: 6px;
+  min-height: 6px;
+  border-radius: 3px;
+}
+
+.notif-dot.critical {
+  background: #ffb4ab; /* mError */
+}
+
+.notif-dot.low {
+  background: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.notif-app {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c5c4dd; /* mSecondary */
+}
+
+.notif-time {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.notif-summary {
+  font-size: 14px;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.notif-body {
+  font-size: 12px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+/* action buttons sent with the notification: primary pills like Noctalia */
+button.notif-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: #202578; /* mOnPrimary */
+  background: #bfc2ff; /* mPrimary */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 24px;
+  padding: 0 12px;
+}
+
+button.notif-action:hover {
+  background: #d3d5ff;
+}
+
+/* expand / delete: small round icon buttons */
+button.notif-icon-btn {
+  background: alpha(#e5e1e6, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+}
+
+button.notif-icon-btn:hover {
+  background: alpha(#e5e1e6, 0.16);
+}
+
+.notif-icon-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 13px;
+  color: #e5e1e6;
+}
+
+/* notification toasts — Noctalia's popup cards as a layer-shell stack; the
+ * card background/border alpha comes from notifications.background_opacity
+ * (a generated provider overrides the colors below) */
+window.notification-popups {
+  background: transparent;
+}
+
+.notif-popup {
+  background-color: #131316; /* mSurface */
+  border: 1px solid #46464f; /* mOutline */
+  border-radius: 20px;
+}
+
+.notif-popup-content {
+  padding: 12px 15px 15px 15px;
+}
+
+.notif-popup-body-compact {
+  padding: 9px 12px;
+}
+
+.notif-dot.normal {
+  background: #bfc2ff; /* mPrimary — popups mark normal urgency too */
+}
+
+.notif-popup-summary {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.notif-popup-text {
+  font-size: 14px;
+  color: #e5e1e6; /* mOnSurface, like Noctalia's popup body */
+}
