@@ -30,6 +30,9 @@ sources = files(
   'src/bar/battery_panel.cpp',
   'src/bar/bluetooth_panel.cpp',
   'src/bar/network_panel.cpp',
+  'src/bar/notification_panel.cpp',
+  'src/bar/notification_popup.cpp',
+  'src/bar/notification_ui.cpp',
   'src/bar/calendar.cpp',
   'src/services/bluez.cpp',
   'src/services/brightness.cpp',
@@ -39,10 +42,12 @@ sources = files(
   'src/bar/modules/bluetooth.cpp',
   'src/bar/modules/clock.cpp',
   'src/bar/modules/network.cpp',
+  'src/bar/modules/notifications.cpp',
   'src/bar/modules/volume.cpp',
   'src/bar/modules/workspaces.cpp',
   'src/services/hyprland.cpp',
   'src/services/network_manager.cpp',
+  'src/services/notifications.cpp',
   'src/services/power_profiles.cpp',
   'src/services/pulse.cpp',
   'src/services/upower.cpp',
@@ -50,6 +55,12 @@ sources = files(
 
 # Icon fonts. Tabler (wifi/volume glyphs) is MIT; SegoeIcons.ttf (battery
 # glyphs) is Microsoft-proprietary — personal use only, see SegoeIcons-NOTICE.txt.
+# Default notification sound (from Noctalia, MIT).
+install_data(
+  'data/sounds/notification-generic.wav',
+  install_dir: get_option('datadir') / 'hypr-shell' / 'sounds',
+)
+
 install_data(
   'data/fonts/noctalia-tabler-icons.ttf',
   'data/fonts/tabler-icons-license.txt',

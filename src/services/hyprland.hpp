@@ -42,6 +42,9 @@ public:
     void focus_workspace(int id);
     void focus_workspace(const std::string& selector);
 
+    // Focus a window by its j/clients address ("0x…").
+    void focus_window(const std::string& address);
+
     // Apply a monitor mode via the Lua config API (`eval hl.monitor{...}`) —
     // Hyprland >= 0.56 rejects the old `keyword monitor` grammar. `output`
     // must not contain quotes. on_done(true) only on an explicit "ok" reply.

@@ -19,6 +19,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"bluetooth", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
+    {"notifications", Config::BarSection::Right},
     {"clock", Config::BarSection::Right},
 };
 
@@ -70,6 +71,9 @@ void Config::load() {
     workspaces_fixed_count_ = 5;
     workspaces_scroll_wrap_ = true;
     bt_auto_connect_ = false;
+    notif_show_badge_ = true;
+    notif_hide_zero_ = false;
+    notif_hide_zero_unread_ = false;
     battery_show_profiles_ = true;
     battery_show_brightness_ = true;
     battery_show_refresh_ = true;
@@ -81,6 +85,7 @@ void Config::load() {
     aw_title_mode_ = ActiveWindowText::Title;
     aw_empty_ = ActiveWindowEmpty::Default;
     aw_show_icon_ = true;
+    notifications_ = Notifications{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -154,6 +159,11 @@ void Config::load() {
         if (auto it = bar.find("bluetooth"); it != bar.end() && it->is_object()) {
             bt_auto_connect_ = it->value("auto_connect", false);
         }
+        if (auto it = bar.find("notifications"); it != bar.end() && it->is_object()) {
+            notif_show_badge_ = it->value("show_unread_badge", true);
+            notif_hide_zero_ = it->value("hide_when_zero", false);
+            notif_hide_zero_unread_ = it->value("hide_when_zero_unread", false);
+        }
         if (auto it = bar.find("battery"); it != bar.end() && it->is_object()) {
             battery_show_profiles_ = it->value("show_power_profiles", true);
             battery_show_brightness_ = it->value("show_brightness", true);
@@ -163,6 +173,58 @@ void Config::load() {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);
             clock_format_horizontal_ = it->value("format_horizontal", clock_format_horizontal_);
             clock_format_vertical_ = it->value("format_vertical", clock_format_vertical_);
+        }
+        if (auto it = j.find("notifications"); it != j.end() && it->is_object()) {
+            auto& n = notifications_;
+            n.enabled = it->value("enabled", true);
+            n.do_not_disturb = it->value("do_not_disturb", false);
+            if (it->value("density", "default") == std::string("compact"))
+                n.density = Notifications::Density::Compact;
+            const std::string location = it->value("location", "top_right");
+            n.location = location == "top"          ? Notifications::Location::Top
+                         : location == "top_left"   ? Notifications::Location::TopLeft
+                         : location == "bottom"     ? Notifications::Location::Bottom
+                         : location == "bottom_left" ? Notifications::Location::BottomLeft
+                         : location == "bottom_right"
+                             ? Notifications::Location::BottomRight
+                             : Notifications::Location::TopRight;
+            n.overlay_layer = it->value("overlay_layer", true);
+            n.background_opacity =
+                std::clamp(it->value("background_opacity", 1.0), 0.0, 1.0);
+            n.respect_expire_timeout = it->value("respect_expire_timeout", false);
+            n.low_duration_s = std::clamp(it->value("low_urgency_duration", 3), 1, 30);
+            n.normal_duration_s =
+                std::clamp(it->value("normal_urgency_duration", 8), 1, 30);
+            n.critical_duration_s =
+                std::clamp(it->value("critical_urgency_duration", 15), 1, 30);
+            n.clear_dismissed = it->value("clear_dismissed", true);
+            if (auto sub = it->find("save_to_history");
+                sub != it->end() && sub->is_object()) {
+                n.save_low = sub->value("low", true);
+                n.save_normal = sub->value("normal", true);
+                n.save_critical = sub->value("critical", true);
+            }
+            if (auto sub = it->find("sounds"); sub != it->end() && sub->is_object()) {
+                n.sounds.enabled = sub->value("enabled", false);
+                n.sounds.volume = std::clamp(sub->value("volume", 0.5), 0.0, 1.0);
+                n.sounds.separate = sub->value("separate_sounds", false);
+                n.sounds.low_file = sub->value("low_sound_file", "");
+                n.sounds.normal_file = sub->value("normal_sound_file", "");
+                n.sounds.critical_file = sub->value("critical_sound_file", "");
+                n.sounds.excluded_apps =
+                    sub->value("excluded_apps", n.sounds.excluded_apps);
+            }
+            if (auto sub = it->find("rules"); sub != it->end() && sub->is_array()) {
+                for (const auto& entry : *sub) {
+                    if (!entry.is_object())
+                        continue;
+                    Notifications::Rule rule;
+                    rule.pattern = entry.value("pattern", "");
+                    rule.action = entry.value("action", "block");
+                    if (!rule.pattern.empty())
+                        n.rules.push_back(std::move(rule));
+                }
+            }
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

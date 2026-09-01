@@ -1,4 +1,5 @@
 #include "bar/bar.hpp"
+#include "bar/notification_popup.hpp"
 #include "services/config.hpp"
 
 #include <gtk4-layer-shell.h>
@@ -46,6 +47,10 @@ protected:
         // the Bar itself re-shows when the config changes.
         if (Config::get().bar_visibility() != Config::BarVisibility::Hidden)
             bar_->present();
+
+        // notification toasts; presents itself while popups exist
+        popups_ = std::make_unique<NotificationPopups>();
+        add_window(*popups_);
     }
 
 private:
@@ -109,6 +114,7 @@ private:
     }
 
     std::unique_ptr<Bar> bar_;
+    std::unique_ptr<NotificationPopups> popups_;
     Glib::RefPtr<Gtk::CssProvider> opacity_provider_;
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;

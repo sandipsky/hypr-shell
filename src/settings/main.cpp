@@ -33,6 +33,7 @@ constexpr ModuleInfo kModules[] = {
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
+    {"notifications", "Notifications", "Notification bell and history", 2},
     {"clock",         "Clock",         "Date and time",                2},
 };
 
@@ -44,10 +45,21 @@ constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
+constexpr const char* kNdDensityKeys[] = {"default", "compact"};
+constexpr const char* kNdLocationKeys[] = {"top",    "top_left",    "top_right",
+                                           "bottom", "bottom_left", "bottom_right"};
+constexpr const char* kRuleActionKeys[] = {"block", "hide", "mute"};
+constexpr const char* kRuleActionLabels[] = {
+    "Block — skips completely",
+    "Hide — no popup, no sound, adds to history",
+    "Mute — no sound, still shows popup and in history",
+};
 
 struct Settings;
 void update_aw_row_visibility(Settings* s);
 void update_bar_visibility_rows(Settings* s);
+void update_nd_rows(Settings* s);
+void rebuild_rule_rows(Settings* s);
 
 struct Settings {
     std::string path;           // ~/.config/hypr-shell/config.json
@@ -74,6 +86,40 @@ struct Settings {
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
     AdwSwitchRow* bat_refresh = nullptr;
+
+    AdwSwitchRow* notif_badge = nullptr; // notifications module (bell widget)
+    AdwSwitchRow* notif_hide_zero = nullptr;
+    AdwSwitchRow* notif_hide_zero_unread = nullptr;
+
+    // Notifications sidebar page — the daemon + popups (top-level
+    // "notifications" object in config.json, Noctalia's notifications tab)
+    GtkWidget* window = nullptr; // dialog/file-chooser parent
+    AdwSwitchRow* nd_enabled = nullptr;
+    AdwSwitchRow* nd_dnd = nullptr;
+    AdwComboRow* nd_density = nullptr;
+    AdwComboRow* nd_location = nullptr;
+    AdwSwitchRow* nd_overlay = nullptr;
+    GtkAdjustment* nd_opacity = nullptr;
+    AdwSwitchRow* nd_respect_expire = nullptr;
+    AdwSpinRow* nd_dur_low = nullptr;
+    AdwSpinRow* nd_dur_normal = nullptr;
+    AdwSpinRow* nd_dur_critical = nullptr;
+    AdwSwitchRow* nd_clear_dismissed = nullptr;
+    AdwSwitchRow* nd_save_low = nullptr;
+    AdwSwitchRow* nd_save_normal = nullptr;
+    AdwSwitchRow* nd_save_critical = nullptr;
+    AdwSwitchRow* nd_snd_enabled = nullptr;
+    GtkAdjustment* nd_snd_volume = nullptr;
+    GtkWidget* nd_snd_volume_row = nullptr;
+    AdwSwitchRow* nd_snd_separate = nullptr;
+    AdwEntryRow* nd_snd_unified = nullptr;
+    AdwEntryRow* nd_snd_low = nullptr;
+    AdwEntryRow* nd_snd_normal = nullptr;
+    AdwEntryRow* nd_snd_critical = nullptr;
+    AdwEntryRow* nd_snd_excluded = nullptr;
+    std::vector<GtkWidget*> nd_dependent_groups; // insensitive while disabled
+    GtkWidget* rules_group = nullptr;
+    std::vector<GtkWidget*> rule_rows;
 
     AdwComboRow* aw_hide = nullptr;      // Always visible / Hidden / Transparent
     AdwSwitchRow* aw_show_title = nullptr;
@@ -192,6 +238,17 @@ void populate(Settings* s) {
         // defaults
     }
 
+    bool notif_badge = true, notif_hide_zero = false, notif_hide_zero_unread = false;
+    try {
+        const json notif =
+            s->root.value("bar", json::object()).value("notifications", json::object());
+        notif_badge = notif.value("show_unread_badge", true);
+        notif_hide_zero = notif.value("hide_when_zero", false);
+        notif_hide_zero_unread = notif.value("hide_when_zero_unread", false);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     std::string aw_hide = "hidden", aw_text = "title", aw_empty = "default";
     bool aw_show_title = true, aw_icon = true;
     try {
@@ -202,6 +259,45 @@ void populate(Settings* s) {
         aw_text = aw.value("title_mode", aw_text);
         aw_empty = aw.value("no_window_text", aw_empty);
         aw_icon = aw.value("show_icon", true);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
+    // Notifications page (top-level "notifications" object)
+    bool nd_enabled = true, nd_dnd = false, nd_overlay = true, nd_respect = false;
+    bool nd_clear = true, nd_s_low = true, nd_s_normal = true, nd_s_critical = true;
+    std::string nd_density = "default", nd_location = "top_right";
+    double nd_opacity = 1.0;
+    int nd_d_low = 3, nd_d_normal = 8, nd_d_critical = 15;
+    bool snd_enabled = false, snd_separate = false;
+    double snd_volume = 0.5;
+    std::string snd_low, snd_normal, snd_critical;
+    std::string snd_excluded = "discord,firefox,chrome,chromium,edge";
+    try {
+        const json nd = s->root.value("notifications", json::object());
+        nd_enabled = nd.value("enabled", true);
+        nd_dnd = nd.value("do_not_disturb", false);
+        nd_density = nd.value("density", nd_density);
+        nd_location = nd.value("location", nd_location);
+        nd_overlay = nd.value("overlay_layer", true);
+        nd_opacity = std::clamp(nd.value("background_opacity", 1.0), 0.0, 1.0);
+        nd_respect = nd.value("respect_expire_timeout", false);
+        nd_d_low = std::clamp(nd.value("low_urgency_duration", 3), 1, 30);
+        nd_d_normal = std::clamp(nd.value("normal_urgency_duration", 8), 1, 30);
+        nd_d_critical = std::clamp(nd.value("critical_urgency_duration", 15), 1, 30);
+        nd_clear = nd.value("clear_dismissed", true);
+        const json hist = nd.value("save_to_history", json::object());
+        nd_s_low = hist.value("low", true);
+        nd_s_normal = hist.value("normal", true);
+        nd_s_critical = hist.value("critical", true);
+        const json sounds = nd.value("sounds", json::object());
+        snd_enabled = sounds.value("enabled", false);
+        snd_volume = std::clamp(sounds.value("volume", 0.5), 0.0, 1.0);
+        snd_separate = sounds.value("separate_sounds", false);
+        snd_low = sounds.value("low_sound_file", "");
+        snd_normal = sounds.value("normal_sound_file", "");
+        snd_critical = sounds.value("critical_sound_file", "");
+        snd_excluded = sounds.value("excluded_apps", snd_excluded);
     } catch (const json::exception&) {
         // defaults
     }
@@ -241,6 +337,9 @@ void populate(Settings* s) {
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
     adw_switch_row_set_active(s->bat_refresh, bat_refresh);
+    adw_switch_row_set_active(s->notif_badge, notif_badge);
+    adw_switch_row_set_active(s->notif_hide_zero, notif_hide_zero);
+    adw_switch_row_set_active(s->notif_hide_zero_unread, notif_hide_zero_unread);
     adw_combo_row_set_selected(s->clock_fdow, clock_fdow);
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_h), fmt_h.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_v), fmt_v.c_str());
@@ -254,6 +353,32 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->aw_empty, i);
     adw_switch_row_set_active(s->aw_icon, aw_icon);
     update_aw_row_visibility(s);
+    adw_switch_row_set_active(s->nd_enabled, nd_enabled);
+    adw_switch_row_set_active(s->nd_dnd, nd_dnd);
+    adw_combo_row_set_selected(s->nd_density, nd_density == "compact" ? 1 : 0);
+    for (guint i = 0; i < 6; ++i)
+        if (nd_location == kNdLocationKeys[i])
+            adw_combo_row_set_selected(s->nd_location, i);
+    adw_switch_row_set_active(s->nd_overlay, nd_overlay);
+    gtk_adjustment_set_value(s->nd_opacity, nd_opacity * 100.0);
+    adw_switch_row_set_active(s->nd_respect_expire, nd_respect);
+    adw_spin_row_set_value(s->nd_dur_low, nd_d_low);
+    adw_spin_row_set_value(s->nd_dur_normal, nd_d_normal);
+    adw_spin_row_set_value(s->nd_dur_critical, nd_d_critical);
+    adw_switch_row_set_active(s->nd_clear_dismissed, nd_clear);
+    adw_switch_row_set_active(s->nd_save_low, nd_s_low);
+    adw_switch_row_set_active(s->nd_save_normal, nd_s_normal);
+    adw_switch_row_set_active(s->nd_save_critical, nd_s_critical);
+    adw_switch_row_set_active(s->nd_snd_enabled, snd_enabled);
+    gtk_adjustment_set_value(s->nd_snd_volume, snd_volume * 100.0);
+    adw_switch_row_set_active(s->nd_snd_separate, snd_separate);
+    gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_unified), snd_normal.c_str());
+    gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_low), snd_low.c_str());
+    gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_normal), snd_normal.c_str());
+    gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_critical), snd_critical.c_str());
+    gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_excluded), snd_excluded.c_str());
+    update_nd_rows(s);
+    rebuild_rule_rows(s);
     s->loading = false;
 }
 
@@ -321,6 +446,318 @@ void on_battery_toggled(GObject* row, GParamSpec*, gpointer data) {
     const auto* key = static_cast<const char*>(g_object_get_data(row, "battery-key"));
     battery_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
+}
+
+json& notifications_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["notifications"].is_object())
+        bar["notifications"] = json::object();
+    return bar["notifications"];
+}
+
+void on_notifications_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "notif-key"));
+    notifications_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Notifications page: the top-level "notifications" config object ---------
+
+json& nd_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["notifications"].is_object())
+        s->root["notifications"] = json::object();
+    return s->root["notifications"];
+}
+
+json& nd_sounds_object(Settings* s) {
+    json& nd = nd_object(s);
+    if (!nd["sounds"].is_object())
+        nd["sounds"] = json::object();
+    return nd["sounds"];
+}
+
+json& nd_history_object(Settings* s) {
+    json& nd = nd_object(s);
+    if (!nd["save_to_history"].is_object())
+        nd["save_to_history"] = json::object();
+    return nd["save_to_history"];
+}
+
+// switches with an "nd-key" writing straight into the notifications object
+void on_nd_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_nd_rows(s);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "nd-key"));
+    nd_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_nd_hist_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "nd-key"));
+    nd_history_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_nd_sound_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_nd_rows(s);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "nd-key"));
+    nd_sounds_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_nd_density_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->nd_density);
+    nd_object(s)["density"] = kNdDensityKeys[selected < 2 ? selected : 0];
+    save(s);
+}
+
+void on_nd_location_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->nd_location);
+    nd_object(s)["location"] = kNdLocationKeys[selected < 6 ? selected : 2];
+    save(s);
+}
+
+void on_nd_opacity_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    nd_object(s)["background_opacity"] =
+        std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
+    save(s);
+}
+
+void on_nd_duration_changed(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "nd-key"));
+    nd_object(s)[key] = static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(row)));
+    save(s);
+}
+
+void on_nd_sound_volume_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    nd_sounds_object(s)["volume"] =
+        std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
+    save(s);
+}
+
+void on_nd_sound_entry_changed(GtkEditable* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key =
+        static_cast<const char*>(g_object_get_data(G_OBJECT(row), "nd-key"));
+    nd_sounds_object(s)[key] = gtk_editable_get_text(row);
+    save(s);
+}
+
+// folder button on a sound-file entry row: pick a file into the entry (the
+// entry's changed handler then writes the config)
+void on_nd_browse_clicked(GtkButton* button, gpointer) {
+    auto* entry = static_cast<GtkWidget*>(
+        g_object_get_data(G_OBJECT(button), "target-entry"));
+    GtkFileDialog* dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, "Select sound file");
+    auto* root = gtk_widget_get_root(GTK_WIDGET(button));
+    gtk_file_dialog_open(
+        dialog, GTK_WINDOW(root), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer entry_ptr) {
+            GFile* file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source),
+                                                      result, nullptr);
+            if (file != nullptr) {
+                gchar* path = g_file_get_path(file);
+                if (path != nullptr)
+                    gtk_editable_set_text(GTK_EDITABLE(entry_ptr), path);
+                g_free(path);
+                g_object_unref(file);
+            }
+        },
+        entry);
+    g_object_unref(dialog);
+}
+
+// Noctalia's enabled-chains: everything follows "Enable notifications",
+// sound rows follow "Enable notification sounds", and the unified sound file
+// swaps for the per-urgency ones when "different sounds per priority" is on.
+void update_nd_rows(Settings* s) {
+    const bool enabled = adw_switch_row_get_active(s->nd_enabled) != FALSE;
+    for (GtkWidget* group : s->nd_dependent_groups)
+        gtk_widget_set_sensitive(group, enabled);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_dnd), enabled);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_density), enabled);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_location), enabled);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_overlay), enabled);
+
+    const bool sounds = adw_switch_row_get_active(s->nd_snd_enabled) != FALSE;
+    const bool separate = adw_switch_row_get_active(s->nd_snd_separate) != FALSE;
+    gtk_widget_set_sensitive(s->nd_snd_volume_row, sounds);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_snd_separate), sounds);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nd_snd_excluded), sounds);
+    for (AdwEntryRow* row : {s->nd_snd_unified, s->nd_snd_low, s->nd_snd_normal,
+                             s->nd_snd_critical})
+        gtk_widget_set_sensitive(GTK_WIDGET(row), sounds);
+    gtk_widget_set_visible(GTK_WIDGET(s->nd_snd_unified), !separate);
+    gtk_widget_set_visible(GTK_WIDGET(s->nd_snd_low), separate);
+    gtk_widget_set_visible(GTK_WIDGET(s->nd_snd_normal), separate);
+    gtk_widget_set_visible(GTK_WIDGET(s->nd_snd_critical), separate);
+}
+
+// -- rules: notifications.rules = [{pattern, action}] ------------------------
+
+void save_rule(Settings* s, int index, const std::string& pattern,
+               const std::string& action) {
+    json& nd = nd_object(s);
+    if (!nd["rules"].is_array())
+        nd["rules"] = json::array();
+    json rule = {{"pattern", pattern}, {"action", action}};
+    if (index >= 0 && index < static_cast<int>(nd["rules"].size()))
+        nd["rules"][index] = std::move(rule);
+    else
+        nd["rules"].push_back(std::move(rule));
+    save(s);
+    rebuild_rule_rows(s);
+}
+
+void on_rule_dialog_response(AdwAlertDialog* dialog, const char* response,
+                             gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (g_strcmp0(response, "save") != 0)
+        return;
+    auto* entry = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(dialog), "entry"));
+    auto* action_drop =
+        static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(dialog), "action"));
+    const int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(dialog), "rule-index"));
+    std::string pattern = gtk_editable_get_text(GTK_EDITABLE(entry));
+    const auto from = pattern.find_first_not_of(" \t");
+    if (from == std::string::npos)
+        return; // empty pattern — ignore, like Noctalia
+    pattern = pattern.substr(from, pattern.find_last_not_of(" \t") - from + 1);
+    const auto selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(action_drop));
+    save_rule(s, index, pattern, kRuleActionKeys[selected < 3 ? selected : 0]);
+}
+
+void open_rule_dialog(Settings* s, int index, const std::string& pattern,
+                      const std::string& action) {
+    AdwDialog* dialog =
+        adw_alert_dialog_new(index < 0 ? "Add rule" : "Edit rule",
+                             "Match app name or content. Rules are checked in "
+                             "order, and the first match is applied.");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "Cancel",
+                                   "save", "Save", nullptr);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "save",
+                                             ADW_RESPONSE_SUGGESTED);
+    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "save");
+
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 9);
+    GtkWidget* entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "firefox, discord, or /regex/");
+    gtk_editable_set_text(GTK_EDITABLE(entry), pattern.c_str());
+    gtk_box_append(GTK_BOX(box), entry);
+    GtkWidget* action_drop = gtk_drop_down_new_from_strings(
+        (const char*[]){kRuleActionLabels[0], kRuleActionLabels[1],
+                        kRuleActionLabels[2], nullptr});
+    guint selected = 0;
+    for (guint i = 0; i < 3; ++i)
+        if (action == kRuleActionKeys[i])
+            selected = i;
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(action_drop), selected);
+    gtk_box_append(GTK_BOX(box), action_drop);
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), box);
+
+    g_object_set_data(G_OBJECT(dialog), "entry", entry);
+    g_object_set_data(G_OBJECT(dialog), "action", action_drop);
+    g_object_set_data(G_OBJECT(dialog), "rule-index", GINT_TO_POINTER(index));
+    g_signal_connect(dialog, "response", G_CALLBACK(on_rule_dialog_response), s);
+    adw_dialog_present(dialog, s->window);
+}
+
+void on_rule_edit_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "rule-index"));
+    try {
+        const json rules = nd_object(s).value("rules", json::array());
+        if (index >= 0 && index < static_cast<int>(rules.size()))
+            open_rule_dialog(s, index, rules[index].value("pattern", ""),
+                             rules[index].value("action", "block"));
+    } catch (const json::exception&) {
+    }
+}
+
+void on_rule_delete_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const int index = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "rule-index"));
+    json& nd = nd_object(s);
+    if (nd["rules"].is_array() && index >= 0 &&
+        index < static_cast<int>(nd["rules"].size())) {
+        nd["rules"].erase(index);
+        save(s);
+        rebuild_rule_rows(s);
+    }
+}
+
+void on_rule_add_clicked(GtkButton*, gpointer data) {
+    open_rule_dialog(static_cast<Settings*>(data), -1, "", "block");
+}
+
+void rebuild_rule_rows(Settings* s) {
+    for (auto* row : s->rule_rows)
+        adw_preferences_group_remove(ADW_PREFERENCES_GROUP(s->rules_group), row);
+    s->rule_rows.clear();
+
+    json rules = json::array();
+    try {
+        rules = nd_object(s).value("rules", json::array());
+    } catch (const json::exception&) {
+    }
+    int index = 0;
+    for (const auto& rule : rules) {
+        if (!rule.is_object())
+            continue;
+        const std::string pattern = rule.value("pattern", "");
+        const std::string action = rule.value("action", "block");
+        GtkWidget* row = adw_action_row_new();
+        adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(row), FALSE);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), pattern.c_str());
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(row), action == "hide"   ? "Hide — history only"
+                                 : action == "mute" ? "Mute — no sound"
+                                                    : "Block — skips completely");
+        GtkWidget* edit = gtk_button_new_from_icon_name("document-edit-symbolic");
+        GtkWidget* remove = gtk_button_new_from_icon_name("user-trash-symbolic");
+        for (GtkWidget* button : {edit, remove}) {
+            gtk_widget_add_css_class(button, "flat");
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER);
+            g_object_set_data(G_OBJECT(button), "rule-index", GINT_TO_POINTER(index));
+            adw_action_row_add_suffix(ADW_ACTION_ROW(row), button);
+        }
+        g_signal_connect(edit, "clicked", G_CALLBACK(on_rule_edit_clicked), s);
+        g_signal_connect(remove, "clicked", G_CALLBACK(on_rule_delete_clicked), s);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->rules_group), row);
+        s->rule_rows.push_back(row);
+        ++index;
+    }
 }
 
 json& active_window_object(Settings* s) {
@@ -621,9 +1058,10 @@ void on_activate(GtkApplication* app, gpointer) {
 
     GtkWidget* win = adw_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(win), "hypr-shell Settings");
-    gtk_window_set_default_size(GTK_WINDOW(win), 520, 620);
+    gtk_window_set_default_size(GTK_WINDOW(win), 860, 640);
     g_object_set_data_full(G_OBJECT(win), "settings-state", s,
                            [](gpointer p) { delete static_cast<Settings*>(p); });
+    s->window = win;
 
     GtkWidget* page = adw_preferences_page_new();
 
@@ -915,6 +1353,333 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(bat_page),
                              ADW_PREFERENCES_GROUP(bat_group));
 
+    // -- Notifications subpage ---------------------------------------------------
+    GtkWidget* notif_page = adw_preferences_page_new();
+    GtkWidget* notif_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(notif_group), "Notifications");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(notif_group),
+        "The notification bell opens the history panel. hypr-shell must be the "
+        "notification daemon (disable mako/dunst or Noctalia's).");
+
+    struct NotifRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } notif_rows[] = {
+        {"show_unread_badge", "Unread badge",
+         "Show a dot on the bell while there are unseen notifications.",
+         &s->notif_badge},
+        {"hide_when_zero", "Hide when empty",
+         "Hide the bell while the history is empty.", &s->notif_hide_zero},
+        {"hide_when_zero_unread", "Hide when nothing is unread",
+         "Hide the bell while there are no unseen notifications.",
+         &s->notif_hide_zero_unread},
+    };
+    for (const auto& info : notif_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "notif-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(notif_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_notifications_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(notif_page),
+                             ADW_PREFERENCES_GROUP(notif_group));
+
+    // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
+    GtkWidget* nd_page = adw_preferences_page_new();
+
+    GtkWidget* nd_general = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_general), "Notifications");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_general),
+        "Configure notifications appearance and behavior. hypr-shell must be "
+        "the only notification daemon (disable mako/dunst or Noctalia's).");
+
+    GtkWidget* nd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_enabled_row),
+                                  "Enable notifications");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_enabled_row),
+                                "Enable or disable the notification daemon.");
+    g_object_set_data(G_OBJECT(nd_enabled_row), "nd-key", const_cast<char*>("enabled"));
+    s->nd_enabled = ADW_SWITCH_ROW(nd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_enabled_row);
+    g_signal_connect(nd_enabled_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_density_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_density_row), "Density");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_density_row),
+                                "Choose the notification card density.");
+    const char* density_options[] = {"Default", "Compact", nullptr};
+    GtkStringList* density_model = gtk_string_list_new(density_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(nd_density_row), G_LIST_MODEL(density_model));
+    g_object_unref(density_model);
+    s->nd_density = ADW_COMBO_ROW(nd_density_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_density_row);
+    g_signal_connect(nd_density_row, "notify::selected",
+                     G_CALLBACK(on_nd_density_changed), s);
+
+    GtkWidget* nd_dnd_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_dnd_row), "Do not disturb");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(nd_dnd_row),
+        "Disable all notification popups when enabled. Right-clicking the bell "
+        "toggles this temporarily without changing the setting.");
+    g_object_set_data(G_OBJECT(nd_dnd_row), "nd-key",
+                      const_cast<char*>("do_not_disturb"));
+    s->nd_dnd = ADW_SWITCH_ROW(nd_dnd_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_dnd_row);
+    g_signal_connect(nd_dnd_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_location_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_location_row), "Position");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_location_row),
+                                "Where notifications appear on screen.");
+    const char* location_options[] = {"Top center",    "Top left",    "Top right",
+                                      "Bottom center", "Bottom left", "Bottom right",
+                                      nullptr};
+    GtkStringList* location_model = gtk_string_list_new(location_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(nd_location_row),
+                            G_LIST_MODEL(location_model));
+    g_object_unref(location_model);
+    s->nd_location = ADW_COMBO_ROW(nd_location_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_location_row);
+    g_signal_connect(nd_location_row, "notify::selected",
+                     G_CALLBACK(on_nd_location_changed), s);
+
+    GtkWidget* nd_overlay_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(nd_overlay_row),
+        "Display notifications above fullscreen windows and other layers.");
+    g_object_set_data(G_OBJECT(nd_overlay_row), "nd-key",
+                      const_cast<char*>("overlay_layer"));
+    s->nd_overlay = ADW_SWITCH_ROW(nd_overlay_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_overlay_row);
+    g_signal_connect(nd_overlay_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_opacity_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_opacity_row),
+                                  "Background opacity");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_opacity_row),
+                                "Adjust the opacity of notification backgrounds.");
+    s->nd_opacity = gtk_adjustment_new(100, 0, 100, 1, 10, 0);
+    GtkWidget* nd_opacity_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_opacity);
+    gtk_scale_set_draw_value(GTK_SCALE(nd_opacity_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(nd_opacity_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(nd_opacity_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(nd_opacity_scale, 200, -1);
+    gtk_widget_set_valign(nd_opacity_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(nd_opacity_row), nd_opacity_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_opacity_row);
+    g_signal_connect(s->nd_opacity, "value-changed", G_CALLBACK(on_nd_opacity_changed),
+                     s);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_general));
+
+    GtkWidget* nd_duration = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_duration),
+                                    "Notification duration");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_duration),
+        "Configure how long notifications stay visible based on their urgency level.");
+    s->nd_dependent_groups.push_back(nd_duration);
+
+    GtkWidget* nd_respect_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_respect_row),
+                                  "Respect expire timeout");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_respect_row),
+                                "Use the expire timeout set in the notification.");
+    g_object_set_data(G_OBJECT(nd_respect_row), "nd-key",
+                      const_cast<char*>("respect_expire_timeout"));
+    s->nd_respect_expire = ADW_SWITCH_ROW(nd_respect_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), nd_respect_row);
+    g_signal_connect(nd_respect_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    struct DurationRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSpinRow** row;
+    } duration_rows[] = {
+        {"low_urgency_duration", "Low urgency",
+         "How long low priority notifications stay visible (seconds).", &s->nd_dur_low},
+        {"normal_urgency_duration", "Normal urgency",
+         "How long normal priority notifications stay visible (seconds).",
+         &s->nd_dur_normal},
+        {"critical_urgency_duration", "Critical urgency",
+         "How long critical priority notifications stay visible (seconds).",
+         &s->nd_dur_critical},
+    };
+    for (const auto& info : duration_rows) {
+        GtkWidget* row = adw_spin_row_new_with_range(1, 30, 1);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
+        *info.row = ADW_SPIN_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), row);
+        g_signal_connect(row, "notify::value", G_CALLBACK(on_nd_duration_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_duration));
+
+    GtkWidget* nd_history = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_history), "History");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_history),
+        "Control which notifications are saved to history based on their "
+        "urgency level.");
+    s->nd_dependent_groups.push_back(nd_history);
+
+    struct HistRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+        bool history_object;
+    } hist_rows[] = {
+        {"clear_dismissed", "Clear on dismissed",
+         "Clear notification from history when dismissed.", &s->nd_clear_dismissed,
+         false},
+        {"low", "Save low urgency to history",
+         "Save low priority notifications to history.", &s->nd_save_low, true},
+        {"normal", "Save normal urgency to history",
+         "Save normal priority notifications to history.", &s->nd_save_normal, true},
+        {"critical", "Save critical urgency to history",
+         "Save critical priority notifications to history.", &s->nd_save_critical,
+         true},
+    };
+    for (const auto& info : hist_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_history), row);
+        g_signal_connect(row, "notify::active",
+                         info.history_object ? G_CALLBACK(on_nd_hist_toggled)
+                                             : G_CALLBACK(on_nd_toggled),
+                         s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_history));
+
+    GtkWidget* nd_sound = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_sound), "Sound");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_sound),
+        "Configure notification sound effects and volume (played via paplay).");
+    s->nd_dependent_groups.push_back(nd_sound);
+
+    GtkWidget* snd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_enabled_row),
+                                  "Enable notification sounds");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_enabled_row),
+                                "Enable sound effects for incoming notifications.");
+    g_object_set_data(G_OBJECT(snd_enabled_row), "nd-key", const_cast<char*>("enabled"));
+    s->nd_snd_enabled = ADW_SWITCH_ROW(snd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_enabled_row);
+    g_signal_connect(snd_enabled_row, "notify::active", G_CALLBACK(on_nd_sound_toggled),
+                     s);
+
+    GtkWidget* snd_volume_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_volume_row), "Sound volume");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_volume_row),
+                                "Adjust the volume level for notification sounds.");
+    s->nd_snd_volume = gtk_adjustment_new(50, 0, 100, 1, 10, 0);
+    GtkWidget* snd_volume_scale =
+        gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_snd_volume);
+    gtk_scale_set_draw_value(GTK_SCALE(snd_volume_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(snd_volume_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(snd_volume_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(snd_volume_scale, 200, -1);
+    gtk_widget_set_valign(snd_volume_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(snd_volume_row), snd_volume_scale);
+    s->nd_snd_volume_row = snd_volume_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_volume_row);
+    g_signal_connect(s->nd_snd_volume, "value-changed",
+                     G_CALLBACK(on_nd_sound_volume_changed), s);
+
+    GtkWidget* snd_separate_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_separate_row),
+                                  "Use different sounds per priority");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_separate_row),
+                                "Use different sound files for low, normal, and "
+                                "critical priority notifications.");
+    g_object_set_data(G_OBJECT(snd_separate_row), "nd-key",
+                      const_cast<char*>("separate_sounds"));
+    s->nd_snd_separate = ADW_SWITCH_ROW(snd_separate_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_separate_row);
+    g_signal_connect(snd_separate_row, "notify::active",
+                     G_CALLBACK(on_nd_sound_toggled), s);
+
+    auto make_sound_entry = [s, nd_sound](const char* title, const char* key,
+                                          AdwEntryRow** target) {
+        GtkWidget* row = adw_entry_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(key));
+        GtkWidget* browse = gtk_button_new_from_icon_name("folder-open-symbolic");
+        gtk_widget_add_css_class(browse, "flat");
+        gtk_widget_set_valign(browse, GTK_ALIGN_CENTER);
+        gtk_widget_set_tooltip_text(browse, "Select sound file");
+        g_object_set_data(G_OBJECT(browse), "target-entry", row);
+        g_signal_connect(browse, "clicked", G_CALLBACK(on_nd_browse_clicked), nullptr);
+        adw_entry_row_add_suffix(ADW_ENTRY_ROW(row), browse);
+        *target = ADW_ENTRY_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), row);
+        g_signal_connect(row, "changed", G_CALLBACK(on_nd_sound_entry_changed), s);
+    };
+    make_sound_entry("Notification sound (empty = default)", "normal_sound_file",
+                     &s->nd_snd_unified);
+    make_sound_entry("Low urgency sound", "low_sound_file", &s->nd_snd_low);
+    make_sound_entry("Normal urgency sound", "normal_sound_file", &s->nd_snd_normal);
+    make_sound_entry("Critical urgency sound", "critical_sound_file",
+                     &s->nd_snd_critical);
+
+    GtkWidget* snd_excluded_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_excluded_row),
+                                  "Excluded applications (comma separated)");
+    g_object_set_data(G_OBJECT(snd_excluded_row), "nd-key",
+                      const_cast<char*>("excluded_apps"));
+    s->nd_snd_excluded = ADW_ENTRY_ROW(snd_excluded_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_excluded_row);
+    g_signal_connect(snd_excluded_row, "changed", G_CALLBACK(on_nd_sound_entry_changed),
+                     s);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_sound));
+
+    GtkWidget* rules_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(rules_group), "Filter rules");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(rules_group),
+        "Match app name or content — plain text, *globs* or /regex/. Rules are "
+        "checked in order, and the first match is applied.");
+    GtkWidget* add_rule = gtk_button_new_from_icon_name("list-add-symbolic");
+    gtk_widget_add_css_class(add_rule, "flat");
+    gtk_widget_set_tooltip_text(add_rule, "Add rule");
+    g_signal_connect(add_rule, "clicked", G_CALLBACK(on_rule_add_clicked), s);
+    adw_preferences_group_set_header_suffix(ADW_PREFERENCES_GROUP(rules_group),
+                                            add_rule);
+    s->rules_group = rules_group;
+    s->nd_dependent_groups.push_back(rules_group);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(rules_group));
+
     populate(s);
     g_signal_connect(pos_row, "notify::selected", G_CALLBACK(on_position_changed), s);
     g_signal_connect(vis_row, "notify::selected", G_CALLBACK(on_visibility_changed), s);
@@ -978,6 +1743,27 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
                             adw_navigation_page_new_with_tag(bat_view, "Battery",
                                                              "battery"));
+
+    GtkWidget* notif_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(notif_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(notif_view), notif_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(notif_view, "Notifications",
+                                                             "notifications"));
+
+    // cog on the Notifications module row
+    GtkWidget* notif_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(notif_cog, "flat");
+    gtk_widget_set_valign(notif_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(notif_cog, "Notification settings");
+    g_signal_connect(notif_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
+                                                         "notifications");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("notifications")]),
+                              notif_cog);
 
     // cog on the Bluetooth module row
     GtkWidget* bt_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
@@ -1047,11 +1833,66 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("workspaces")]),
                               ws_cog);
 
-    // dev hook: HS_SETTINGS_PAGE=<tag> opens a subpage directly
-    if (const char* tag = g_getenv("HS_SETTINGS_PAGE"))
-        adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
+    // -- GNOME-Settings-style sidebar: Bar, then Notifications ---------------
+    GtkWidget* nd_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nd_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nd_view), nd_page);
 
-    adw_application_window_set_content(ADW_APPLICATION_WINDOW(win), nav);
+    GtkWidget* stack = gtk_stack_new();
+    gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
+    gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
+
+    GtkWidget* sidebar_list = gtk_list_box_new();
+    gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
+    for (const char* title : {"Bar", "Notifications"}) {
+        GtkWidget* label = gtk_label_new(title);
+        gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
+        gtk_widget_set_margin_top(label, 9);
+        gtk_widget_set_margin_bottom(label, 9);
+        gtk_widget_set_margin_start(label, 6);
+        gtk_list_box_append(GTK_LIST_BOX(sidebar_list), label);
+    }
+    g_signal_connect(sidebar_list, "row-selected",
+                     G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer stack_ptr) {
+                         if (row == nullptr)
+                             return;
+                         gtk_stack_set_visible_child_name(
+                             GTK_STACK(stack_ptr),
+                             gtk_list_box_row_get_index(row) == 1 ? "notifications_page"
+                                                                  : "bar");
+                     }),
+                     stack);
+    gtk_list_box_select_row(GTK_LIST_BOX(sidebar_list),
+                            gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 0));
+
+    GtkWidget* sidebar_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sidebar_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_list);
+
+    GtkWidget* split = adw_navigation_split_view_new();
+    adw_navigation_split_view_set_sidebar(
+        ADW_NAVIGATION_SPLIT_VIEW(split),
+        adw_navigation_page_new(sidebar_view, "hypr-shell"));
+    adw_navigation_split_view_set_content(
+        ADW_NAVIGATION_SPLIT_VIEW(split), adw_navigation_page_new(stack, "Settings"));
+    adw_navigation_split_view_set_min_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
+                                                    160);
+    adw_navigation_split_view_set_max_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
+                                                    200);
+
+    // dev hook: HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly;
+    // HS_SETTINGS_PAGE=notifications_page opens the Notifications sidebar page
+    if (const char* tag = g_getenv("HS_SETTINGS_PAGE")) {
+        if (g_strcmp0(tag, "notifications_page") == 0)
+            gtk_list_box_select_row(
+                GTK_LIST_BOX(sidebar_list),
+                gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 1));
+        else
+            adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
+    }
+
+    adw_application_window_set_content(ADW_APPLICATION_WINDOW(win), split);
 
     gtk_window_present(GTK_WINDOW(win));
 }

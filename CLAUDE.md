@@ -53,7 +53,8 @@ data/fonts/                    noctalia-tabler-icons.ttf (installed to
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (workspaces, active_window,
-                               clock, network, volume, battery)
+                               clock, network, volume, battery, bluetooth,
+                               notifications)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -66,6 +67,10 @@ src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
 src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectManager)
 src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
+src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + history
+src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
+src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
+src/bar/notification_ui.{hpp,cpp}       shared icon/relative-time helpers
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -150,9 +155,16 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       *(pulled forward 2026-08-30: battery + network + audio status icons landed;
       2026-09-01: bluetooth (BlueZ) icon + click panel landed;
       tray, keyboard layout, stats remain)*
-- [ ] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
+- [x] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
       popups, history/notification center, do-not-disturb. Only one daemon can own the
       bus name: mako/dunst/Noctalia's daemon must be disabled when this ships.
+      *(2026-09-01: daemon (Notify/Close/capabilities, image-data caching),
+      100-entry persisted history, DND, bell bar module + history panel, toast
+      popups with per-urgency countdowns, per-app rules, sounds, and the
+      settings app's Notifications sidebar page all landed. Not ported from
+      Noctalia: per-monitor popup selection (needs phase 1's per-monitor
+      work), markdown rendering, media/keyboard/battery toasts (need MPRIS/
+      keyboard/battery-event services), swipe-to-dismiss, popup animations)*
 - [ ] **Phase 4 — Panels & OSD**: volume/brightness OSD, calendar popover,
       control-center panel.
       *(pulled forward 2026-08-31: calendar popover on clock click, and the
@@ -385,6 +397,86 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   on-state ring was dropped 2026-09-01 per user). GTK box-model
   note: borders sit OUTSIDE min-width/height, so the CSS says 34x20 + 1px
   border (track) and 14px + 2px ring (18px knob), margin 1px.
+- 2026-09-01 — Notification module + panel (phase 3 pulled forward; Noctalia's
+  NotificationHistory widget/panel with user changes: no close button, no
+  All/Today/Yesterday/Earlier tabs, header = DND NToggle then a "Clear All"
+  pill (trash glyph + text), no settings cog). Service `NotificationService`
+  owns org.freedesktop.Notifications with default own_name flags, so while
+  another daemon runs (the user's Noctalia today) we sit in the bus queue and
+  take over automatically when it exits — the module degrades to an empty
+  history meanwhile, tooltip says so. History: 100 entries (Noctalia's
+  maxHistory) in ~/.cache/hypr-shell/notifications.json (+ last_seen_ts for
+  the unread badge), initial read synchronous like Config's, saves debounced
+  200ms + async; `image-data` hints are decoded via GdkPixbuf, downscaled to
+  ≤96px and cached as PNGs in ~/.cache/hypr-shell/notifications/ (deleted with
+  their entry; sender-provided paths never deleted). Summary/body are
+  sanitized to Pango markup (b/i/u kept, br→\n, rest dropped/escaped;
+  unbalanced markup falls back to plain via pango_parse_markup). App names run
+  through a port of Noctalia's getAppName. DND is runtime-only (the shell
+  never writes config.json) and currently gates nothing — popups don't exist
+  yet; history records during DND like Noctalia. Actions: invoking emits
+  ActionInvoked(original_id, key) — we ARE the daemon (original_id is seeded
+  past loaded history so ids stay unique across restarts); card click invokes
+  "default" else focuses the sender via a fuzzy class match over j/clients
+  (new `Hyprland::focus_window(address)`, `hl.dsp.focus({ window =
+  "address:0x…" })` — verified against 0.56). Panel: fixed 380x480
+  (popover-resize gotcha), rebuild-on-change gated to open, scroll position
+  restored across rebuilds, relative times re-rendered every 30s while open;
+  the expand chevron appears only when a label is actually ellipsized,
+  measured from a tick callback because pango layouts are only valid after
+  allocation. Icon fallback chain: image file (Gtk::Picture, COVER, clipped
+  by Gtk::Overflow::HIDDEN) > themed icon > desktop-entry icon > bell glyph.
+  Bar module: bell/bell-off, unread dot = entries newer than last_seen (set
+  on panel open), right-click toggles DND; `bar.notifications` =
+  show_unread_badge / hide_when_zero / hide_when_zero_unread (Noctalia's
+  widget metadata defaults) with a settings subpage. Dev hook:
+  HS_OPEN_NOTIFICATIONS=1.
+- 2026-09-01 — Full NotificationService parity + toast popups + settings
+  sidebar (completing phase 3, pulling the sidebar forward from phase 6).
+  Config gained a top-level `notifications` object (Noctalia's
+  Settings.data.notifications, exposed as `Config::Notifications`): enabled,
+  density default/compact, location (6 anchors), overlay_layer,
+  background_opacity, respect_expire_timeout, {low,normal,critical}
+  _urgency_duration (1–30s; defaults 3/8/15), clear_dismissed,
+  save_to_history.{low,normal,critical}, sounds.{enabled,volume,
+  separate_sounds,*_sound_file,excluded_apps}, rules[] ({pattern, action
+  block/hide/mute} — /regex/, *glob* (icase) or substring (icase) over
+  "app summary body", first match wins; port of NotificationRulesService,
+  stored in config.json instead of Noctalia's separate rules file).
+  notifications.enabled=false unowns the bus name (registration id kept —
+  re-registering the object on the same connection would error). Popups
+  (`NotificationPopups`, layer window "hypr-shell-notifications", overlay or
+  top layer, exclusive zone 0 so the bar strip is respected): max 5, newest
+  on top, per-urgency countdown on a 50ms service timer (progress signal →
+  DrawingArea bars shrinking from both ends, mError/mOnSurface/mPrimary per
+  urgency), hover pauses, click = default action else focus sender, right
+  click/close button dismiss (+ clear_dismissed deletes the history entry),
+  replaces_id updates a live popup in place (countdown kept, no sound),
+  duplicate content replaces the older popup, DND suppresses popups only.
+  **Layer-window width gotcha**: a wrapping GTK label reports the full text
+  as natural width and the layer surface grows to natural size — popup labels
+  get max_width_chars(1)+hexpand so the stack's width request (440/320
+  compact) wins. Sounds via `paplay` (pipewire-pulse; Gio spawn, silent) —
+  default asset Noctalia's notification-generic.wav installed to
+  <datadir>/hypr-shell/sounds; excluded_apps compares prettified names,
+  100ms rate limit, muted Pulse output skips. invoke_action searches live
+  popups too (transient notifications never reach history).
+  hypr-shell-settings became an AdwNavigationSplitView: sidebar "Bar" (the
+  old page + module subpages) then "Notifications" (groups mirroring
+  Noctalia's tab: general/duration/history/sound/rules; rules edited in an
+  AdwAlertDialog, sound files picked via GtkFileDialog into entry rows).
+  NOT ported (deps missing): monitors multi-select (per-monitor bars are
+  phase 1 leftovers), enableMarkdown (Pango ≠ markdown), toast subtab
+  (media/keyboard/battery toasts), sounds file *picker filters*, popup
+  spring animations + swipe-dismiss.
+  Dev hook: HS_SETTINGS_PAGE=notifications_page opens the sidebar page.
+- 2026-09-01 — DND moved out of the history panel header (user request): it
+  lives in the settings app (`notifications.do_not_disturb`, after Density
+  like Noctalia's tab) plus the bell's right click. Since the shell never
+  writes config.json, the service adopts the config value only on
+  value-change **edges** (config_dnd_ tracking) — a runtime right-click
+  toggle survives unrelated config reloads instead of being clobbered on
+  every save from the settings app.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

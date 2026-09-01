@@ -2,6 +2,8 @@
 
 #include <glibmm.h>
 
+#include <algorithm>
+
 namespace hyprshell {
 
 Hyprland& Hyprland::get() {
@@ -86,6 +88,15 @@ void Hyprland::focus_workspace(int id) {
 
 void Hyprland::focus_workspace(const std::string& selector) {
     dispatch("hl.dsp.focus({ workspace = \"" + selector + "\" })");
+}
+
+void Hyprland::focus_window(const std::string& address) {
+    // address comes from j/clients ("0x…"); hex-only guard against Lua injection
+    if (address.empty() ||
+        !std::all_of(address.begin(), address.end(),
+                     [](char c) { return g_ascii_isalnum(c); }))
+        return;
+    dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })");
 }
 
 void Hyprland::set_monitor_mode(const std::string& output, int width, int height,

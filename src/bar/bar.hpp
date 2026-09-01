@@ -5,6 +5,7 @@
 #include "bar/modules/bluetooth.hpp"
 #include "bar/modules/clock.hpp"
 #include "bar/modules/network.hpp"
+#include "bar/modules/notifications.hpp"
 #include "bar/modules/volume.hpp"
 #include "bar/modules/workspaces.hpp"
 
@@ -42,6 +43,7 @@ private:
     Bluetooth bluetooth_;
     Volume volume_;
     Battery battery_;
+    Notifications notifications_;
     Clock clock_;
 
     Gtk::Window trigger_; // 1px hover strip that reveals the hidden bar

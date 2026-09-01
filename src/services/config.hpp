@@ -74,6 +74,51 @@ public:
     // adapter powers on (default off); toggled in hypr-shell-settings.
     bool bluetooth_auto_connect() const { return bt_auto_connect_; }
 
+    // bar.notifications.* — Noctalia's NotificationHistory widget settings
+    bool notifications_show_badge() const { return notif_show_badge_; }
+    bool notifications_hide_when_zero() const { return notif_hide_zero_; }
+    bool notifications_hide_when_zero_unread() const { return notif_hide_zero_unread_; }
+
+    // notifications.* (top level, like Noctalia's Settings.data.notifications):
+    // the daemon + popup behavior, edited on hypr-shell-settings' own
+    // Notifications page. Defaults are Noctalia's.
+    struct Notifications {
+        enum class Density { Default, Compact };
+        enum class Location { Top, TopLeft, TopRight, Bottom, BottomLeft, BottomRight };
+        struct Rule {
+            std::string pattern; // substring, *glob*, or /regex/
+            std::string action;  // "block" | "hide" | "mute"
+        };
+
+        bool enabled = true;
+        // Baseline DND from the settings app; the shell adopts it whenever the
+        // value changes, but the bell's right click still toggles it at runtime.
+        bool do_not_disturb = false;
+        Density density = Density::Default;
+        Location location = Location::TopRight;
+        bool overlay_layer = true;         // overlay vs top layer for popups
+        double background_opacity = 1.0;   // popup card alpha
+        bool respect_expire_timeout = false;
+        int low_duration_s = 3;
+        int normal_duration_s = 8;
+        int critical_duration_s = 15;
+        bool clear_dismissed = true; // dismissing a popup also deletes history
+        bool save_low = true;        // per-urgency saveToHistory
+        bool save_normal = true;
+        bool save_critical = true;
+        struct Sounds {
+            bool enabled = false;
+            double volume = 0.5;
+            bool separate = false; // per-urgency files vs the normal one
+            std::string low_file;
+            std::string normal_file; // also the unified file
+            std::string critical_file;
+            std::string excluded_apps = "discord,firefox,chrome,chromium,edge";
+        } sounds;
+        std::vector<Rule> rules;
+    };
+    const Notifications& notifications() const { return notifications_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -101,6 +146,9 @@ private:
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
     bool bt_auto_connect_ = false;
+    bool notif_show_badge_ = true;
+    bool notif_hide_zero_ = false;
+    bool notif_hide_zero_unread_ = false;
     bool battery_show_profiles_ = true;
     bool battery_show_brightness_ = true;
     bool battery_show_refresh_ = true;
@@ -112,6 +160,7 @@ private:
     ActiveWindowText aw_title_mode_ = ActiveWindowText::Title;
     ActiveWindowEmpty aw_empty_ = ActiveWindowEmpty::Default;
     bool aw_show_icon_ = true;
+    Notifications notifications_;
     sigc::signal<void()> changed_;
 };
 
