@@ -16,6 +16,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"workspaces", Config::BarSection::Left},
     {"active_window", Config::BarSection::Center},
     {"network", Config::BarSection::Right},
+    {"bluetooth", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
     {"clock", Config::BarSection::Right},
@@ -68,6 +69,7 @@ void Config::load() {
     workspaces_mode_ = WorkspacesMode::Dynamic;
     workspaces_fixed_count_ = 5;
     workspaces_scroll_wrap_ = true;
+    bt_auto_connect_ = false;
     battery_show_profiles_ = true;
     battery_show_brightness_ = true;
     battery_show_refresh_ = true;
@@ -148,6 +150,9 @@ void Config::load() {
                         : empty == "none"  ? ActiveWindowEmpty::None
                                            : ActiveWindowEmpty::Default;
             aw_show_icon_ = it->value("show_icon", true);
+        }
+        if (auto it = bar.find("bluetooth"); it != bar.end() && it->is_object()) {
+            bt_auto_connect_ = it->value("auto_connect", false);
         }
         if (auto it = bar.find("battery"); it != bar.end() && it->is_object()) {
             battery_show_profiles_ = it->value("show_power_profiles", true);

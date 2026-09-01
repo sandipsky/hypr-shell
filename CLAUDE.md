@@ -64,6 +64,8 @@ src/services/brightness.{hpp,cpp}       backlight: sysfs reads + logind SetBrigh
 src/bar/battery_panel.{hpp,cpp}         battery click panel (profile/brightness/rate)
 src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
+src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectManager)
+src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -146,7 +148,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       bluetooth (BlueZ), audio (PipeWire), system tray (StatusNotifierItem + DBusMenu),
       keyboard layout, system stats.
       *(pulled forward 2026-08-30: battery + network + audio status icons landed;
-      bluetooth, tray, keyboard layout, stats remain)*
+      2026-09-01: bluetooth (BlueZ) icon + click panel landed;
+      tray, keyboard layout, stats remain)*
 - [ ] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
       popups, history/notification center, do-not-disturb. Only one daemon can own the
       bus name: mako/dunst/Noctalia's daemon must be disabled when this ships.
@@ -347,6 +350,41 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   802-3-ethernet among ActiveConnections) wins over wifi, like Noctalia; the
   ethernet tab/traffic stats of Noctalia's panel were NOT ported. Dev hook:
   HS_OPEN_NETWORK=1.
+- 2026-09-01 — Bluetooth module + panel (Noctalia's bluetooth bar widget/panel):
+  service `Bluez` consumes org.bluez via `Gio::DBus::ObjectManagerClient`
+  (object-added/removed + interface-properties-changed all funnel into one
+  rebuild()+emit; Battery1.Percentage read off the same objects). Panel:
+  header (icon/title/power switch — Noctalia's settings, close and
+  auto-connect buttons dropped per user), disabled card, Connected list (mPrimary
+  card, Disconnect), Paired list (Connect = Trusted=true then Device1.Connect,
+  Noctalia's connectDeviceWithTrust) and — unlike Noctalia, which pairs in its
+  settings window (user request) — an Available-devices list fed by
+  Start/StopDiscovery while the popover is open (module's signal_closed stops
+  it; unnamed/MAC-named devices hidden via Noctalia's normalize filter).
+  Pairing shells out to `bluetoothctl --timeout 30 pair` (it registers its own
+  BlueZ agent internally — same trick as Noctalia's pair script, and the nmcli
+  rationale: no Agent1 implementation; PIN-pairing keyboards won't pair),
+  pausing discovery meanwhile, then trust+connect over DBus; errors surface in
+  a status line under the list. Enabling powers on via `rfkill unblock
+  bluetooth` then Adapter1.Powered=true (a persisted rfkill block makes bare
+  Powered=true a no-op, like Noctalia found). Auto-connect
+  (`bar.bluetooth.auto_connect`, default off): on the power-on edge (startup
+  included) connect every paired device, staggered 500ms, 1.5s after the edge
+  (Noctalia's timings; its per-device opt-in checkboxes were NOT ported —
+  ours is global), toggled from the settings app's Bluetooth subpage (a panel
+  header button existed briefly; removed 2026-09-01 per user — the shell
+  never writes config.json). Fixed 330x400 panel
+  (popover-resize gotcha); device glyphs ported from BluetoothUtils.deviceIcon
+  keyword tests. Bar icon: off/on/connected tabler glyphs, tooltip = first
+  connected device (+ N). Dev hook: HS_OPEN_BLUETOOTH=1. Settings cog rows now
+  attach by module key (module_index()), not hard-coded kModules indices.
+- 2026-09-01 — The wifi/bluetooth panel switches are a 1:1 NToggle port
+  (superseding the network panel's original "dark trough + primary knob"
+  styling): 36x22 mOutline-bordered pill — mSurface track/mPrimary knob off,
+  mPrimary track/mOnPrimary knob on, off-state knob ringed 2px mSurface (the
+  on-state ring was dropped 2026-09-01 per user). GTK box-model
+  note: borders sit OUTSIDE min-width/height, so the CSS says 34x20 + 1px
+  border (track) and 14px + 2px ring (18px knob), margin 1px.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

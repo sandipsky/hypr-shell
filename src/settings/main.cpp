@@ -30,6 +30,7 @@ constexpr ModuleInfo kModules[] = {
     {"workspaces",    "Workspaces",    "Hyprland workspace switcher", 0},
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
+    {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
     {"clock",         "Clock",         "Date and time",                2},
@@ -68,6 +69,8 @@ struct Settings {
     AdwEntryRow* clock_fmt_h = nullptr;
     AdwEntryRow* clock_fmt_v = nullptr;
 
+    AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
+
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
     AdwSwitchRow* bat_refresh = nullptr;
@@ -88,6 +91,15 @@ const ModuleInfo* module_info(const std::string& key) {
         if (key == m.key)
             return &m;
     return nullptr;
+}
+
+// index into Settings::modules — keeps cog attachments right as kModules grows
+gsize module_index(const char* key) {
+    for (gsize i = 0; i < kModuleCount; ++i)
+        if (g_strcmp0(kModules[i].key, key) == 0)
+            return i;
+    g_warn_if_reached();
+    return 0;
 }
 
 void load(Settings* s) {
@@ -162,6 +174,14 @@ void populate(Settings* s) {
         // defaults
     }
 
+    bool bt_auto = false;
+    try {
+        const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
+        bt_auto = bt.value("auto_connect", false);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     bool bat_profiles = true, bat_brightness = true, bat_refresh = true;
     try {
         const json bat = s->root.value("bar", json::object()).value("battery", json::object());
@@ -217,6 +237,7 @@ void populate(Settings* s) {
     adw_spin_row_set_value(s->ws_count, ws_count);
     gtk_widget_set_sensitive(GTK_WIDGET(s->ws_count), ws_mode == "fixed");
     adw_switch_row_set_active(s->ws_wrap, ws_wrap);
+    adw_switch_row_set_active(s->bt_auto, bt_auto);
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
     adw_switch_row_set_active(s->bat_refresh, bat_refresh);
@@ -268,6 +289,21 @@ void on_ws_wrap_toggled(GObject*, GParamSpec*, gpointer data) {
     if (s->loading)
         return;
     workspaces_object(s)["scroll_wrap"] = adw_switch_row_get_active(s->ws_wrap) != FALSE;
+    save(s);
+}
+
+json& bluetooth_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["bluetooth"].is_object())
+        bar["bluetooth"] = json::object();
+    return bar["bluetooth"];
+}
+
+void on_bt_auto_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    bluetooth_object(s)["auto_connect"] = adw_switch_row_get_active(s->bt_auto) != FALSE;
     save(s);
 }
 
@@ -827,6 +863,24 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(aw_page), ADW_PREFERENCES_GROUP(aw_group));
 
+    // -- Bluetooth subpage ------------------------------------------------------
+    GtkWidget* bt_page = adw_preferences_page_new();
+    GtkWidget* bt_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(bt_group), "Bluetooth panel");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(bt_group),
+        "The panel opens when clicking the bluetooth icon.");
+
+    GtkWidget* bt_auto_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(bt_auto_row), "Auto-connect");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(bt_auto_row),
+        "Reconnect paired devices when Bluetooth turns on.");
+    s->bt_auto = ADW_SWITCH_ROW(bt_auto_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(bt_group), bt_auto_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(bt_page),
+                             ADW_PREFERENCES_GROUP(bt_group));
+
     // -- Battery subpage -------------------------------------------------------
     GtkWidget* bat_page = adw_preferences_page_new();
     GtkWidget* bat_group = adw_preferences_group_new();
@@ -872,6 +926,7 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(ws_mode_row, "notify::selected", G_CALLBACK(on_ws_mode_changed), s);
     g_signal_connect(ws_count_row, "notify::value", G_CALLBACK(on_ws_count_changed), s);
     g_signal_connect(ws_wrap_row, "notify::active", G_CALLBACK(on_ws_wrap_toggled), s);
+    g_signal_connect(bt_auto_row, "notify::active", G_CALLBACK(on_bt_auto_toggled), s);
     g_signal_connect(fdow_row, "notify::selected", G_CALLBACK(on_clock_fdow_changed), s);
     g_signal_connect(fmt_h_row, "changed", G_CALLBACK(on_clock_format_changed), s);
     g_signal_connect(fmt_v_row, "changed", G_CALLBACK(on_clock_format_changed), s);
@@ -910,6 +965,13 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(aw_view, "Active window",
                                                              "active_window"));
 
+    GtkWidget* bt_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(bt_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(bt_view), bt_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(bt_view, "Bluetooth",
+                                                             "bluetooth"));
+
     GtkWidget* bat_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(bat_view), adw_header_bar_new());
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(bat_view), bat_page);
@@ -917,7 +979,21 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(bat_view, "Battery",
                                                              "battery"));
 
-    // cog on the Battery module row (kModules[4])
+    // cog on the Bluetooth module row
+    GtkWidget* bt_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(bt_cog, "flat");
+    gtk_widget_set_valign(bt_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(bt_cog, "Bluetooth settings");
+    g_signal_connect(bt_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
+                                                         "bluetooth");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("bluetooth")]),
+                              bt_cog);
+
+    // cog on the Battery module row
     GtkWidget* bat_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
     gtk_widget_add_css_class(bat_cog, "flat");
     gtk_widget_set_valign(bat_cog, GTK_ALIGN_CENTER);
@@ -928,9 +1004,9 @@ void on_activate(GtkApplication* app, gpointer) {
                                                          "battery");
                      }),
                      nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[4]), bat_cog);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("battery")]), bat_cog);
 
-    // cog on the Active window module row (kModules[1])
+    // cog on the Active window module row
     GtkWidget* aw_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
     gtk_widget_add_css_class(aw_cog, "flat");
     gtk_widget_set_valign(aw_cog, GTK_ALIGN_CENTER);
@@ -941,9 +1017,10 @@ void on_activate(GtkApplication* app, gpointer) {
                                                          "active_window");
                      }),
                      nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[1]), aw_cog);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("active_window")]),
+                              aw_cog);
 
-    // cog on the Clock module row opens its subpage (clock is the last module)
+    // cog on the Clock module row opens its subpage
     GtkWidget* clock_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
     gtk_widget_add_css_class(clock_cog, "flat");
     gtk_widget_set_valign(clock_cog, GTK_ALIGN_CENTER);
@@ -954,7 +1031,7 @@ void on_activate(GtkApplication* app, gpointer) {
                                                          "clock");
                      }),
                      nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[kModuleCount - 1]), clock_cog);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("clock")]), clock_cog);
 
     // cog on the Workspaces module row opens its subpage
     GtkWidget* ws_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
@@ -967,7 +1044,8 @@ void on_activate(GtkApplication* app, gpointer) {
                                                          "workspaces");
                      }),
                      nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[0]), ws_cog);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("workspaces")]),
+                              ws_cog);
 
     // dev hook: HS_SETTINGS_PAGE=<tag> opens a subpage directly
     if (const char* tag = g_getenv("HS_SETTINGS_PAGE"))

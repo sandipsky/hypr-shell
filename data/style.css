@@ -114,6 +114,7 @@ window.bar.right .module {
 }
 
 .network,
+.bluetooth,
 .volume,
 .battery {
   padding: 0 5px;
@@ -479,32 +480,56 @@ button.np-connect:hover {
   color: #e5e1e6;
 }
 
-/* wifi toggle: dark pill trough, round primary knob when on */
-.network-panel switch {
-  background: #201f23;
+/* bluetooth panel — Noctalia's bluetooth panel in the shared theme; the
+ * lists reuse the np-* row/card styles above */
+popover.bluetooth-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
   border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+}
+
+.bt-sub {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+/* radio toggles: 1:1 Noctalia NToggle (bluetooth-panel size, base 33*0.65):
+ * 36x22 outlined pill, primary track when on, 18px knob with a surface ring
+ * (primary knob while off, on-primary knob while on) */
+.bluetooth-panel switch,
+.network-panel switch {
+  background: #131316; /* mSurface while off */
+  border: 1px solid #46464f; /* mOutline */
   box-shadow: none;
-  min-width: 44px;
-  min-height: 24px;
+  min-width: 34px; /* + border = 36x22, Noctalia's rounded sizes */
+  min-height: 20px;
   border-radius: 999px;
 }
 
+.bluetooth-panel switch:checked,
 .network-panel switch:checked {
-  background: #201f23;
+  background: #bfc2ff; /* mPrimary */
 }
 
+.bluetooth-panel switch slider,
 .network-panel switch slider {
-  background: #c7c5d0; /* mOnSurfaceVariant while off */
+  background: #bfc2ff; /* mPrimary while off */
   border: none;
-  box-shadow: none;
+  /* NToggle's knob ring, drawn WITHOUT border so both states share identical
+   * box metrics — a border here made the knob grow for a frame mid-toggle */
+  box-shadow: inset 0 0 0 2px #131316; /* mSurface ring */
   min-width: 18px;
   min-height: 18px;
-  margin: 3px;
+  margin: 1px;
   border-radius: 999px;
 }
 
+.bluetooth-panel switch:checked slider,
 .network-panel switch:checked slider {
-  background: #bfc2ff; /* mPrimary */
+  background: #202578; /* mOnPrimary */
+  box-shadow: none; /* no ring on the primary track */
 }
 
 .network-panel entry {

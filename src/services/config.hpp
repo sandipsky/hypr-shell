@@ -70,6 +70,10 @@ public:
     bool battery_show_brightness() const { return battery_show_brightness_; }
     bool battery_show_refresh_rate() const { return battery_show_refresh_; }
 
+    // bar.bluetooth.auto_connect: reconnect every paired device when the
+    // adapter powers on (default off); toggled in hypr-shell-settings.
+    bool bluetooth_auto_connect() const { return bt_auto_connect_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -96,6 +100,7 @@ private:
     WorkspacesMode workspaces_mode_ = WorkspacesMode::Dynamic;
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
+    bool bt_auto_connect_ = false;
     bool battery_show_profiles_ = true;
     bool battery_show_brightness_ = true;
     bool battery_show_refresh_ = true;

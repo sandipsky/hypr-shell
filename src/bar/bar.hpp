@@ -2,6 +2,7 @@
 
 #include "bar/modules/active_window.hpp"
 #include "bar/modules/battery.hpp"
+#include "bar/modules/bluetooth.hpp"
 #include "bar/modules/clock.hpp"
 #include "bar/modules/network.hpp"
 #include "bar/modules/volume.hpp"
@@ -38,6 +39,7 @@ private:
     Workspaces workspaces_;
     ActiveWindow active_window_;
     Network network_;
+    Bluetooth bluetooth_;
     Volume volume_;
     Battery battery_;
     Clock clock_;

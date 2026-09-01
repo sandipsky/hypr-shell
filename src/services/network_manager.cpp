@@ -66,6 +66,15 @@ void NetworkManager::read_root_properties() {
     if (get_cached(root_proxy_, "WirelessEnabled", wireless)) {
         wifi_enabled_ = wireless;
     }
+    // hold the optimistic radio target until NM confirms it (see header)
+    if (pending_wireless_ >= 0) {
+        if (wifi_enabled_ == (pending_wireless_ == 1)) {
+            pending_wireless_ = -1;
+            pending_wireless_timer_.disconnect();
+        } else {
+            wifi_enabled_ = pending_wireless_ == 1;
+        }
+    }
     std::uint32_t connectivity = 0;
     if (get_cached(root_proxy_, "Connectivity", connectivity)) {
         connectivity_ = static_cast<Connectivity>(connectivity);
@@ -329,17 +338,29 @@ void NetworkManager::set_wifi_enabled(bool enabled) {
     if (!available_ || !root_proxy_)
         return;
     wifi_enabled_ = enabled; // optimistic — PropertiesChanged confirms
+    pending_wireless_ = enabled ? 1 : 0;
+    pending_wireless_timer_.disconnect();
+    pending_wireless_timer_ = Glib::signal_timeout().connect(
+        [this] {
+            pending_wireless_ = -1; // never confirmed — re-sync with reality
+            read_root_properties();
+            return false;
+        },
+        4000);
     notify();
     auto conn = root_proxy_->get_connection();
     conn->call(
         "/org/freedesktop/NetworkManager", "org.freedesktop.DBus.Properties", "Set",
         Glib::Variant<std::tuple<Glib::ustring, Glib::ustring, Glib::VariantBase>>::create(
             {kBusName, "WirelessEnabled", Glib::Variant<bool>::create(enabled)}),
-        [conn](Glib::RefPtr<Gio::AsyncResult>& result) {
+        [this, conn](Glib::RefPtr<Gio::AsyncResult>& result) {
             try {
                 conn->call_finish(result);
             } catch (const Glib::Error& e) {
                 g_warning("failed to toggle wifi: %s", e.what());
+                pending_wireless_ = -1; // revert the optimistic state
+                pending_wireless_timer_.disconnect();
+                read_root_properties();
             }
         },
         kBusName);

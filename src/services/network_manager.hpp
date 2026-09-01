@@ -90,6 +90,11 @@ private:
     bool available_ = false;
     Kind kind_ = Kind::none;
     bool wifi_enabled_ = true;
+    // Optimistic radio target: NM emits other PropertiesChanged before
+    // WirelessEnabled flips, and each re-read would bounce the panel switch
+    // back mid-toggle. -1 = none pending.
+    int pending_wireless_ = -1;
+    sigc::connection pending_wireless_timer_;
     int strength_ = 0;
     Connectivity connectivity_ = Connectivity::unknown;
     std::string ssid_;
