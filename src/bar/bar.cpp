@@ -321,6 +321,8 @@ void Bar::refresh_workspace_empty() {
 }
 
 Gtk::Widget* Bar::module_widget(const std::string& name) {
+    if (name == "launcher")
+        return &launcher_;
     if (name == "workspaces")
         return &workspaces_;
     if (name == "active_window")

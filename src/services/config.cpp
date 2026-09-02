@@ -13,6 +13,7 @@ namespace {
 // Canonical module list with default sections; also the fallback order for
 // modules a hand-edited bar.layout forgot to mention.
 constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
+    {"launcher", Config::BarSection::Left},
     {"workspaces", Config::BarSection::Left},
     {"active_window", Config::BarSection::Center},
     {"network", Config::BarSection::Right},
@@ -86,6 +87,7 @@ void Config::load() {
     aw_empty_ = ActiveWindowEmpty::Default;
     aw_show_icon_ = true;
     notifications_ = Notifications{};
+    launcher_ = Launcher{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -225,6 +227,14 @@ void Config::load() {
                         n.rules.push_back(std::move(rule));
                 }
             }
+        }
+        if (auto it = j.find("launcher"); it != j.end() && it->is_object()) {
+            auto& l = launcher_;
+            l.enable_settings_search = it->value("enable_settings_search", true);
+            l.enable_session_search = it->value("enable_session_search", true);
+            l.enable_web_search = it->value("enable_web_search", false);
+            l.show_result_count = it->value("show_result_count", true);
+            l.show_all_apps = it->value("show_all_apps", true);
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

@@ -119,6 +119,17 @@ public:
     };
     const Notifications& notifications() const { return notifications_; }
 
+    // launcher.* (top level): the app launcher's optional search providers
+    // and list behavior. Application search and the calculator are always on.
+    struct Launcher {
+        bool enable_settings_search = true; // hypr-shell-settings entries
+        bool enable_session_search = true;  // lock/suspend/reboot/logout/shutdown
+        bool enable_web_search = false;     // "search the web" fallback entry
+        bool show_result_count = true;      // footer under the list
+        bool show_all_apps = true;          // list all apps while query is empty
+    };
+    const Launcher& launcher() const { return launcher_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -161,6 +172,7 @@ private:
     ActiveWindowEmpty aw_empty_ = ActiveWindowEmpty::Default;
     bool aw_show_icon_ = true;
     Notifications notifications_;
+    Launcher launcher_;
     sigc::signal<void()> changed_;
 };
 

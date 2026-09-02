@@ -6,5 +6,6 @@
     <file>css/calendar.css</file>
     <file>css/panels.css</file>
     <file>css/notifications.css</file>
+    <file>css/launcher.css</file>
   </gresource>
 </gresources>

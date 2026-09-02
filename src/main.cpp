@@ -1,4 +1,5 @@
 #include "bar/bar.hpp"
+#include "bar/launcher_window.hpp"
 #include "bar/notification_popup.hpp"
 #include "services/config.hpp"
 
@@ -18,7 +19,38 @@ public:
     }
 
 protected:
-    App() : Gtk::Application("dev.hyprshell.Shell") {}
+    App() : Gtk::Application("dev.hyprshell.Shell") {
+        // `hypr-shell --launcher` toggles the launcher in the running
+        // instance — bind it in hyprland.conf:
+        //   bind = SUPER, SPACE, exec, hypr-shell --launcher
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "launcher", 'l',
+                              "Toggle the app launcher in the running instance");
+        add_action("launcher", [this] {
+            if (launcher_window_)
+                launcher_window_->toggle();
+        });
+    }
+
+    // Runs in the *invoking* process before activate: forward --launcher to
+    // the primary instance (GApplication uniqueness) and exit.
+    int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
+        bool launcher = false;
+        if (options && options->lookup_value("launcher", launcher) && launcher) {
+            try {
+                register_application();
+            } catch (const Glib::Error& e) {
+                g_warning("could not register application: %s", e.what());
+                return 1;
+            }
+            if (is_remote()) {
+                activate_action("launcher");
+                return 0; // handled — don't start a second shell
+            }
+            // no running instance: start up normally, then open the launcher
+            open_launcher_on_startup_ = true;
+        }
+        return -1; // continue normal startup
+    }
 
     void on_activate() override {
         // GApplication uniqueness: a second launch only pokes this instance.
@@ -51,6 +83,14 @@ protected:
         // notification toasts; presents itself while popups exist
         popups_ = std::make_unique<NotificationPopups>();
         add_window(*popups_);
+
+        // app launcher overlay; hidden until toggled
+        launcher_window_ = std::make_unique<LauncherWindow>();
+        add_window(*launcher_window_);
+        // dev hook: HS_OPEN_LAUNCHER=1 opens it shortly after startup
+        if (open_launcher_on_startup_ || g_getenv("HS_OPEN_LAUNCHER") != nullptr)
+            Glib::signal_timeout().connect_once([this] { launcher_window_->open(); },
+                                                400);
     }
 
 private:
@@ -115,6 +155,8 @@ private:
 
     std::unique_ptr<Bar> bar_;
     std::unique_ptr<NotificationPopups> popups_;
+    std::unique_ptr<LauncherWindow> launcher_window_;
+    bool open_launcher_on_startup_ = false;
     Glib::RefPtr<Gtk::CssProvider> opacity_provider_;
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;

@@ -27,6 +27,7 @@ struct ModuleInfo {
 };
 
 constexpr ModuleInfo kModules[] = {
+    {"launcher",      "Launcher",      "App launcher search button",  0},
     {"workspaces",    "Workspaces",    "Hyprland workspace switcher", 0},
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
@@ -86,6 +87,13 @@ struct Settings {
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
     AdwSwitchRow* bat_refresh = nullptr;
+
+    // Launcher sidebar page (top-level "launcher" object in config.json)
+    AdwSwitchRow* lp_settings_search = nullptr;
+    AdwSwitchRow* lp_session_search = nullptr;
+    AdwSwitchRow* lp_web_search = nullptr;
+    AdwSwitchRow* lp_result_count = nullptr;
+    AdwSwitchRow* lp_show_all = nullptr;
 
     AdwSwitchRow* notif_badge = nullptr; // notifications module (bell widget)
     AdwSwitchRow* notif_hide_zero = nullptr;
@@ -302,6 +310,20 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Launcher page (top-level "launcher" object)
+    bool lp_settings = true, lp_session = true, lp_web = false;
+    bool lp_count = true, lp_all = true;
+    try {
+        const json lp = s->root.value("launcher", json::object());
+        lp_settings = lp.value("enable_settings_search", true);
+        lp_session = lp.value("enable_session_search", true);
+        lp_web = lp.value("enable_web_search", false);
+        lp_count = lp.value("show_result_count", true);
+        lp_all = lp.value("show_all_apps", true);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     int clock_fdow = 0;
     std::string fmt_h = "%H:%M %a, %b %d";
     std::string fmt_v = "%H %M";
@@ -353,6 +375,11 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->aw_empty, i);
     adw_switch_row_set_active(s->aw_icon, aw_icon);
     update_aw_row_visibility(s);
+    adw_switch_row_set_active(s->lp_settings_search, lp_settings);
+    adw_switch_row_set_active(s->lp_session_search, lp_session);
+    adw_switch_row_set_active(s->lp_web_search, lp_web);
+    adw_switch_row_set_active(s->lp_result_count, lp_count);
+    adw_switch_row_set_active(s->lp_show_all, lp_all);
     adw_switch_row_set_active(s->nd_enabled, nd_enabled);
     adw_switch_row_set_active(s->nd_dnd, nd_dnd);
     adw_combo_row_set_selected(s->nd_density, nd_density == "compact" ? 1 : 0);
@@ -461,6 +488,25 @@ void on_notifications_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "notif-key"));
     notifications_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Launcher page: the top-level "launcher" config object -------------------
+
+json& launcher_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["launcher"].is_object())
+        s->root["launcher"] = json::object();
+    return s->root["launcher"];
+}
+
+void on_launcher_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "launcher-key"));
+    launcher_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
 }
 
@@ -1389,6 +1435,49 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(notif_page),
                              ADW_PREFERENCES_GROUP(notif_group));
 
+    // -- Launcher sidebar page (top-level "launcher" object) ------------------
+    GtkWidget* lp_page = adw_preferences_page_new();
+
+    GtkWidget* lp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lp_group), "Launcher");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(lp_group),
+        "Application search and the calculator are always available. Toggle it "
+        "from the bar's search button or bind a key in hyprland.conf:\n"
+        "bind = SUPER, SPACE, exec, hypr-shell --launcher");
+
+    struct LauncherRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } launcher_rows[] = {
+        {"enable_settings_search", "Settings search",
+         "Include hypr-shell settings entries in the results.",
+         &s->lp_settings_search},
+        {"enable_session_search", "Session search",
+         "Include lock, suspend, reboot, logout and shutdown commands.",
+         &s->lp_session_search},
+        {"enable_web_search", "Web search",
+         "Offer searching the web in your default browser.", &s->lp_web_search},
+        {"show_result_count", "Show result count",
+         "Show the number of results under the list.", &s->lp_result_count},
+        {"show_all_apps", "Show all applications by default",
+         "List every application while the search field is empty.",
+         &s->lp_show_all},
+    };
+    for (const auto& info : launcher_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "launcher-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(lp_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_launcher_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lp_page),
+                             ADW_PREFERENCES_GROUP(lp_group));
+
     // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
     GtkWidget* nd_page = adw_preferences_page_new();
 
@@ -1833,7 +1922,14 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("workspaces")]),
                               ws_cog);
 
-    // -- GNOME-Settings-style sidebar: Bar, then Notifications ---------------
+    // -- GNOME-Settings-style sidebar: Bar, Launcher, Notifications ----------
+    GtkWidget* lp_view = adw_toolbar_view_new();
+    GtkWidget* lp_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lp_header),
+                                    adw_window_title_new("Launcher", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lp_view), lp_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lp_view), lp_page);
+
     GtkWidget* nd_view = adw_toolbar_view_new();
     GtkWidget* nd_header = adw_header_bar_new();
     // inside a plain GtkStack there is no per-page AdwNavigationPage title —
@@ -1845,12 +1941,13 @@ void on_activate(GtkApplication* app, gpointer) {
 
     GtkWidget* stack = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
+    gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Notifications"}) {
+    for (const char* title : {"Bar", "Launcher", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);
@@ -1862,10 +1959,13 @@ void on_activate(GtkApplication* app, gpointer) {
                      G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer stack_ptr) {
                          if (row == nullptr)
                              return;
-                         gtk_stack_set_visible_child_name(
-                             GTK_STACK(stack_ptr),
-                             gtk_list_box_row_get_index(row) == 1 ? "notifications_page"
-                                                                  : "bar");
+                         const int index = gtk_list_box_row_get_index(row);
+                         const char* page = "bar";
+                         if (index == 1)
+                             page = "launcher_page";
+                         else if (index == 2)
+                             page = "notifications_page";
+                         gtk_stack_set_visible_child_name(GTK_STACK(stack_ptr), page);
                      }),
                      stack);
     gtk_list_box_select_row(GTK_LIST_BOX(sidebar_list),
@@ -1886,13 +1986,18 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_navigation_split_view_set_max_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
                                                     200);
 
-    // dev hook: HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly;
-    // HS_SETTINGS_PAGE=notifications_page opens the Notifications sidebar page
+    // dev hook (also the launcher's settings-search target):
+    // HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly;
+    // launcher_page / notifications_page open those sidebar pages
     if (const char* tag = g_getenv("HS_SETTINGS_PAGE")) {
-        if (g_strcmp0(tag, "notifications_page") == 0)
+        if (g_strcmp0(tag, "launcher_page") == 0)
             gtk_list_box_select_row(
                 GTK_LIST_BOX(sidebar_list),
                 gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 1));
+        else if (g_strcmp0(tag, "notifications_page") == 0)
+            gtk_list_box_select_row(
+                GTK_LIST_BOX(sidebar_list),
+                gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 2));
         else
             adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
     }

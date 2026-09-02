@@ -16,8 +16,6 @@
  
 - Idle
 
-- Launcher
-
 - VPN 
 
 - Hotspot
@@ -36,9 +34,6 @@
   -- view mode grid or list (default grid)
   -- buttons to show next to search settings (opens hypr shell settings),
      session button dropdown 
-
-
- - Launcher module ( use search icon and no customize in bar because it has separate section for customize)
 
  - taskbar module 
 

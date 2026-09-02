@@ -4,6 +4,7 @@
 #include "bar/modules/battery.hpp"
 #include "bar/modules/bluetooth.hpp"
 #include "bar/modules/clock.hpp"
+#include "bar/modules/launcher.hpp"
 #include "bar/modules/network.hpp"
 #include "bar/modules/notifications.hpp"
 #include "bar/modules/volume.hpp"
@@ -37,6 +38,7 @@ private:
     Gtk::Box start_box_{Gtk::Orientation::HORIZONTAL, 0};
     Gtk::Box center_box_{Gtk::Orientation::HORIZONTAL, 0};
     Gtk::Box end_box_{Gtk::Orientation::HORIZONTAL, 0};
+    Launcher launcher_;
     Workspaces workspaces_;
     ActiveWindow active_window_;
     Network network_;

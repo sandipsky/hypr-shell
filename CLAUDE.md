@@ -55,9 +55,9 @@ data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
-src/bar/modules/*.{hpp,cpp}    one widget per bar module (workspaces, active_window,
-                               clock, network, volume, battery, bluetooth,
-                               notifications)
+src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, workspaces,
+                               active_window, clock, network, volume, battery,
+                               bluetooth, notifications)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -74,6 +74,9 @@ src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + h
 src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
 src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
 src/bar/notification_ui.{hpp,cpp}       shared icon/relative-time helpers
+src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
+src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps
+src/services/math_eval.{hpp,cpp}        launcher calculator (AdvancedMath.js port)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 ```
 
@@ -184,6 +187,11 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       full option coverage come with this phase)*
 - [ ] **Phase 7 — Noctalia-parity extras** (as desired): app launcher, wallpaper
       handling, screenshot helpers, systemd user units.
+      *(pulled forward 2026-09-02: the app launcher landed — list view only,
+      applications + calculator always on, settings/session/web search behind
+      `launcher.*` toggles, bar search-icon module, `hypr-shell --launcher`
+      for keybinds, pin-to-store; grid view, categories, clipboard/emoji/
+      windows providers, ">" command mode and usage tracking were NOT ported)*
 
 ## Decision log
 
@@ -486,6 +494,61 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   value-change **edges** (config_dnd_ tracking) — a runtime right-click
   toggle survives unrelated config reloads instead of being clobbered on
   every save from the settings app.
+- 2026-09-02 — App launcher (phase 7 pulled forward; Noctalia's overlay-layer
+  launcher in **list view only**, user request). `LauncherWindow` is a
+  fullscreen overlay layer window ("hypr-shell-launcher", exclusive keyboard,
+  exclusive zone -1): mSurface-at-0.2 dimmer backdrop (click closes), centered
+  panel max(25% of screen, 552) x max(50%, 600) sized from the window's first
+  allocation (the layer surface spans the output, so its size IS the screen's).
+  Toggling: the app exposes a GApplication **action "launcher"**; the bar's
+  search-icon module (user's pick over Noctalia's rocket; `launcher` module
+  key, default left section) activates it, and `hypr-shell --launcher`
+  forwards it from a second process via handle-local-options →
+  register_application() → activate_action() → exit — that's the keybind hook
+  (`bind = SUPER, SPACE, exec, hypr-shell --launcher`), documented on the
+  settings page. Providers, merged and sorted by score like LauncherCore
+  (apps 0..1, session −1.., settings −2.., web −3): applications (Gio::AppInfo
+  + AppInfoMonitor reload, Noctalia's id+exec dedupe, fuzzy over
+  name/description/exec basename, limit 20, alphabetical browse on empty query
+  gated by `launcher.show_all_apps`); calculator (`math_eval` port of
+  AdvancedMath.js — recursive descent, locale-proof from_chars/g_ascii_formatd,
+  same isMathExpression gate and formatting; Enter copies via wl-copy);
+  settings search (static index of hypr-shell-settings rows, opens the app via
+  its HS_SETTINGS_PAGE hook with `env` in the argv); session search (lock =
+  loginctl lock-session until phase 5, suspend/reboot/poweroff via
+  systemctl||loginctl, logout = hl.dsp.exit(), Noctalia keywords); web search
+  (Google in the default browser, not in Noctalia — default OFF). Config:
+  top-level `launcher` object (enable_settings_search / enable_session_search
+  / enable_web_search / show_result_count / show_all_apps), settings app grew
+  a Launcher sidebar page (sidebar is now Bar/Launcher/Notifications).
+  Keyboard: Esc/Enter/Up/Down-wrapped/Tab/Shift-Tab/Home/End/PgUp/PgDn on a
+  CAPTURE-phase key controller so the entry keeps focus; hover only selects
+  after the mouse moved ≥5px since opening (Noctalia's ignoreMouseHover).
+  **Pinning**: the selected row of an application shows a pin/unpin button;
+  pins are stored in ~/.cache/hypr-shell/pinned_apps.json (shell never writes
+  config.json) and are ONLY stored for now — **the future taskbar module is
+  their consumer**. NOT ported: grid view + view toggle, categories, density,
+  clipboard/emoji/windows/command providers, ">" command mode, usage tracking
+  (sortByMostUsed), custom launch prefix/terminal override, entrance
+  animation. Gotcha: a GTK entry draws its own blue focus ring — needs
+  `outline: none` alongside the themed border. Dev hooks: HS_OPEN_LAUNCHER=1;
+  HS_LAUNCHER_QUERY=<text> pre-fills the search on open;
+  HS_SETTINGS_PAGE=launcher_page opens the settings page.
+- 2026-09-02 — `launcher.show_all_apps = false` now means **Spotlight mode**
+  (user request): the panel is content-sized — just the input box when the
+  query is empty, growing with the results up to a screen-derived cap
+  (ScrolledWindow propagate_natural_height; the fullscreen layer surface never
+  resizes, only the centered child does, so the popover-resize gotcha doesn't
+  apply). The input is **pinned**: valign START + a top margin equal to the
+  fixed panel's top edge — both modes put the search box in the same place —
+  so growth only extends downward, matching the fixed panel's footprint when
+  fully grown. Growth/shrink is **animated** (260ms ease-out quart tick
+  callback driving the scroller's min+max content height together — min
+  forces the shrink direction, max the cap).
+  show_all_apps = true keeps the fixed centered Noctalia-style panel. The
+  list also gained a persistent scrollbar (set_overlay_scrolling(false) —
+  the default overlay one only appears while scrolling), slim-thumb styled
+  in launcher.css.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

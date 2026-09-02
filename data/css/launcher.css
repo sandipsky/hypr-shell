@@ -1,0 +1,131 @@
+/* app launcher — Noctalia's overlay launcher (list view) in the shared
+ * theme: fullscreen dimmed backdrop, centered panel with search input,
+ * result list and count footer */
+
+/* dimmer backdrop (Noctalia: mSurface at dimmerOpacity 0.2) */
+window.launcher {
+  background: alpha(#131316, 0.2);
+}
+
+/* panel: mSurface at panelBackgroundOpacity, radius L, popover shadow */
+.launcher-panel {
+  background: alpha(#131316, 0.93);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 13px;
+  font-family: "Fira Sans";
+}
+
+/* search input, Noctalia's NTextInput: mSurface field, mOutline border
+ * (mSecondary while focused), radius iRadiusM */
+entry.launcher-search {
+  background: #131316;
+  color: #e5e1e6; /* mOnSurface */
+  border: 1px solid #46464f; /* mOutline */
+  border-radius: 16px;
+  padding: 10px 12px;
+  font-size: 15px;
+  caret-color: #bfc2ff; /* mPrimary */
+  box-shadow: none;
+}
+
+entry.launcher-search:focus-within {
+  border-color: #c5c4dd; /* mSecondary — not GTK's blue focus ring */
+  outline: none;
+}
+
+entry.launcher-search selection {
+  background: #bfc2ff;
+  color: #202578;
+}
+
+/* result rows: mSurfaceVariant cards, mHover when selected (60px entries,
+ * Noctalia's default density) */
+.launcher-row {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 3px 12px;
+  min-height: 54px;
+}
+
+.launcher-row.selected {
+  background: #e8b9d5; /* mHover */
+}
+
+.launcher-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.launcher-desc {
+  font-size: 12px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+.launcher-row.selected .launcher-name,
+.launcher-row.selected .launcher-desc,
+.launcher-row.selected .launcher-glyph {
+  color: #46263b; /* mOnHover */
+}
+
+/* tabler glyph in place of an app icon (calculator/settings/session/web) */
+.launcher-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 26px;
+  color: #e5e1e6;
+}
+
+/* pin action on the selected row */
+button.launcher-pin {
+  background: alpha(#131316, 0.25);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+button.launcher-pin:hover {
+  background: alpha(#131316, 0.45);
+}
+
+.launcher-pin-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 14px;
+  color: #46263b; /* mOnHover — the button only shows on the selected row */
+}
+
+/* list scrollbar: thin themed thumb */
+.launcher-panel scrollbar {
+  background: transparent;
+  border: none;
+}
+
+.launcher-panel scrollbar trough {
+  background: transparent;
+}
+
+.launcher-panel scrollbar slider {
+  background: alpha(#e5e1e6, 0.22); /* mOnSurface */
+  border-radius: 999px;
+  min-width: 3px;
+  margin: 1px;
+}
+
+.launcher-panel scrollbar slider:hover,
+.launcher-panel scrollbar slider:active {
+  background: alpha(#e5e1e6, 0.4);
+}
+
+/* footer: divider + result count */
+separator.launcher-divider {
+  background: alpha(#e5e1e6, 0.12);
+  min-height: 1px;
+}
+
+.launcher-count {
+  font-size: 11px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
