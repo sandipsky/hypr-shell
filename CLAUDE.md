@@ -78,6 +78,7 @@ src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer w
 src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps
 src/services/math_eval.{hpp,cpp}        launcher calculator (AdvancedMath.js port)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
+docs/                                   long-form developer docs (start at docs/README.md)
 ```
 
 ## Build / run / dev loop
@@ -554,3 +555,13 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls
   back to defaults rather than crashing or keeping stale state. Bottom-positioned bar
   gets a `bottom` CSS class on the window so the theme can flip the hairline border.
+- 2026-09-03 — Added `docs/` (16 numbered pages + README) so the project can be
+  continued by hand without an AI assistant: getting started, architecture,
+  code tour, config reference, a full add-a-module tutorial, services/async
+  patterns, settings-app recipe, panels, styling, Hyprland IPC, gtkmm primer,
+  gotchas, roadmap guide, workflow checklist, plus a C++ tutorial and a GTK
+  tutorial scoped to this codebase (refreshed the same day after bluetooth, notifications,
+  the launcher and the settings sidebar landed). CLAUDE.md stays the short
+  authoritative charter; the docs are the long-form companion and must be
+  updated alongside it (config reference for new keys, code tour for new files,
+  gotchas for new traps).
