@@ -1,0 +1,7 @@
+/* idle fade overlay — Noctalia's IdleFadeOverlay: a black layer window whose
+ * opacity animates from ~0 to 1 over idle.fade_duration before each idle
+ * action (screen off / lock / suspend); any input cancels it */
+
+window.idle-fade {
+  background: #000000;
+}

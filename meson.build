@@ -21,6 +21,28 @@ dependencies = [
   dependency('nlohmann_json'),
   dependency('libpulse'),
   dependency('libpulse-mainloop-glib'),
+  dependency('wayland-client'),
+]
+
+# ext-idle-notify-v1 client glue for the idle service, generated at build time
+# from the wayland-protocols XML (same approach as gtk4-layer-shell / Waybar).
+wayland_protocols = dependency('wayland-protocols')
+wayland_scanner = find_program('wayland-scanner')
+idle_notify_xml = (wayland_protocols.get_variable('pkgdatadir') / 'staging' / 'ext-idle-notify'
+                   / 'ext-idle-notify-v1.xml')
+idle_notify_glue = [
+  custom_target(
+    'ext-idle-notify-v1-protocol.c',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'ext-idle-notify-v1-client-protocol.h',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
 ]
 
 sources = files(
@@ -37,6 +59,7 @@ sources = files(
   'src/bar/session_menu.cpp',
   'src/bar/session_window.cpp',
   'src/bar/calendar.cpp',
+  'src/bar/idle_fade.cpp',
   'src/bar/launcher_window.cpp',
   'src/services/apps.cpp',
   'src/services/bluez.cpp',
@@ -54,6 +77,7 @@ sources = files(
   'src/bar/modules/volume.cpp',
   'src/bar/modules/workspaces.cpp',
   'src/services/hyprland.cpp',
+  'src/services/idle.cpp',
   'src/services/math_eval.cpp',
   'src/services/network_manager.cpp',
   'src/services/notifications.cpp',
@@ -89,6 +113,7 @@ executable(
   'hypr-shell',
   sources,
   resources,
+  idle_notify_glue,
   dependencies: dependencies,
   include_directories: include_directories('src'),
   install: true,

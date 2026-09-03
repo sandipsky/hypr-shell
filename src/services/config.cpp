@@ -92,6 +92,7 @@ void Config::load() {
     launcher_ = Launcher{};
     app_menu_ = AppMenu{};
     session_ = Session{};
+    idle_ = Idle{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -265,6 +266,32 @@ void Config::load() {
                 for (const auto& [key, v] : items->items())
                     if (v.is_boolean())
                         s.items[key] = v.get<bool>();
+        }
+        if (auto it = j.find("idle"); it != j.end() && it->is_object()) {
+            auto& i = idle_;
+            i.enabled = it->value("enabled", true);
+            i.screen_off_timeout = std::clamp(it->value("screen_off_timeout", 600), 0, 86400);
+            i.lock_timeout = std::clamp(it->value("lock_timeout", 660), 0, 86400);
+            i.suspend_timeout = std::clamp(it->value("suspend_timeout", 1800), 0, 86400);
+            i.fade_duration = std::clamp(it->value("fade_duration", 5), 1, 60);
+            i.lock_before_suspend = it->value("lock_before_suspend", true);
+            i.screen_off_command = it->value("screen_off_command", "");
+            i.lock_command = it->value("lock_command", "");
+            i.suspend_command = it->value("suspend_command", "");
+            i.resume_screen_off_command = it->value("resume_screen_off_command", "");
+            i.resume_lock_command = it->value("resume_lock_command", "");
+            i.resume_suspend_command = it->value("resume_suspend_command", "");
+            if (auto list = it->find("custom_commands"); list != it->end() && list->is_array()) {
+                for (const auto& entry : *list) {
+                    if (!entry.is_object())
+                        continue;
+                    Idle::CustomCommand cmd;
+                    cmd.timeout = std::clamp(entry.value("timeout", 0), 0, 86400);
+                    cmd.command = entry.value("command", "");
+                    cmd.resume_command = entry.value("resume_command", "");
+                    i.custom_commands.push_back(std::move(cmd));
+                }
+            }
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

@@ -99,6 +99,10 @@ void Hyprland::focus_window(const std::string& address) {
     dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })");
 }
 
+void Hyprland::set_dpms(bool on) {
+    dispatch(std::string("hl.dsp.dpms({ action = \"") + (on ? "on" : "off") + "\" })");
+}
+
 void Hyprland::set_monitor_mode(const std::string& output, int width, int height,
                                 int rate, double scale, int transform, int x, int y,
                                 std::function<void(bool)> on_done) {

@@ -162,6 +162,28 @@ public:
     };
     const Session& session() const { return session_; }
 
+    // idle.* (top level): the idle daemon — Noctalia's Settings.data.idle.
+    // Timeouts in seconds, 0 disables a stage. `enabled` defaults ON (Noctalia
+    // defaults it off, but hypr-shell-settings only exposes the three
+    // timeouts, so 0 is the way to switch a stage off).
+    struct Idle {
+        struct CustomCommand {
+            int timeout = 0; // seconds
+            std::string command;
+            std::string resume_command;
+        };
+        bool enabled = true;
+        int screen_off_timeout = 600; // Noctalia's defaults
+        int lock_timeout = 660;
+        int suspend_timeout = 1800;
+        int fade_duration = 5;          // fade-to-black grace period, 1..60 s
+        bool lock_before_suspend = true; // Noctalia's general.lockOnSuspend
+        std::string screen_off_command, lock_command, suspend_command;
+        std::string resume_screen_off_command, resume_lock_command, resume_suspend_command;
+        std::vector<CustomCommand> custom_commands;
+    };
+    const Idle& idle() const { return idle_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -207,6 +229,7 @@ private:
     Launcher launcher_;
     AppMenu app_menu_;
     Session session_;
+    Idle idle_;
     sigc::signal<void()> changed_;
 };
 

@@ -45,6 +45,11 @@ public:
     // Focus a window by its j/clients address ("0x…").
     void focus_window(const std::string& address);
 
+    // Turn every monitor's DPMS on or off (Noctalia's turnOn/OffMonitors).
+    // Hyprland accepts ANY argument table for dpms without error — only this
+    // exact form is known to do what it says; never probe it blind.
+    void set_dpms(bool on);
+
     // Apply a monitor mode via the Lua config API (`eval hl.monitor{...}`) —
     // Hyprland >= 0.56 rejects the old `keyword monitor` grammar. `output`
     // must not contain quotes. on_done(true) only on an explicit "ok" reply.

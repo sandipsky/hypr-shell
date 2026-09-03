@@ -53,9 +53,11 @@ constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
-// sidebar rows -> GtkStack page names (Bar / Launcher / Session menu / Notifications)
-constexpr const char* kSidebarPages[] = {"bar", "launcher_page", "session_page",
+// sidebar rows -> GtkStack page names
+// (Bar / Launcher / Session menu / Idle / Notifications)
+constexpr const char* kSidebarPages[] = {"bar", "launcher_page", "session_page", "idle_page",
                                          "notifications_page"};
+constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
 // app menu icon dropdown: the shared presets, then Distro logo, then Custom
@@ -116,6 +118,11 @@ struct Settings {
     AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
     AdwComboRow* sm_layout = nullptr; // Single row / Grid (fullscreen only)
     AdwSwitchRow* sm_items[kSessionActionCount] = {};
+
+    // Idle sidebar page (top-level "idle" object): the three stage timeouts
+    AdwSpinRow* idle_screen_off = nullptr;
+    AdwSpinRow* idle_lock = nullptr;
+    AdwSpinRow* idle_suspend = nullptr;
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -378,6 +385,17 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Idle page (top-level "idle" object)
+    int idle_screen_off = 600, idle_lock = 660, idle_suspend = 1800;
+    try {
+        const json idle = s->root.value("idle", json::object());
+        idle_screen_off = std::clamp(idle.value("screen_off_timeout", 600), 0, 86400);
+        idle_lock = std::clamp(idle.value("lock_timeout", 660), 0, 86400);
+        idle_suspend = std::clamp(idle.value("suspend_timeout", 1800), 0, 86400);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     // Launcher page (top-level "launcher" object)
     bool lp_settings = true, lp_session = true, lp_web = false;
     bool lp_count = true, lp_all = true;
@@ -475,6 +493,9 @@ void populate(Settings* s) {
     for (gsize i = 0; i < kSessionActionCount; ++i)
         adw_switch_row_set_active(s->sm_items[i], sm_items[i]);
     update_sm_rows(s);
+    adw_spin_row_set_value(s->idle_screen_off, idle_screen_off);
+    adw_spin_row_set_value(s->idle_lock, idle_lock);
+    adw_spin_row_set_value(s->idle_suspend, idle_suspend);
     adw_switch_row_set_active(s->nd_enabled, nd_enabled);
     adw_switch_row_set_active(s->nd_dnd, nd_dnd);
     adw_combo_row_set_selected(s->nd_density, nd_density == "compact" ? 1 : 0);
@@ -731,6 +752,26 @@ void on_sm_item_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "sm-key"));
     session_items_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Idle page: the top-level "idle" config object -----------------------------
+
+json& idle_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["idle"].is_object())
+        s->root["idle"] = json::object();
+    return s->root["idle"];
+}
+
+// spin rows with an "idle-key" (the three stage timeouts, seconds)
+void on_idle_timeout_changed(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "idle-key"));
+    idle_object(s)[key] = static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(row)));
     save(s);
 }
 
@@ -1852,6 +1893,41 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
     g_signal_connect(sm_layout_row, "notify::selected", G_CALLBACK(on_sm_layout_changed), s);
 
+    // -- Idle sidebar page (top-level "idle" object) --------------------------
+    GtkWidget* idle_page = adw_preferences_page_new();
+    GtkWidget* idle_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(idle_group), "Idle");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(idle_group),
+        "Timeouts in seconds; 0 disables a step. The screen fades to black for a "
+        "few seconds before each action and any mouse or keyboard activity cancels "
+        "it.");
+
+    struct IdleRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSpinRow** row;
+    } idle_rows[] = {
+        {"screen_off_timeout", "Turn off screen",
+         "Seconds of inactivity before monitors are turned off.", &s->idle_screen_off},
+        {"lock_timeout", "Lock screen",
+         "Seconds of inactivity before the lock screen activates.", &s->idle_lock},
+        {"suspend_timeout", "Suspend", "Seconds of inactivity before the system suspends.",
+         &s->idle_suspend},
+    };
+    for (const auto& info : idle_rows) {
+        GtkWidget* row = adw_spin_row_new_with_range(0, 86400, 10);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "idle-key", const_cast<char*>(info.key));
+        *info.row = ADW_SPIN_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(idle_group), row);
+        g_signal_connect(row, "notify::value", G_CALLBACK(on_idle_timeout_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(idle_page),
+                             ADW_PREFERENCES_GROUP(idle_group));
+
     // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
     GtkWidget* nd_page = adw_preferences_page_new();
 
@@ -2336,6 +2412,13 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
 
+    GtkWidget* idle_view = adw_toolbar_view_new();
+    GtkWidget* idle_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(idle_header),
+                                    adw_window_title_new("Idle", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(idle_view), idle_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(idle_view), idle_page);
+
     GtkWidget* nd_view = adw_toolbar_view_new();
     GtkWidget* nd_header = adw_header_bar_new();
     // inside a plain GtkStack there is no per-page AdwNavigationPage title —
@@ -2349,12 +2432,13 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
+    gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Launcher", "Session menu", "Notifications"}) {
+    for (const char* title : {"Bar", "Launcher", "Session menu", "Idle", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);
@@ -2367,8 +2451,9 @@ void on_activate(GtkApplication* app, gpointer) {
                          if (row == nullptr)
                              return;
                          const int index = gtk_list_box_row_get_index(row);
-                         const char* page =
-                             (index >= 0 && index < 4) ? kSidebarPages[index] : "bar";
+                         const char* page = (index >= 0 && index < kSidebarPageCount)
+                                                ? kSidebarPages[index]
+                                                : "bar";
                          gtk_stack_set_visible_child_name(GTK_STACK(stack_ptr), page);
                      }),
                      stack);
@@ -2391,16 +2476,13 @@ void on_activate(GtkApplication* app, gpointer) {
                                                     200);
 
     // dev hook (also the launcher's settings-search target):
-    // HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly;
-    // launcher_page / session_page / notifications_page open those sidebar pages
+    // HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly; a
+    // kSidebarPages name (launcher_page, session_page, ...) opens that sidebar page
     if (const char* tag = g_getenv("HS_SETTINGS_PAGE")) {
         int sidebar_row = -1;
-        if (g_strcmp0(tag, "launcher_page") == 0)
-            sidebar_row = 1;
-        else if (g_strcmp0(tag, "session_page") == 0)
-            sidebar_row = 2;
-        else if (g_strcmp0(tag, "notifications_page") == 0)
-            sidebar_row = 3;
+        for (int i = 1; i < kSidebarPageCount; ++i)
+            if (g_strcmp0(tag, kSidebarPages[i]) == 0)
+                sidebar_row = i;
         if (sidebar_row >= 0)
             gtk_list_box_select_row(
                 GTK_LIST_BOX(sidebar_list),

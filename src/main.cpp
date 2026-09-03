@@ -1,8 +1,10 @@
 #include "bar/bar.hpp"
+#include "bar/idle_fade.hpp"
 #include "bar/launcher_window.hpp"
 #include "bar/notification_popup.hpp"
 #include "bar/session_window.hpp"
 #include "services/config.hpp"
+#include "services/idle.hpp"
 
 #include <gtk4-layer-shell.h>
 #include <gtkmm.h>
@@ -129,6 +131,23 @@ protected:
         // app launcher overlay; hidden until toggled
         launcher_window_ = std::make_unique<LauncherWindow>();
         add_window(*launcher_window_);
+
+        // idle daemon (ext-idle-notify-v1) and its fade-to-black grace overlay
+        Idle::get();
+        idle_fade_ = std::make_unique<IdleFade>();
+        add_window(*idle_fade_);
+        // dev hook: HS_IDLE_SIMULATE=screen_off|lock|suspend drives that stage
+        // as if the seat went idle (1.5s after startup) and
+        // HS_IDLE_SIMULATE_RESUME=<ms> ends it that long after — pair with
+        // HS_IDLE_DRY_RUN=1 so nothing really blanks, locks or suspends.
+        if (const char* stage_key = g_getenv("HS_IDLE_SIMULATE")) {
+            const auto stage = Idle::stage_from_key(stage_key);
+            Glib::signal_timeout().connect_once([stage] { Idle::get().simulate_idled(stage); },
+                                                1500);
+            if (const char* resume = g_getenv("HS_IDLE_SIMULATE_RESUME"))
+                Glib::signal_timeout().connect_once([] { Idle::get().simulate_resumed(); },
+                                                    1500 + static_cast<unsigned>(atoi(resume)));
+        }
         // dev hook: HS_OPEN_LAUNCHER=1 opens it shortly after startup
         if (open_launcher_on_startup_ || g_getenv("HS_OPEN_LAUNCHER") != nullptr)
             Glib::signal_timeout().connect_once([this] { launcher_window_->open(); },
@@ -199,6 +218,7 @@ private:
     std::unique_ptr<NotificationPopups> popups_;
     std::unique_ptr<LauncherWindow> launcher_window_;
     std::unique_ptr<SessionWindow> session_window_;
+    std::unique_ptr<IdleFade> idle_fade_;
     bool open_launcher_on_startup_ = false;
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;
