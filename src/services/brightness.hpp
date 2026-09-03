@@ -10,6 +10,10 @@ namespace hyprshell {
 // Internal backlight (first /sys/class/backlight device). Reads are tiny sysfs
 // files; writes go through logind's Session.SetBrightness, which the session
 // owner may call without privileges — no brightnessctl, no polkit prompt.
+// A Gio::FileMonitor on the sysfs brightness file picks up writes made by
+// other programs (brightnessctl, logind on behalf of another client) — the
+// kernel does emit inotify events for write(2) on sysfs attributes — so
+// signal_changed() also fires for external changes (the OSD relies on it).
 class Brightness {
 public:
     static Brightness& get();
@@ -20,8 +24,8 @@ public:
     bool available() const { return max_ > 0; }
     double fraction() const { return max_ > 0 ? double(current_) / max_ : 0.0; }
 
-    // Re-read the sysfs value (sysfs does not emit inotify events, so callers
-    // refresh explicitly, e.g. when the battery panel opens).
+    // Re-read the sysfs value; the file monitor calls this too, panels call
+    // it when they open to be safe (kernel-driven changes are not notified).
     void refresh();
 
     // 0..1; the cache updates immediately for the UI, the logind call is
@@ -40,6 +44,7 @@ private:
     int current_ = 0;
     int pending_ = -1;
     Glib::RefPtr<Gio::DBus::Connection> bus_;
+    Glib::RefPtr<Gio::FileMonitor> monitor_;
     sigc::connection debounce_;
     sigc::signal<void()> changed_;
 };

@@ -1,0 +1,60 @@
+/* on-screen display — Noctalia's OSD.qml: a rounded mSurface card with a
+ * tabler icon, an 8px progress bar and the percentage (or "CAPS ON" text for
+ * lock keys), fading + scaling in above everything for 2s */
+
+window.osd {
+  background: transparent;
+}
+
+.osd-card {
+  background-color: #131316; /* mSurface */
+  border: 2px solid #46464f; /* mOutline, Style.borderM */
+  border-radius: 20px; /* Style.radiusL */
+  box-shadow: 0 4px 12px alpha(#000000, 0.5);
+  padding: 9px 22px; /* marginM + marginL on the sides */
+}
+
+.osd-card.vertical {
+  padding: 22px 9px;
+}
+
+.osd-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 21px; /* Style.fontSizeXL */
+  color: #e5e1e6; /* mOnSurface */
+  transition: color 300ms ease-in-out;
+}
+
+.osd-icon.small {
+  font-size: 17px; /* Style.fontSizeL — vertical bar mode */
+}
+
+.osd-text {
+  font-family: monospace; /* Settings.data.ui.fontFixed */
+  font-size: 13px; /* Style.fontSizeS */
+  color: #e5e1e6;
+  transition: color 300ms ease-in-out;
+}
+
+.osd-text.vertical {
+  font-size: 12px; /* keeps "100%" inside the 54px column */
+}
+
+.osd-text.osd-lock-text {
+  font-family: "Fira Sans";
+}
+
+.osd-icon.primary,
+.osd-text.primary {
+  color: #bfc2ff; /* mPrimary */
+}
+
+.osd-icon.error,
+.osd-text.error {
+  color: #ffb4ab; /* mError */
+}
+
+.osd-icon.dim,
+.osd-text.dim {
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}

@@ -1,6 +1,7 @@
 #include "bar/modules/volume.hpp"
 
 #include "services/config.hpp"
+#include "services/osd.hpp"
 #include "services/pulse.hpp"
 
 #include <cmath>
@@ -30,6 +31,9 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.set_parent(icon_);
     popover_.set_has_arrow(false);
     popover_.add_css_class("audio-popover");
+    // the panel shows the levels itself — no OSD while it is open (Noctalia)
+    popover_.signal_map().connect([] { Osd::get().set_audio_panel_open(true); });
+    popover_.signal_unmap().connect([] { Osd::get().set_audio_panel_open(false); });
     set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();

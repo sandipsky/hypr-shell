@@ -47,7 +47,8 @@ meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
 data/style.css                 default theme entry — @imports data/css/* (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
-                               notifications, launcher, app_menu, session, idle
+                               notifications, launcher, app_menu, session, idle,
+                               lock, osd
                                (GTK resolves the imports inside the resource bundle)
 data/hypr-shell.gresource.xml
 data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
@@ -74,6 +75,9 @@ src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + h
 src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
 src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
 src/bar/notification_ui.{hpp,cpp}       shared icon/relative-time helpers
+src/services/lock_keys.{hpp,cpp}        Caps/Num/Scroll Lock via /sys/class/leds polling (200ms)
+src/services/osd.{hpp,cpp}              OSD trigger logic (Pulse/Brightness/LockKeys diffs + suppression)
+src/bar/osd_window.{hpp,cpp}            on-screen display layer window (volume/mic/brightness/lock keys)
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
 src/bar/app_menu_panel.{hpp,cpp}        app menu popover (search + settings/session buttons + app grid)
 src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps
@@ -116,6 +120,10 @@ locking/suspending; `HS_IDLE_SIMULATE=screen_off|lock|suspend` (+
 `HS_IDLE_SIMULATE_RESUME=<ms>`) drives a stage without the seat being idle.
 Never force real idleness while another idle daemon (Noctalia's, hypridle)
 runs — it would act for real.
+OSD testing: `HS_OSD_SHOW=volume|input|brightness|lock` shows that OSD 1.2s
+after startup; real triggers that restore themselves:
+`wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%+` (then `1%-`),
+`@DEFAULT_AUDIO_SOURCE@` for the microphone, `brightnessctl s +1%` / `1%-`.
 Lock screen testing: `HS_LOCK_PREVIEW=1` shows the lock UI as a plain overlay
 window (Escape on the cover closes it; `=2` also opens the session menu),
 `HS_LOCK_AVATAR=<path>` overrides `~/.face`, `HS_PAM_SERVICE=<name>` the PAM
@@ -202,7 +210,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       control-center panel.
       *(pulled forward 2026-08-31: calendar popover on clock click, and the
       battery panel on battery click (power profile / brightness / refresh
-      rate) landed; volume/brightness OSD and control center remain)*
+      rate) landed; 2026-09-03: the OSD landed — output volume, microphone,
+      brightness and Caps/Num/Scroll Lock, Noctalia's OSD.qml with an
+      "On-screen display" settings page (position + enable); the control
+      center remains)*
 - [ ] **Phase 5 — Lock & idle**: lock screen via ext-session-lock
       (gtk4-layer-shell's session-lock API) + PAM auth; idle service via
       ext-idle-notify-v1 (dim → lock → dpms off) with inhibitor support.
@@ -778,6 +789,43 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   unselected monitors), tint, lock font setting, avatar setting, fprintd,
   screen corners, media visualizer/weather, autoStartAuth, per-entry custom
   commands.
+- 2026-09-03 — OSD (Noctalia's OSD.qml + LockKeysService, phase 4). Split in
+  two: `services/osd` decides *when* (diffs Pulse output/input state on every
+  signal_changed, Brightness and LockKeys signals; Noctalia's gating: 2s
+  startup grace, no volume OSD while the audio popover is mapped, no
+  brightness OSD while the battery popover is mapped — modules report via
+  `Osd::set_*_panel_open()` from the popover's map/unmap —, 300ms microphone
+  suppression after the default sink changed) and `bar/osd_window` renders.
+  The window is a click-through overlay layer surface (`Gdk::Surface::
+  set_input_region` with an empty region on every map — Noctalia's `mask:
+  Region {}`), exclusive zone 0 so a top bar's strip pushes it down, 9px edge
+  margins, and a **fixed window size per orientation** (320x72 horizontal,
+  80x280 vertical, Noctalia's numbers) with the card positioned inside via
+  `gtk_fixed_set_child_transform` — that transform also gives the 0.85→1
+  scale + opacity fade (300ms InOutQuad; opacity floor 0.01, the buffer
+  gotcha) without ever resizing the mapped surface; the lock-key card is
+  content-sized (min 180/153) and hugs the anchored side. Progress bar = cairo
+  DrawingArea with value + color eased over 300ms; text/icon colors via CSS
+  state classes (`primary`/`error`/`dim`) with a CSS color transition. Two
+  backend findings: (1) **sysfs backlight writes DO raise inotify events**
+  (verified with a Gio.FileMonitor + brightnessctl) — the kernel calls
+  fsnotify for write(2) on sysfs attributes — so `Brightness` now watches its
+  file and external changes (brightnessctl, keybinds) show the OSD; the
+  earlier "no inotify on sysfs" note only holds for kernel-driven changes;
+  (2) keyboard LEDs are kernel-driven, so `LockKeys` polls
+  `/sys/class/leds/input*::{caps,num,scroll}lock/brightness` every 200ms like
+  Noctalia (OR-ed across keyboards, first read silent), only while
+  `osd.enabled`. Config `osd.enabled` / `osd.location` (8 anchors, default
+  top_right) / `osd.orientation` (auto / landscape / portrait — auto is
+  Noctalia's position-derived rule, the explicit values are the user's
+  addition; the card hugs the anchored edges in either orientation) with an
+  "On-screen display" settings page holding Position, Orientation and
+  Enable (per user); Noctalia's autoHideMs (2000), overlayLayer
+  (on), backgroundOpacity (1) and enabledTypes (all four here) are fixed —
+  the user's own keybinds still call `qs -c noctalia-shell ipc call volume …`,
+  which does nothing without Noctalia; wpctl/brightnessctl trigger the OSD.
+  NOT ported: per-monitor OSD (phase 1), volumeOverdrive >100% coloring, the
+  drop-shadow effect beyond a CSS box-shadow, IPC custom-text OSD.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

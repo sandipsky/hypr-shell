@@ -2,15 +2,12 @@
 
 - User Interface
     - font selection
-    - font size 
     - accent color selection 
-    - dark mode toggle
+    - dark mode toggle (By default on)
 
 - Wallpaper 
 
-- Display
-
-- On-Screen Display
+- Night Light
 
 - VPN 
 

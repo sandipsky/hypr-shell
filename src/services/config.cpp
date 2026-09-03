@@ -94,6 +94,7 @@ void Config::load() {
     session_ = Session{};
     idle_ = Idle{};
     lock_screen_ = LockScreen{};
+    osd_ = Osd{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -300,6 +301,23 @@ void Config::load() {
                 background = Glib::get_home_dir() + background.substr(1);
             lock_screen_.background = background;
             lock_screen_.blur = std::clamp(it->value("blur", 0.0), 0.0, 1.0);
+        }
+        if (auto it = j.find("osd"); it != j.end() && it->is_object()) {
+            osd_.enabled = it->value("enabled", true);
+            const std::string location = it->value("location", "top_right");
+            using L = Osd::Location;
+            osd_.location = location == "top"            ? L::Top
+                            : location == "top_left"     ? L::TopLeft
+                            : location == "bottom"       ? L::Bottom
+                            : location == "bottom_left"  ? L::BottomLeft
+                            : location == "bottom_right" ? L::BottomRight
+                            : location == "left"         ? L::Left
+                            : location == "right"        ? L::Right
+                                                         : L::TopRight;
+            const std::string orientation = it->value("orientation", "auto");
+            osd_.orientation = orientation == "landscape" ? Osd::Orientation::Landscape
+                               : orientation == "portrait" ? Osd::Orientation::Portrait
+                                                            : Osd::Orientation::Auto;
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

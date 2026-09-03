@@ -54,9 +54,11 @@ constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // sidebar rows -> GtkStack page names
-// (Bar / Launcher / Session menu / Lock screen / Idle / Notifications)
+// (Bar / Launcher / Session menu / Lock screen / Idle / On-screen display /
+// Notifications)
 constexpr const char* kSidebarPages[] = {"bar",       "launcher_page", "session_page",
-                                         "lock_page", "idle_page",     "notifications_page"};
+                                         "lock_page", "idle_page",     "osd_page",
+                                         "notifications_page"};
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
@@ -68,6 +70,11 @@ constexpr const char* kNdDensityKeys[] = {"default", "compact"};
 constexpr const char* kNdLocationKeys[] = {"top",    "top_left",    "top_right",
                                            "bottom", "bottom_left", "bottom_right"};
 constexpr const char* kRuleActionKeys[] = {"block", "hide", "mute"};
+constexpr const char* kOsdLocationKeys[] = {"top",    "top_left",    "top_right",
+                                            "bottom", "bottom_left", "bottom_right",
+                                            "left",   "right"};
+constexpr guint kOsdLocationCount = G_N_ELEMENTS(kOsdLocationKeys);
+constexpr const char* kOsdOrientationKeys[] = {"auto", "landscape", "portrait"};
 constexpr const char* kRuleActionLabels[] = {
     "Block — skips completely",
     "Hide — no popup, no sound, adds to history",
@@ -128,6 +135,12 @@ struct Settings {
     // image + blur strength — the two options exposed, per user
     AdwEntryRow* lock_background = nullptr;
     GtkAdjustment* lock_blur = nullptr; // 0..100 %
+
+    // On-screen display sidebar page (top-level "osd" object): position +
+    // master switch — the two options exposed, per user
+    AdwComboRow* osd_location = nullptr;
+    AdwComboRow* osd_orientation = nullptr; // Automatic / Landscape / Portrait
+    AdwSwitchRow* osd_enabled = nullptr;
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -401,6 +414,19 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // On-screen display page (top-level "osd" object)
+    bool osd_enabled = true;
+    std::string osd_location = "top_right";
+    std::string osd_orientation = "auto";
+    try {
+        const json osd = s->root.value("osd", json::object());
+        osd_enabled = osd.value("enabled", true);
+        osd_location = osd.value("location", osd_location);
+        osd_orientation = osd.value("orientation", osd_orientation);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     // Idle page (top-level "idle" object)
     int idle_screen_off = 600, idle_lock = 660, idle_suspend = 1800;
     try {
@@ -511,6 +537,13 @@ void populate(Settings* s) {
     update_sm_rows(s);
     gtk_editable_set_text(GTK_EDITABLE(s->lock_background), lock_background.c_str());
     gtk_adjustment_set_value(s->lock_blur, std::round(lock_blur * 100.0));
+    adw_switch_row_set_active(s->osd_enabled, osd_enabled);
+    for (guint i = 0; i < kOsdLocationCount; ++i)
+        if (osd_location == kOsdLocationKeys[i])
+            adw_combo_row_set_selected(s->osd_location, i);
+    for (guint i = 0; i < 3; ++i)
+        if (osd_orientation == kOsdOrientationKeys[i])
+            adw_combo_row_set_selected(s->osd_orientation, i);
     adw_spin_row_set_value(s->idle_screen_off, idle_screen_off);
     adw_spin_row_set_value(s->idle_lock, idle_lock);
     adw_spin_row_set_value(s->idle_suspend, idle_suspend);
@@ -816,6 +849,42 @@ void on_lock_blur_changed(GtkAdjustment* adjustment, gpointer data) {
     if (s->loading)
         return;
     lock_object(s)["blur"] = std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
+    save(s);
+}
+
+// -- On-screen display page: the top-level "osd" config object ---------------
+
+json& osd_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["osd"].is_object())
+        s->root["osd"] = json::object();
+    return s->root["osd"];
+}
+
+void on_osd_location_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->osd_location);
+    osd_object(s)["location"] = kOsdLocationKeys[selected < kOsdLocationCount ? selected : 2];
+    save(s);
+}
+
+void on_osd_orientation_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->osd_orientation);
+    osd_object(s)["orientation"] = kOsdOrientationKeys[selected < 3 ? selected : 0];
+    save(s);
+}
+
+void on_osd_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    osd_object(s)["enabled"] = adw_switch_row_get_active(s->osd_enabled) != FALSE;
     save(s);
 }
 
@@ -2057,6 +2126,58 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
                              ADW_PREFERENCES_GROUP(lock_group));
 
+    // -- On-screen display sidebar page (top-level "osd" object) --------------
+    GtkWidget* osd_page = adw_preferences_page_new();
+    GtkWidget* osd_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(osd_group), "On-screen display");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(osd_group),
+        "A small overlay shown for two seconds whenever the output volume, microphone "
+        "volume, screen brightness or Caps/Num/Scroll Lock changes.");
+
+    GtkWidget* osd_location_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_location_row), "Position");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_location_row),
+                                "Where on-screen displays appear.");
+    const char* osd_location_options[] = {"Top center",    "Top left",    "Top right",
+                                          "Bottom center", "Bottom left", "Bottom right",
+                                          "Center left",   "Center right", nullptr};
+    GtkStringList* osd_location_model = gtk_string_list_new(osd_location_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(osd_location_row),
+                            G_LIST_MODEL(osd_location_model));
+    g_object_unref(osd_location_model);
+    s->osd_location = ADW_COMBO_ROW(osd_location_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_location_row);
+    g_signal_connect(osd_location_row, "notify::selected",
+                     G_CALLBACK(on_osd_location_changed), s);
+
+    GtkWidget* osd_orientation_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_orientation_row), "Orientation");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(osd_orientation_row),
+        "Landscape is a horizontal bar, portrait a vertical column. Automatic follows "
+        "the position: portrait at the sides, landscape at the top or bottom.");
+    const char* osd_orientation_options[] = {"Automatic", "Landscape", "Portrait", nullptr};
+    GtkStringList* osd_orientation_model = gtk_string_list_new(osd_orientation_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(osd_orientation_row),
+                            G_LIST_MODEL(osd_orientation_model));
+    g_object_unref(osd_orientation_model);
+    s->osd_orientation = ADW_COMBO_ROW(osd_orientation_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_orientation_row);
+    g_signal_connect(osd_orientation_row, "notify::selected",
+                     G_CALLBACK(on_osd_orientation_changed), s);
+
+    GtkWidget* osd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_enabled_row),
+                                  "Enable on-screen display");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_enabled_row),
+                                "Show volume and brightness changes in real-time.");
+    s->osd_enabled = ADW_SWITCH_ROW(osd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_enabled_row);
+    g_signal_connect(osd_enabled_row, "notify::active", G_CALLBACK(on_osd_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(osd_page),
+                             ADW_PREFERENCES_GROUP(osd_group));
+
     // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
     GtkWidget* nd_page = adw_preferences_page_new();
 
@@ -2555,6 +2676,13 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(idle_view), idle_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(idle_view), idle_page);
 
+    GtkWidget* osd_view = adw_toolbar_view_new();
+    GtkWidget* osd_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(osd_header),
+                                    adw_window_title_new("On-screen display", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(osd_view), osd_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(osd_view), osd_page);
+
     GtkWidget* nd_view = adw_toolbar_view_new();
     GtkWidget* nd_header = adw_header_bar_new();
     // inside a plain GtkStack there is no per-page AdwNavigationPage title —
@@ -2570,13 +2698,14 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
     gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
     gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
+    gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
     for (const char* title : {"Bar", "Launcher", "Session menu", "Lock screen", "Idle",
-                              "Notifications"}) {
+                              "On-screen display", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);

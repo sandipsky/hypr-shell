@@ -11,5 +11,6 @@
     <file>css/session.css</file>
     <file>css/idle.css</file>
     <file>css/lock.css</file>
+    <file>css/osd.css</file>
   </gresource>
 </gresources>

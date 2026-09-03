@@ -85,6 +85,12 @@ launcher).
   "lock_screen": {
     "background": "",
     "blur": 0.0
+  },
+
+  "osd": {
+    "enabled": true,
+    "location": "top_right",
+    "orientation": "auto"
   }
 }
 ```
@@ -223,6 +229,20 @@ only two lock screen options (Noctalia's `general.lockScreenWallpaper` and
 Not config: the avatar is `~/.face` when it exists (else a person glyph), the
 name is the account's real name (GECOS), the PAM service is auto-detected
 (`login` / `system-auth` / `common-auth`, override with `HS_PAM_SERVICE`).
+
+## `osd` (top level)
+
+Exposed as `Config::get().osd()` (struct `Config::Osd`). The on-screen display
+for output volume, microphone volume, brightness and Caps/Num/Scroll Lock
+changes (Noctalia's `Settings.data.osd`). Only the two options the settings
+app shows are configurable; the auto-hide delay (2 s), the overlay layer and
+the opaque card are fixed, and all four event types are always on.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enabled` | bool | `true` | Master switch (also stops the lock-key LED polling). |
+| `location` | `top` / `top_left` / `top_right` / `bottom` / `bottom_left` / `bottom_right` / `left` / `right` | `top_right` | Screen anchor. `left` / `right` are vertically centred. |
+| `orientation` | `auto` / `landscape` / `portrait` | `auto` | `landscape` = horizontal bar, `portrait` = vertical column; `auto` follows the position (portrait at `left` / `right`, landscape elsewhere), like Noctalia. |
 
 ## Adding a key
 

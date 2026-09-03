@@ -17,7 +17,7 @@ scaffold files for a later phase.
 | 1 Config | config.json + hot reload, 4 positions, module toggles, layout, visibility | **per-monitor bars** |
 | 2 More modules | battery, network (+Wi-Fi panel), audio (+panel), bluetooth (+panel) | **system tray, keyboard layout, system stats** |
 | 3 Notifications | **all**: daemon, history panel, toasts, DND, rules, sounds, settings page | (not ported: markdown, per-monitor popups, media/battery toasts, swipe/animations) |
-| 4 Panels & OSD | calendar, battery panel | **volume/brightness OSD, control center** |
+| 4 Panels & OSD | calendar, battery panel, OSD (volume / mic / brightness / lock keys) | **control center** |
 | 5 Lock & idle | idle daemon (ext-idle-notify-v1, fade grace period), lock screen (ext-session-lock + PAM, Noctalia's cover/login UI, background + blur settings) | **idle inhibitor DBus API (`org.freedesktop.ScreenSaver`), per-monitor lock wallpaper/monitor selection** |
 | 6 Settings app | sidebar split view (Bar / Launcher / Notifications), module subpages | **full option coverage, search, the pages in todo.txt** |
 | 7 Extras | app launcher (list view, pins stored) | launcher grid view, taskbar, wallpaper, screenshots, systemd units |
@@ -68,13 +68,14 @@ closest reference. Land it in steps: watcher → icons → left click → menus.
 
 ## Phase 4 — OSD and control center
 
-**Volume/brightness OSD.** A small layer window (overlay layer, anchored per
-a config location like the toasts) that appears when `Pulse` or `Brightness`
-values change, shows icon + level bar, hides after ~1.5 s. Copy the shape
-of `NotificationPopups` (a `Gtk::Window` owned by `App`, presented while
-content exists). Ignore changes made from the shell's own panel sliders, or
-debounce. Config: enabled, location, duration; settings page "On-Screen
-Display" is in `todo.txt`.
+**OSD — landed 2026-09-03.** `services/osd` (when to show: Pulse/Brightness/
+LockKeys diffs, startup grace, panel-open suppression) + `bar/osd_window`
+(click-through overlay layer window, fixed size per orientation, card
+animated with a `Gtk::Fixed` child transform) + `services/lock_keys`
+(200 ms LED polling). Config `osd.enabled` / `osd.location`, settings page
+"On-screen display". Remaining ideas from Noctalia: per-monitor OSD (needs
+phase 1), configurable auto-hide / per-type toggles, `volumeOverdrive`
+coloring above 100 %, IPC custom-text OSD.
 
 **Control center.** A larger panel gathering the existing cards (audio,
 network, bluetooth, brightness, power profile) plus quick toggles (DND,

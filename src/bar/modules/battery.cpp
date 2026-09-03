@@ -1,6 +1,7 @@
 #include "bar/modules/battery.hpp"
 
 #include "services/config.hpp"
+#include "services/osd.hpp"
 #include "services/power_profiles.hpp"
 #include "services/upower.hpp"
 
@@ -46,6 +47,9 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.set_parent(overlay_);
     popover_.set_has_arrow(false);
     popover_.add_css_class("battery-popover");
+    // the panel's brightness slider shows the level — no OSD while open
+    popover_.signal_map().connect([] { Osd::get().set_brightness_panel_open(true); });
+    popover_.signal_unmap().connect([] { Osd::get().set_brightness_panel_open(false); });
     set_cursor(Gdk::Cursor::create("pointer"));
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {

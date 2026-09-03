@@ -46,6 +46,22 @@ Brightness::Brightness() {
     if (max_ == 0)
         return;
 
+    // external writes (brightnessctl, another client via logind) → refresh
+    try {
+        auto file = Gio::File::create_for_path(std::string(kBacklightDir) + "/" + device_ +
+                                               "/brightness");
+        monitor_ = file->monitor_file();
+        monitor_->signal_changed().connect(
+            [this](const Glib::RefPtr<Gio::File>&, const Glib::RefPtr<Gio::File>&,
+                   Gio::FileMonitor::Event event) {
+                if (event == Gio::FileMonitor::Event::CHANGED ||
+                    event == Gio::FileMonitor::Event::CHANGES_DONE_HINT)
+                    refresh();
+            });
+    } catch (const Glib::Error& e) {
+        g_warning("brightness: cannot watch sysfs: %s", e.what());
+    }
+
     Gio::DBus::Connection::get(
         Gio::DBus::BusType::SYSTEM, [this](Glib::RefPtr<Gio::AsyncResult>& result) {
             try {

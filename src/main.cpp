@@ -3,9 +3,11 @@
 #include "bar/launcher_window.hpp"
 #include "bar/lock_screen.hpp"
 #include "bar/notification_popup.hpp"
+#include "bar/osd_window.hpp"
 #include "bar/session_window.hpp"
 #include "services/config.hpp"
 #include "services/idle.hpp"
+#include "services/osd.hpp"
 #include "services/session.hpp"
 
 #include <gtk4-layer-shell.h>
@@ -132,6 +134,17 @@ protected:
         popups_ = std::make_unique<NotificationPopups>();
         add_window(*popups_);
 
+        // on-screen display for volume / mic / brightness / lock keys;
+        // presents itself for 2s on each change
+        osd_window_ = std::make_unique<OsdWindow>();
+        add_window(*osd_window_);
+        // dev hook: HS_OSD_SHOW=volume|input|brightness|lock shows that OSD
+        // shortly after startup (bypasses the 2s startup grace)
+        if (const char* key = g_getenv("HS_OSD_SHOW")) {
+            const auto type = Osd::type_from_key(key);
+            Glib::signal_timeout().connect_once([type] { Osd::get().show(type); }, 1200);
+        }
+
         // fullscreen session menu; hidden until toggled (session.mode = fullscreen)
         session_window_ = std::make_unique<SessionWindow>();
         add_window(*session_window_);
@@ -237,6 +250,7 @@ private:
 
     std::unique_ptr<Bar> bar_;
     std::unique_ptr<NotificationPopups> popups_;
+    std::unique_ptr<OsdWindow> osd_window_;
     std::unique_ptr<LauncherWindow> launcher_window_;
     std::unique_ptr<SessionWindow> session_window_;
     std::unique_ptr<IdleFade> idle_fade_;

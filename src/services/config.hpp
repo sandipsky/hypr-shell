@@ -192,6 +192,26 @@ public:
     };
     const LockScreen& lock_screen() const { return lock_screen_; }
 
+    // osd.* (top level): the on-screen display for volume / microphone /
+    // brightness / lock-key changes (Noctalia's Settings.data.osd). Only the
+    // two options hypr-shell-settings shows are configurable; auto-hide
+    // (2s), overlay layer and opaque background are fixed.
+    struct Osd {
+        enum class Location { Top, TopLeft, TopRight, Bottom, BottomLeft, BottomRight, Left, Right };
+        // Landscape = horizontal bar, Portrait = vertical column; Auto follows
+        // the position like Noctalia (sides vertical, top/bottom horizontal)
+        enum class Orientation { Auto, Landscape, Portrait };
+        bool enabled = true;
+        Location location = Location::TopRight; // Noctalia's default
+        Orientation orientation = Orientation::Auto;
+        bool vertical() const {
+            if (orientation != Orientation::Auto)
+                return orientation == Orientation::Portrait;
+            return location == Location::Left || location == Location::Right;
+        }
+    };
+    const Osd& osd() const { return osd_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -239,6 +259,7 @@ private:
     Session session_;
     Idle idle_;
     LockScreen lock_screen_;
+    Osd osd_;
     sigc::signal<void()> changed_;
 };
 
