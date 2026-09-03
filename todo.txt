@@ -12,8 +12,6 @@
 
 - On-Screen Display
 
-- Lock Screen 
-
 - VPN 
 
 - Hotspot

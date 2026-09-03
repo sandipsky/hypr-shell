@@ -54,9 +54,9 @@ constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // sidebar rows -> GtkStack page names
-// (Bar / Launcher / Session menu / Idle / Notifications)
-constexpr const char* kSidebarPages[] = {"bar", "launcher_page", "session_page", "idle_page",
-                                         "notifications_page"};
+// (Bar / Launcher / Session menu / Lock screen / Idle / Notifications)
+constexpr const char* kSidebarPages[] = {"bar",       "launcher_page", "session_page",
+                                         "lock_page", "idle_page",     "notifications_page"};
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
@@ -123,6 +123,11 @@ struct Settings {
     AdwSpinRow* idle_screen_off = nullptr;
     AdwSpinRow* idle_lock = nullptr;
     AdwSpinRow* idle_suspend = nullptr;
+
+    // Lock screen sidebar page (top-level "lock_screen" object): background
+    // image + blur strength — the two options exposed, per user
+    AdwEntryRow* lock_background = nullptr;
+    GtkAdjustment* lock_blur = nullptr; // 0..100 %
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -385,6 +390,17 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Lock screen page (top-level "lock_screen" object)
+    std::string lock_background;
+    double lock_blur = 0.0;
+    try {
+        const json lock = s->root.value("lock_screen", json::object());
+        lock_background = lock.value("background", "");
+        lock_blur = std::clamp(lock.value("blur", 0.0), 0.0, 1.0);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     // Idle page (top-level "idle" object)
     int idle_screen_off = 600, idle_lock = 660, idle_suspend = 1800;
     try {
@@ -493,6 +509,8 @@ void populate(Settings* s) {
     for (gsize i = 0; i < kSessionActionCount; ++i)
         adw_switch_row_set_active(s->sm_items[i], sm_items[i]);
     update_sm_rows(s);
+    gtk_editable_set_text(GTK_EDITABLE(s->lock_background), lock_background.c_str());
+    gtk_adjustment_set_value(s->lock_blur, std::round(lock_blur * 100.0));
     adw_spin_row_set_value(s->idle_screen_off, idle_screen_off);
     adw_spin_row_set_value(s->idle_lock, idle_lock);
     adw_spin_row_set_value(s->idle_suspend, idle_suspend);
@@ -773,6 +791,72 @@ void on_idle_timeout_changed(GObject* row, GParamSpec*, gpointer data) {
     const auto* key = static_cast<const char*>(g_object_get_data(row, "idle-key"));
     idle_object(s)[key] = static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(row)));
     save(s);
+}
+
+// -- Lock screen page: the top-level "lock_screen" config object ---------------
+
+json& lock_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["lock_screen"].is_object())
+        s->root["lock_screen"] = json::object();
+    return s->root["lock_screen"];
+}
+
+void on_lock_background_changed(GtkEditable* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    lock_object(s)["background"] = gtk_editable_get_text(row);
+    save(s);
+}
+
+void on_lock_blur_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    lock_object(s)["blur"] = std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
+    save(s);
+}
+
+// photo button on the background row: pick an image into the entry (its
+// changed handler then writes the config)
+void on_lock_browse_clicked(GtkButton* button, gpointer) {
+    auto* entry = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(button), "target-entry"));
+    GtkFileDialog* dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, "Select lock screen background");
+    GtkFileFilter* images = gtk_file_filter_new();
+    gtk_file_filter_set_name(images, "Images");
+    gtk_file_filter_add_mime_type(images, "image/*");
+    GListStore* filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+    g_list_store_append(filters, images);
+    gtk_file_dialog_set_filters(dialog, G_LIST_MODEL(filters));
+    gtk_file_dialog_set_default_filter(dialog, images);
+    g_object_unref(filters);
+    g_object_unref(images);
+    const char* current = gtk_editable_get_text(GTK_EDITABLE(entry));
+    if (current != nullptr && *current != '\0') {
+        gchar* dir = g_path_get_dirname(current);
+        GFile* folder = g_file_new_for_path(dir);
+        gtk_file_dialog_set_initial_folder(dialog, folder);
+        g_object_unref(folder);
+        g_free(dir);
+    }
+    auto* root = gtk_widget_get_root(GTK_WIDGET(button));
+    gtk_file_dialog_open(
+        dialog, GTK_WINDOW(root), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer entry_ptr) {
+            GFile* file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source), result, nullptr);
+            if (file != nullptr) {
+                gchar* path = g_file_get_path(file);
+                if (path != nullptr)
+                    gtk_editable_set_text(GTK_EDITABLE(entry_ptr), path);
+                g_free(path);
+                g_object_unref(file);
+            }
+        },
+        entry);
+    g_object_unref(dialog);
 }
 
 // -- Notifications page: the top-level "notifications" config object ---------
@@ -1928,6 +2012,51 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(idle_page),
                              ADW_PREFERENCES_GROUP(idle_group));
 
+    // -- Lock screen sidebar page (top-level "lock_screen" object) -------------
+    GtkWidget* lock_page = adw_preferences_page_new();
+    GtkWidget* lock_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lock_group), "Lock screen");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(lock_group),
+        "Lock from the session menu, with `loginctl lock-session`, or with a Hyprland "
+        "keybind:  bind = SUPER, L, exec, hypr-shell --lock  — the idle daemon locks "
+        "after its timeout. Leave the background empty for a plain dark background.");
+
+    GtkWidget* lock_bg_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_bg_row), "Background image");
+    GtkWidget* lock_browse = gtk_button_new_from_icon_name("image-x-generic-symbolic");
+    gtk_widget_add_css_class(lock_browse, "flat");
+    gtk_widget_set_valign(lock_browse, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(lock_browse, "Select an image");
+    g_object_set_data(G_OBJECT(lock_browse), "target-entry", lock_bg_row);
+    g_signal_connect(lock_browse, "clicked", G_CALLBACK(on_lock_browse_clicked), nullptr);
+    adw_entry_row_add_suffix(ADW_ENTRY_ROW(lock_bg_row), lock_browse);
+    s->lock_background = ADW_ENTRY_ROW(lock_bg_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_bg_row);
+    g_signal_connect(lock_bg_row, "changed", G_CALLBACK(on_lock_background_changed), s);
+
+    GtkWidget* lock_blur_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_blur_row), "Blur strength");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(lock_blur_row),
+                                "Applies a blur effect to the lock screen wallpaper.");
+    s->lock_blur = gtk_adjustment_new(0, 0, 100, 1, 10, 0);
+    GtkWidget* lock_blur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->lock_blur);
+    gtk_scale_set_draw_value(GTK_SCALE(lock_blur_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(lock_blur_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(lock_blur_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(lock_blur_scale, 200, -1);
+    gtk_widget_set_valign(lock_blur_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(lock_blur_row), lock_blur_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_blur_row);
+    g_signal_connect(s->lock_blur, "value-changed", G_CALLBACK(on_lock_blur_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
+                             ADW_PREFERENCES_GROUP(lock_group));
+
     // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
     GtkWidget* nd_page = adw_preferences_page_new();
 
@@ -2412,6 +2541,13 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
 
+    GtkWidget* lock_view = adw_toolbar_view_new();
+    GtkWidget* lock_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lock_header),
+                                    adw_window_title_new("Lock screen", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lock_view), lock_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lock_view), lock_page);
+
     GtkWidget* idle_view = adw_toolbar_view_new();
     GtkWidget* idle_header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(idle_header),
@@ -2432,13 +2568,15 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
+    gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
     gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Launcher", "Session menu", "Idle", "Notifications"}) {
+    for (const char* title : {"Bar", "Launcher", "Session menu", "Lock screen", "Idle",
+                              "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);

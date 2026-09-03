@@ -184,6 +184,14 @@ public:
     };
     const Idle& idle() const { return idle_; }
 
+    // lock_screen.* (top level): Noctalia's general.lockScreenWallpaper /
+    // lockScreenBlur — the only two lock screen options exposed (per user).
+    struct LockScreen {
+        std::string background; // image path (~ expanded); empty = plain dark background
+        double blur = 0.0;      // 0..1 wallpaper blur strength (Noctalia's blurMax 48px at 1)
+    };
+    const LockScreen& lock_screen() const { return lock_screen_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -230,6 +238,7 @@ private:
     AppMenu app_menu_;
     Session session_;
     Idle idle_;
+    LockScreen lock_screen_;
     sigc::signal<void()> changed_;
 };
 

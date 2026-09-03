@@ -17,9 +17,9 @@ namespace hyprshell {
 
 namespace {
 
-// Noctalia's lockAndSuspend waits for its lock screen to confirm before
-// suspending; we have no lock screen yet, so give an external locker a moment.
-constexpr unsigned kLockBeforeSuspendDelayMs = 1000;
+// Noctalia's lockAndSuspend waits (up to 3s) for its lock screen to confirm
+// the lock before suspending.
+constexpr unsigned kLockBeforeSuspendTimeoutMs = 3000;
 constexpr unsigned kOverlayCleanupMs = 500; // Noctalia's overlayCleanupTimer
 
 } // namespace
@@ -317,16 +317,30 @@ void Idle::execute_action(Stage stage) {
         break;
     case Stage::Suspend:
         run_command(cfg.suspend_command);
-        if (cfg.lock_before_suspend) {
+        if (cfg.lock_before_suspend && !dry_run_ && !session_locked()) {
+            // suspend once the lock screen reports the lock, or after a
+            // grace period if it never does (Noctalia's lockAndSuspend)
             lock();
             suspend_timer_.disconnect();
+            locked_connection_.disconnect();
+            locked_connection_ = signal_session_locked().connect([this](bool locked) {
+                if (!locked)
+                    return;
+                locked_connection_.disconnect();
+                suspend_timer_.disconnect();
+                suspend();
+            });
             suspend_timer_ = Glib::signal_timeout().connect(
                 [this] {
+                    locked_connection_.disconnect();
+                    g_warning("idle: lock screen did not confirm the lock — suspending anyway");
                     suspend();
                     return false;
                 },
-                kLockBeforeSuspendDelayMs);
+                kLockBeforeSuspendTimeoutMs);
         } else {
+            if (cfg.lock_before_suspend)
+                lock();
             suspend();
         }
         break;
@@ -368,7 +382,7 @@ void Idle::lock() {
         g_message("idle [dry run]: would lock the session");
         return;
     }
-    spawn_detached({"loginctl", "lock-session"});
+    request_lock(); // the shell's own lock screen (bar/lock_screen)
 }
 
 void Idle::suspend() {

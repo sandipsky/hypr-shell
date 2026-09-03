@@ -80,6 +80,11 @@ launcher).
     "enable_web_search": false,
     "show_result_count": true,
     "show_all_apps": true
+  },
+
+  "lock_screen": {
+    "background": "",
+    "blur": 0.0
   }
 }
 ```
@@ -203,6 +208,21 @@ Application search and the calculator are always on.
 | `show_all_apps` | bool | `true` | `true`: fixed centred panel listing all apps when the query is empty. `false`: Spotlight mode, content-sized panel that grows downward with results. |
 
 Pinned apps are runtime state in `~/.cache/hypr-shell/pinned_apps.json`.
+
+## `lock_screen` (top level)
+
+Exposed as `Config::get().lock_screen()` (struct `Config::LockScreen`). The
+only two lock screen options (Noctalia's `general.lockScreenWallpaper` and
+`lockScreenBlur`); everything else about the lock screen is fixed.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `background` | path | `""` | Image shown behind the lock screen, scaled to cover each monitor (`~` is expanded). Empty = plain dark background. |
+| `blur` | 0..1 | `0.0` | Blur strength of that image (1 = 48px radius, Noctalia's `blurMax`). |
+
+Not config: the avatar is `~/.face` when it exists (else a person glyph), the
+name is the account's real name (GECOS), the PAM service is auto-detected
+(`login` / `system-auth` / `common-auth`, override with `HS_PAM_SERVICE`).
 
 ## Adding a key
 

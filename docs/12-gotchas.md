@@ -40,7 +40,22 @@ stack's requested width wins.
 **A fullscreen layer surface's first allocation is the screen size.** The
 launcher derives its panel geometry from that instead of querying monitors.
 
+**Session lock windows belong to gtk4-session-lock.** Create each surface
+unrealized, `assign_window_to_monitor`, then present; the library destroys
+them on unlock, so use `Gtk::make_managed` and drop your pointers from
+`signal_destroy()`. Never hide a lock surface (protocol error).
+
+**`GetSessionByPID` fails for a shell started from a terminal** (the process
+is in a different logind scope). Fall back to `$XDG_SESSION_ID` →
+`Manager.GetSession`, or `loginctl lock-session` will never reach you.
+
 ## GTK
+
+**A `Gtk::Picture` grows to the image's natural size** — `set_size_request`
+is a minimum. For a fixed avatar, pre-scale and crop the pixbuf to the target
+size and hand the texture to `set_paintable()`. Expand flags on a child also
+leak into the parent, so a centred 130px ring stretches if its picture
+`hexpand`s.
 
 **Anchor popovers to a label or overlay, never to the module's `Gtk::Box`.**
 A box parent allocates the open popover inline and the module balloons in
@@ -165,6 +180,13 @@ pair from the panel.
 
 **Optimistic updates**: writers set local state and emit *before* the
 round-trip; otherwise sliders bounce.
+
+**PAM blocks and sleeps.** `pam_authenticate` runs the conversation
+synchronously and `pam_unix` delays a failed attempt by ~2s, so it must not
+run on the main loop: `PamAuth` runs it on a thread and posts events through
+a `Glib::Dispatcher`. Test the stack outside the shell with a tiny ctypes
+script before blaming the shell — and never test a real lock without a
+second way in.
 
 ## Source hygiene
 

@@ -97,10 +97,13 @@ is missing.
 | `notification_panel.{hpp,cpp}` | notifications | History list with cards (icon, urgency dot, app, time, summary, body, actions, expand, delete), "Clear All". Rebuilds only while open; `signal_request_close`. Fixed 380×480. |
 | `notification_popup.{hpp,cpp}` | `App` (always exists) | Toast stack as a layer window: up to 5 cards, per-urgency countdown bars, hover pauses, click/close/right-click actions, compact density. |
 | `notification_ui.{hpp,cpp}` | shared | Relative-time formatter and the rounded notification icon widget (image > themed icon > desktop icon > bell). |
+| `lock_screen.{hpp,cpp}` | `App` (always exists); `request_lock()` | The session lock (`GtkSessionLockInstance`): one `LockSurface` per monitor, the shared password text and Noctalia's LockContext state machine over `PamAuth`, logind `Lock` signal + `SetLockedHint`. `HS_LOCK_PREVIEW=1` shows the UI as a plain overlay window. |
+| `lock_surface.{hpp,cpp}` (~600 lines) | `LockScreen` | One monitor's lock UI: `LockBackground`, cover stage (clock/date), login stage (avatar, name, password dots), info/error/countdown pills, battery + power button, session menu with 10s countdown. Hidden `Gtk::Text` receives typing. |
+| `lock_background.{hpp,cpp}` | `LockSurface` | Custom widget: wallpaper decoded async at monitor pixel size, cover-scaled, GSK-blurred once into a cached texture. |
 | `launcher_window.{hpp,cpp}` (~680 lines) | `App` via GAction | Fullscreen overlay: dim backdrop, centred panel with search entry, result list, footer. Providers: apps, calculator, settings search, session commands, web search. Keyboard navigation, hover-after-move selection, pin buttons, Spotlight-style grow animation when `show_all_apps` is off. |
 
 CSS prefixes: `bp-*` (battery, reused as the generic card style), `ap-*`,
-`np-*`, `bt-*`, `cal-*`, `notif-*`, `launcher-*`.
+`np-*`, `bt-*`, `cal-*`, `notif-*`, `launcher-*`, `lock-*`.
 
 ## `src/services/`
 
@@ -120,6 +123,9 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `math_eval` | nothing (pure) | `is_math_expression`, `evaluate` (recursive descent, functions, constants), `format_result`. Port of Noctalia's AdvancedMath.js. |
 | `pulse` | pipewire-pulse via libpulse | `pa_glib_mainloop`; default sink and source; by-name setters. |
 | `brightness` | sysfs + logind `SetBrightness` | Explicit `refresh()`; debounced DBus write. |
+| `session` | nothing | Enabled session actions, `run_session_action()`, `spawn_detached()`, `open_settings()`, and the lock hooks: `request_lock()` / `signal_lock_requested()` (services → lock screen) and `set_session_locked()` / `signal_session_locked()` (lock screen → services). |
+| `pam_auth` | Linux-PAM | `PamAuth`: one worker thread per attempt (the project's only thread), conversation prompts handed to the main loop via `Glib::Dispatcher`, `respond()` wakes the waiting conversation. |
+| `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
 
 ## `src/settings/main.cpp` (~2000 lines)
 

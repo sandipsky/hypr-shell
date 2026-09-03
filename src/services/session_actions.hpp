@@ -12,14 +12,13 @@ struct SessionAction {
     const char* description; // settings row subtitle
     const char* glyph;
     const char* keywords;    // launcher search keywords (Noctalia's)
-    const char* command;     // run via `sh -c`; empty = Hyprland's exit dispatcher
+    const char* command;     // run via `sh -c`; empty = built in (lock screen / Hyprland exit)
     bool destructive;        // Noctalia's isShutdown: error-tinted in the menus
     bool default_on;         // shown unless session.items.<key> says otherwise
 };
 
 constexpr SessionAction kSessionActions[] = {
-    {"lock", "Lock", "Lock the screen (loginctl lock-session).", "\uEAE2",
-     "lock screen secure", "loginctl lock-session", false, true},
+    {"lock", "Lock", "Lock the screen.", "\uEAE2", "lock screen secure", "", false, true},
     {"suspend", "Suspend", "Sleep, keeping the session in memory.", "\uED45",
      "suspend sleep standby", "systemctl suspend || loginctl suspend", false, true},
     {"hibernate", "Hibernate", "Save the session to disk and power off (needs swap space).",

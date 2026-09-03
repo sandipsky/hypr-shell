@@ -22,6 +22,7 @@ dependencies = [
   dependency('libpulse'),
   dependency('libpulse-mainloop-glib'),
   dependency('wayland-client'),
+  dependency('pam'), # lock screen authentication (Linux-PAM)
 ]
 
 # ext-idle-notify-v1 client glue for the idle service, generated at build time
@@ -61,6 +62,9 @@ sources = files(
   'src/bar/calendar.cpp',
   'src/bar/idle_fade.cpp',
   'src/bar/launcher_window.cpp',
+  'src/bar/lock_background.cpp',
+  'src/bar/lock_screen.cpp',
+  'src/bar/lock_surface.cpp',
   'src/services/apps.cpp',
   'src/services/bluez.cpp',
   'src/services/brightness.cpp',
@@ -81,6 +85,7 @@ sources = files(
   'src/services/math_eval.cpp',
   'src/services/network_manager.cpp',
   'src/services/notifications.cpp',
+  'src/services/pam_auth.cpp',
   'src/services/power_profiles.cpp',
   'src/services/pulse.cpp',
   'src/services/session.cpp',

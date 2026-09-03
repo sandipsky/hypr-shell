@@ -25,7 +25,7 @@ namespace hyprshell {
 // same config object. A 1s heartbeat notification tracks idle seconds. The
 // compositor honors idle inhibitors for us (v1 notifications).
 //
-// Until the phase-5 lock screen exists, "lock" means `loginctl lock-session`.
+// "lock" asks the shell's lock screen via request_lock() (services/session).
 // HS_IDLE_DRY_RUN=1 logs every action instead of running it.
 class Idle {
 public:
@@ -94,7 +94,8 @@ private:
     sigc::connection grace_timer_;   // fade duration → execute
     sigc::connection cleanup_timer_; // 500ms after executing → clear fade, next stage
     sigc::connection idle_counter_;  // 1s ticks while the heartbeat says idle
-    sigc::connection suspend_timer_; // lock-before-suspend delay
+    sigc::connection suspend_timer_; // lock-before-suspend grace period
+    sigc::connection locked_connection_; // lock screen confirmed → suspend
     sigc::signal<void()> fade_changed_;
 };
 

@@ -17,10 +17,44 @@ std::vector<const SessionAction*> enabled_session_actions() {
 }
 
 void run_session_action(const SessionAction& action) {
-    if (action.command == nullptr || action.command[0] == '\0')
-        Hyprland::get().dispatch("hl.dsp.exit()");
+    const std::string key = action.key;
+    if (key == "lock")
+        request_lock();
+    else if (action.command == nullptr || action.command[0] == '\0')
+        Hyprland::get().dispatch("hl.dsp.exit()"); // logout
     else
         spawn_detached({"sh", "-c", action.command});
+}
+
+namespace {
+sigc::signal<void()> lock_requested_signal;
+sigc::signal<void(bool)> session_locked_signal;
+bool session_locked_state = false;
+} // namespace
+
+void request_lock() {
+    if (lock_requested_signal.empty())
+        g_warning("lock requested but no lock screen is connected");
+    lock_requested_signal.emit();
+}
+
+sigc::signal<void()>& signal_lock_requested() {
+    return lock_requested_signal;
+}
+
+void set_session_locked(bool locked) {
+    if (session_locked_state == locked)
+        return;
+    session_locked_state = locked;
+    session_locked_signal.emit(locked);
+}
+
+bool session_locked() {
+    return session_locked_state;
+}
+
+sigc::signal<void(bool)>& signal_session_locked() {
+    return session_locked_signal;
 }
 
 void spawn_detached(const std::vector<std::string>& argv) {

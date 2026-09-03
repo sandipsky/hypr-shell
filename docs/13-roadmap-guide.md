@@ -18,7 +18,7 @@ scaffold files for a later phase.
 | 2 More modules | battery, network (+Wi-Fi panel), audio (+panel), bluetooth (+panel) | **system tray, keyboard layout, system stats** |
 | 3 Notifications | **all**: daemon, history panel, toasts, DND, rules, sounds, settings page | (not ported: markdown, per-monitor popups, media/battery toasts, swipe/animations) |
 | 4 Panels & OSD | calendar, battery panel | **volume/brightness OSD, control center** |
-| 5 Lock & idle | | **everything** |
+| 5 Lock & idle | idle daemon (ext-idle-notify-v1, fade grace period), lock screen (ext-session-lock + PAM, Noctalia's cover/login UI, background + blur settings) | **idle inhibitor DBus API (`org.freedesktop.ScreenSaver`), per-monitor lock wallpaper/monitor selection** |
 | 6 Settings app | sidebar split view (Bar / Launcher / Notifications), module subpages | **full option coverage, search, the pages in todo.txt** |
 | 7 Extras | app launcher (list view, pins stored) | launcher grid view, taskbar, wallpaper, screenshots, systemd units |
 
@@ -83,16 +83,15 @@ shared classes first so both places use them.
 
 ## Phase 5 — lock screen and idle
 
-**Lock.** `gtk4-layer-shell` ships `gtk4-session-lock.h`
-(`GtkSessionLockInstance`): lock, then one window per monitor assigned with
-`gtk_session_lock_instance_assign_window_to_monitor`. Authentication with
-PAM (`pam_start("hypr-shell", ...)` with a conversation callback). PAM calls
-block, so this is the one place a thread or helper subprocess is
-unavoidable; isolate it and post the result back via `Glib::Dispatcher`.
-Needs `/etc/pam.d/hypr-shell` (root; make `install.sh` print instructions
-rather than doing it silently). Keep a TTY open while testing. The launcher's
-"lock" entry currently runs `loginctl lock-session`; switch it to the new
-lock when this lands.
+**Lock — landed 2026-09-03.** `bar/lock_screen` + `bar/lock_surface` +
+`services/pam_auth`: `GtkSessionLockInstance`, one window per monitor,
+PAM on a worker thread posting back through `Glib::Dispatcher`, PAM service
+auto-detected (`login` first — no `/etc/pam.d/hypr-shell` needed). All lock
+requests funnel through `request_lock()` (idle, session menus,
+`hypr-shell --lock`, logind's `Lock` signal). Test with `HS_LOCK_PREVIEW=1`
+(plain overlay window, Escape closes) before ever locking for real, and keep
+a TTY open the first time. Remaining ideas: Noctalia's `lockScreenMonitors`
+(black surfaces on chosen monitors), tint, font, fingerprint (`fprintd`).
 
 **Idle.** `ext-idle-notify-v1` is a Wayland protocol: generate the client
 code with `wayland-scanner` (meson `wayland` module), get the `wl_display`

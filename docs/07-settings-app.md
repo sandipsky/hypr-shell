@@ -147,8 +147,8 @@ adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("key")]), cog);
 
 ## Adding a sidebar page
 
-For options that are not about the bar (a future Lock Screen or Wallpaper
-page), copy the Launcher page block in `on_activate()`: build an
+For options that are not about the bar (a future Wallpaper page, say), copy
+the Launcher or Lock screen page block in `on_activate()`: build an
 `AdwPreferencesPage`, wrap it in an `AdwToolbarView`, `gtk_stack_add_named()`
 it with a `<name>_page` tag, append a label row to the sidebar list box, and
 extend the `row-selected` handler's index → page mapping. Its config lives in

@@ -1,0 +1,290 @@
+/* lock screen — Noctalia's LockScreen (LockScreenBackground + LockScreenPanel)
+ * on ext-session-lock. Colors are the user's noctalia colors.json snapshot
+ * (mPrimary #bfc2ff, mOnPrimary #202578, mTertiary #e8b9d5, mOnTertiary
+ * #46263b, mError #ffb4ab, mOnError #690005, mSurface #131316, mOnSurface
+ * #e5e1e6, mOnSurfaceVariant #c7c5d0, mOutline #46464f, mShadow #000000);
+ * Qt pointSize values are written in pt. */
+
+window.lock-surface {
+  background: #000000;
+  font-family: "Fira Sans";
+}
+
+/* Noctalia's four-stop shadow gradient over the wallpaper */
+.lock-gradient {
+  background: linear-gradient(to bottom,
+    alpha(#000000, 0.4) 0%,
+    alpha(#000000, 0.2) 30%,
+    alpha(#000000, 0.25) 70%,
+    alpha(#000000, 0.5) 100%);
+}
+
+.lock-hidden-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  caret-color: transparent;
+  color: transparent;
+  min-height: 1px;
+  min-width: 1px;
+  padding: 0;
+}
+
+.lock-glyph {
+  font-family: "noctalia-tabler-icons";
+}
+
+/* -- cover stage: big clock + date ------------------------------------------ */
+.lock-time {
+  font-size: 72pt;
+  font-weight: 700;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.lock-date {
+  font-size: 18pt; /* fontSizeXXL */
+  font-weight: 500;
+  color: #e5e1e6;
+}
+
+/* -- login stage: avatar, name, password ------------------------------------- */
+.lock-avatar-ring {
+  border-radius: 65px;
+  border: 1px solid alpha(#e5e1e6, 0.25);
+}
+
+.lock-avatar {
+  border-radius: 62px;
+}
+
+.lock-avatar-fallback {
+  font-size: 56pt;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 62px;
+}
+
+.lock-name {
+  font-family: "Fira Sans SemiBold", "Fira Sans";
+  font-size: 24pt; /* fontSizeXXXL */
+  font-weight: 600;
+  color: #e5e1e6;
+}
+
+.lock-password {
+  background: #131316; /* mSurface */
+  border-radius: 15px; /* min(iRadiusL, height/2) */
+  border: 1px solid alpha(#46464f, 0.3); /* mOutline; no focus highlight, per user */
+}
+
+.lock-caret {
+  background: #bfc2ff;
+  min-width: 2px;
+  min-height: 20px;
+  transition: opacity 530ms linear; /* lockScreenAnimations: smooth blink */
+}
+
+.lock-caret.off {
+  opacity: 0;
+}
+
+.lock-visual-host,
+.lock-visual-host > viewport {
+  background: transparent;
+  border: none;
+}
+
+.lock-dots {
+  font-size: 13pt; /* fontSizeL */
+  color: #bfc2ff;
+  letter-spacing: 1px; /* marginXXXS */
+}
+
+.lock-plain {
+  font-size: 11pt; /* fontSizeM */
+  color: #bfc2ff;
+}
+
+button.lock-eye,
+button.lock-power,
+button.lock-cancel {
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  box-shadow: none;
+  outline: none;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  transition: background 150ms ease-out;
+}
+
+button.lock-eye .lock-glyph {
+  font-size: 14pt;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+button.lock-eye:hover {
+  background: #bfc2ff;
+}
+
+button.lock-eye:hover .lock-glyph {
+  color: #202578; /* mOnPrimary */
+}
+
+/* -- pills 200px above the bottom edge ---------------------------------------- */
+.lock-pill {
+  border-radius: 20px; /* radiusL */
+  padding: 0 14px; /* marginXL * 1.5 total */
+  min-height: 50px;
+}
+
+.lock-pill .lock-pill-icon {
+  font-size: 16pt; /* fontSizeXL */
+}
+
+.lock-pill .lock-pill-text {
+  font-size: 13pt; /* fontSizeL */
+}
+
+.lock-pill .lock-pill-text.bold {
+  font-weight: 700;
+}
+
+.lock-pill.info {
+  background: #e8b9d5; /* mTertiary */
+}
+
+.lock-pill.info .lock-glyph,
+.lock-pill.info .lock-pill-text {
+  color: #46263b; /* mOnTertiary */
+}
+
+.lock-pill.error {
+  background: #ffb4ab; /* mError */
+}
+
+.lock-pill.error .lock-glyph,
+.lock-pill.error .lock-pill-text {
+  color: #690005; /* mOnError */
+}
+
+.lock-pill.countdown {
+  background: #131316; /* mSurface */
+  padding: 0 9px; /* marginM */
+}
+
+.lock-pill.countdown .lock-pill-icon {
+  color: #bfc2ff; /* mPrimary */
+}
+
+.lock-pill.countdown .lock-pill-text {
+  color: #e5e1e6;
+}
+
+button.lock-cancel {
+  background: alpha(#bfc2ff, 0.1);
+}
+
+button.lock-cancel .lock-glyph {
+  font-size: 13pt;
+  color: #bfc2ff;
+}
+
+button.lock-cancel:hover {
+  background: #bfc2ff;
+}
+
+button.lock-cancel:hover .lock-glyph {
+  color: #202578;
+}
+
+/* -- bottom right: battery + power button ------------------------------------- */
+.lock-battery .icon {
+  font-family: "Segoe Fluent Icons";
+  font-size: 16pt; /* fontSizeXL */
+  color: #e5e1e6; /* frameColor mOnSurface */
+}
+
+.lock-battery.charging .icon-fill {
+  color: #9fd89f;
+}
+
+.lock-battery.saver .icon-fill {
+  color: #eaa300;
+}
+
+.lock-battery-text {
+  font-size: 11pt;
+  font-weight: 500;
+  color: #e5e1e6;
+}
+
+button.lock-power {
+  background: alpha(#131316, 0.65);
+}
+
+button.lock-power .lock-glyph {
+  font-size: 14pt;
+  color: #e5e1e6;
+}
+
+button.lock-power:hover {
+  background: #bfc2ff;
+}
+
+button.lock-power:hover .lock-glyph {
+  color: #202578;
+}
+
+/* -- session menu above the power button -------------------------------------- */
+.lock-session-menu {
+  background: #131316; /* mSurface */
+  border-radius: 16px; /* radiusM */
+  border: 1px solid alpha(#46464f, 0.3);
+  padding: 9px;
+}
+
+button.lock-session-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 12px; /* radiusS */
+  padding: 0 9px;
+  min-height: 36px;
+  transition: background 150ms ease-out;
+}
+
+.lock-session-glyph {
+  font-size: 13pt; /* fontSizeL */
+  color: #e5e1e6;
+}
+
+.lock-session-label {
+  font-size: 11pt; /* fontSizeM */
+  color: #e5e1e6;
+}
+
+button.lock-session-item:hover {
+  background: #bfc2ff;
+}
+
+button.lock-session-item:hover .lock-session-glyph,
+button.lock-session-item:hover .lock-session-label {
+  color: #202578;
+}
+
+button.lock-session-item.destructive .lock-session-glyph {
+  color: #ffb4ab; /* mError */
+}
+
+button.lock-session-item.destructive:hover {
+  background: #ffb4ab;
+}
+
+button.lock-session-item.destructive:hover .lock-session-glyph,
+button.lock-session-item.destructive:hover .lock-session-label {
+  color: #690005; /* mOnError */
+}

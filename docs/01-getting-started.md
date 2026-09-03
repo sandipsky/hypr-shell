@@ -142,7 +142,10 @@ opt-in hooks that open them about 0.8 s after startup:
 | `HS_OPEN_NOTIFICATIONS=1` | Opens the notification history panel |
 | `HS_OPEN_LAUNCHER=1` | Opens the app launcher |
 | `HS_LAUNCHER_QUERY=<text>` | Pre-fills the launcher search every time it opens |
-| `HS_SETTINGS_PAGE=<tag>` | Settings app: jump to a Bar module subpage (`workspaces`, `clock`, `active_window`, `battery`, `bluetooth`, `notifications`) or a sidebar page (`launcher_page`, `notifications_page`) |
+| `HS_LOCK_PREVIEW=1` | Shows the lock screen UI as a plain overlay window (no real session lock; Escape on the cover closes it). `=2` also opens its session menu |
+| `HS_LOCK_AVATAR=<path>` | Overrides the `~/.face` avatar (empty = person glyph fallback) |
+| `HS_PAM_SERVICE=<name>` | PAM service for the lock screen instead of the auto-detected one |
+| `HS_SETTINGS_PAGE=<tag>` | Settings app: jump to a Bar module subpage (`workspaces`, `clock`, `active_window`, `battery`, `bluetooth`, `notifications`) or a sidebar page (`launcher_page`, `session_page`, `lock_page`, `idle_page`, `notifications_page`) |
 
 Example: `HS_OPEN_BATTERY=1 ./build/hypr-shell`. To test notifications, run
 `notify-send "Title" "Body"` from another terminal.

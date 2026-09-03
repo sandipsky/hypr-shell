@@ -93,6 +93,7 @@ void Config::load() {
     app_menu_ = AppMenu{};
     session_ = Session{};
     idle_ = Idle{};
+    lock_screen_ = LockScreen{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -292,6 +293,13 @@ void Config::load() {
                     i.custom_commands.push_back(std::move(cmd));
                 }
             }
+        }
+        if (auto it = j.find("lock_screen"); it != j.end() && it->is_object()) {
+            std::string background = it->value("background", "");
+            if (!background.empty() && background[0] == '~')
+                background = Glib::get_home_dir() + background.substr(1);
+            lock_screen_.background = background;
+            lock_screen_.blur = std::clamp(it->value("blur", 0.0), 0.0, 1.0);
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

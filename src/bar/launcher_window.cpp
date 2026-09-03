@@ -382,6 +382,8 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Session menu style", "Session menu", "session_page"},
         {"Session menu fullscreen layout", "Session menu", "session_page"},
         {"Session menu actions", "Session menu", "session_page"},
+        {"Lock screen background", "Lock screen", "lock_page"},
+        {"Lock screen blur", "Lock screen", "lock_page"},
         {"Idle timeouts", "Idle", "idle_page"},
         {"Turn off screen", "Idle", "idle_page"},
         {"Lock screen timeout", "Idle", "idle_page"},

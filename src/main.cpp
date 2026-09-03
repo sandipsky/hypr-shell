@@ -1,10 +1,12 @@
 #include "bar/bar.hpp"
 #include "bar/idle_fade.hpp"
 #include "bar/launcher_window.hpp"
+#include "bar/lock_screen.hpp"
 #include "bar/notification_popup.hpp"
 #include "bar/session_window.hpp"
 #include "services/config.hpp"
 #include "services/idle.hpp"
+#include "services/session.hpp"
 
 #include <gtk4-layer-shell.h>
 #include <gtkmm.h>
@@ -52,18 +54,24 @@ protected:
                 bar_->toggle_session_menu();
             }
         });
+        // `hypr-shell --lock` locks the session (ext-session-lock), e.g.
+        //   bind = SUPER, L, exec, hypr-shell --lock
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "lock", 'k',
+                              "Lock the screen in the running instance");
+        add_action("lock", [] { request_lock(); });
     }
 
     // Runs in the *invoking* process before activate: forward --launcher to
     // the primary instance (GApplication uniqueness) and exit.
     int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
-        bool launcher = false, app_menu = false, session = false;
+        bool launcher = false, app_menu = false, session = false, lock = false;
         if (options) {
             options->lookup_value("launcher", launcher);
             options->lookup_value("app-menu", app_menu);
             options->lookup_value("session", session);
+            options->lookup_value("lock", lock);
         }
-        if (launcher || app_menu || session) {
+        if (launcher || app_menu || session || lock) {
             try {
                 register_application();
             } catch (const Glib::Error& e) {
@@ -77,12 +85,15 @@ protected:
                     activate_action("app-menu");
                 if (session)
                     activate_action("session");
+                if (lock)
+                    activate_action("lock");
                 return 0; // handled — don't start a second shell
             }
             // no running instance: start up normally, then open what was asked
             open_launcher_on_startup_ = launcher;
             open_app_menu_on_startup_ = app_menu;
             open_session_on_startup_ = session;
+            lock_on_startup_ = lock;
         }
         return -1; // continue normal startup
     }
@@ -131,6 +142,16 @@ protected:
         // app launcher overlay; hidden until toggled
         launcher_window_ = std::make_unique<LauncherWindow>();
         add_window(*launcher_window_);
+
+        // lock screen (ext-session-lock + PAM); answers request_lock() from the
+        // idle daemon, the session menus, --lock and logind's Lock signal
+        lock_screen_ = std::make_unique<LockScreen>();
+        // dev hook: HS_LOCK_PREVIEW=1 shows the lock UI as a plain overlay
+        // window (Escape on the cover closes it) — no real session lock
+        if (g_getenv("HS_LOCK_PREVIEW") != nullptr)
+            Glib::signal_timeout().connect_once([this] { lock_screen_->open_preview(); }, 600);
+        if (lock_on_startup_)
+            Glib::signal_timeout().connect_once([this] { lock_screen_->lock(); }, 600);
 
         // idle daemon (ext-idle-notify-v1) and its fade-to-black grace overlay
         Idle::get();
@@ -219,6 +240,8 @@ private:
     std::unique_ptr<LauncherWindow> launcher_window_;
     std::unique_ptr<SessionWindow> session_window_;
     std::unique_ptr<IdleFade> idle_fade_;
+    std::unique_ptr<LockScreen> lock_screen_;
+    bool lock_on_startup_ = false;
     bool open_launcher_on_startup_ = false;
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;

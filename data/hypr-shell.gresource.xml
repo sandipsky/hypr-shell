@@ -10,5 +10,6 @@
     <file>css/app_menu.css</file>
     <file>css/session.css</file>
     <file>css/idle.css</file>
+    <file>css/lock.css</file>
   </gresource>
 </gresources>
