@@ -8,6 +8,9 @@
 #include <adwaita.h>
 #include <nlohmann/json.hpp>
 
+#include "services/app_menu_icons.hpp"
+#include "services/session_actions.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -28,6 +31,7 @@ struct ModuleInfo {
 
 constexpr ModuleInfo kModules[] = {
     {"launcher",      "Launcher",      "App launcher search button",  0},
+    {"app_menu",      "App menu",      "Grid app menu with search",   0},
     {"workspaces",    "Workspaces",    "Hyprland workspace switcher", 0},
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
@@ -36,6 +40,7 @@ constexpr ModuleInfo kModules[] = {
     {"battery",       "Battery",       "Battery status icon",          2},
     {"notifications", "Notifications", "Notification bell and history", 2},
     {"clock",         "Clock",         "Date and time",                2},
+    {"session",       "Session",       "Power button opening the session menu", 2},
 };
 
 constexpr gsize kModuleCount = G_N_ELEMENTS(kModules);
@@ -46,6 +51,17 @@ constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
+constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
+constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
+// sidebar rows -> GtkStack page names (Bar / Launcher / Session menu / Notifications)
+constexpr const char* kSidebarPages[] = {"bar", "launcher_page", "session_page",
+                                         "notifications_page"};
+constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
+constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
+// app menu icon dropdown: the shared presets, then Distro logo, then Custom
+constexpr guint kAmPresetCount = G_N_ELEMENTS(hyprshell::kAppMenuIconPresets);
+constexpr guint kAmIconDistroIndex = kAmPresetCount;
+constexpr guint kAmIconCustomIndex = kAmPresetCount + 1;
 constexpr const char* kNdDensityKeys[] = {"default", "compact"};
 constexpr const char* kNdLocationKeys[] = {"top",    "top_left",    "top_right",
                                            "bottom", "bottom_left", "bottom_right"};
@@ -58,6 +74,8 @@ constexpr const char* kRuleActionLabels[] = {
 
 struct Settings;
 void update_aw_row_visibility(Settings* s);
+void update_am_rows(Settings* s);
+void update_sm_rows(Settings* s);
 void update_bar_visibility_rows(Settings* s);
 void update_nd_rows(Settings* s);
 void rebuild_rule_rows(Settings* s);
@@ -83,6 +101,21 @@ struct Settings {
     AdwEntryRow* clock_fmt_v = nullptr;
 
     AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
+
+    AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
+    AdwEntryRow* am_text = nullptr;
+    AdwComboRow* am_icon = nullptr;    // presets + Distro logo + Custom
+    AdwEntryRow* am_custom_icon = nullptr;
+    AdwSpinRow* am_columns = nullptr;
+    AdwSwitchRow* am_settings_btn = nullptr;
+    AdwSwitchRow* am_session_btn = nullptr;
+    AdwSwitchRow* am_multiline = nullptr;
+    AdwSwitchRow* am_show_search = nullptr;
+
+    // Session menu sidebar page (top-level "session" object in config.json)
+    AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
+    AdwComboRow* sm_layout = nullptr; // Single row / Grid (fullscreen only)
+    AdwSwitchRow* sm_items[kSessionActionCount] = {};
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -236,6 +269,25 @@ void populate(Settings* s) {
         // defaults
     }
 
+    std::string am_display = "icon", am_icon = "rocket", am_custom, am_text = "Apps";
+    int am_columns = 5;
+    bool am_settings_btn = true, am_session_btn = true, am_multiline = false;
+    bool am_show_search = true;
+    try {
+        const json am = s->root.value("bar", json::object()).value("app_menu", json::object());
+        am_display = am.value("display", am_display);
+        am_icon = am.value("icon", am_icon);
+        am_custom = am.value("custom_icon", "");
+        am_text = am.value("text", am_text);
+        am_columns = std::clamp(am.value("columns", 5), 3, 8);
+        am_settings_btn = am.value("show_settings_button", true);
+        am_session_btn = am.value("show_session_button", true);
+        am_multiline = am.value("multiline_labels", false);
+        am_show_search = am.value("show_search", true);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     bool bat_profiles = true, bat_brightness = true, bat_refresh = true;
     try {
         const json bat = s->root.value("bar", json::object()).value("battery", json::object());
@@ -310,6 +362,22 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Session menu page (top-level "session" object)
+    std::string sm_mode = "dropdown", sm_layout = "single_row";
+    bool sm_items[kSessionActionCount];
+    for (gsize i = 0; i < kSessionActionCount; ++i)
+        sm_items[i] = hyprshell::kSessionActions[i].default_on;
+    try {
+        const json sm = s->root.value("session", json::object());
+        sm_mode = sm.value("mode", sm_mode);
+        sm_layout = sm.value("fullscreen_layout", sm_layout);
+        const json items = sm.value("items", json::object());
+        for (gsize i = 0; i < kSessionActionCount; ++i)
+            sm_items[i] = items.value(hyprshell::kSessionActions[i].key, sm_items[i]);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
     // Launcher page (top-level "launcher" object)
     bool lp_settings = true, lp_session = true, lp_web = false;
     bool lp_count = true, lp_all = true;
@@ -356,6 +424,28 @@ void populate(Settings* s) {
     gtk_widget_set_sensitive(GTK_WIDGET(s->ws_count), ws_mode == "fixed");
     adw_switch_row_set_active(s->ws_wrap, ws_wrap);
     adw_switch_row_set_active(s->bt_auto, bt_auto);
+    for (guint i = 0; i < 3; ++i)
+        if (am_display == kAmDisplayKeys[i])
+            adw_combo_row_set_selected(s->am_display, i);
+    gtk_editable_set_text(GTK_EDITABLE(s->am_text), am_text.c_str());
+    {
+        guint icon_index = 0; // unknown keys fall back to the rocket
+        for (guint i = 0; i < kAmPresetCount; ++i)
+            if (am_icon == hyprshell::kAppMenuIconPresets[i].key)
+                icon_index = i;
+        if (am_icon == hyprshell::kAppMenuIconDistro)
+            icon_index = kAmIconDistroIndex;
+        else if (am_icon == hyprshell::kAppMenuIconCustom)
+            icon_index = kAmIconCustomIndex;
+        adw_combo_row_set_selected(s->am_icon, icon_index);
+    }
+    gtk_editable_set_text(GTK_EDITABLE(s->am_custom_icon), am_custom.c_str());
+    adw_spin_row_set_value(s->am_columns, am_columns);
+    adw_switch_row_set_active(s->am_settings_btn, am_settings_btn);
+    adw_switch_row_set_active(s->am_session_btn, am_session_btn);
+    adw_switch_row_set_active(s->am_multiline, am_multiline);
+    adw_switch_row_set_active(s->am_show_search, am_show_search);
+    update_am_rows(s);
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
     adw_switch_row_set_active(s->bat_refresh, bat_refresh);
@@ -380,6 +470,11 @@ void populate(Settings* s) {
     adw_switch_row_set_active(s->lp_web_search, lp_web);
     adw_switch_row_set_active(s->lp_result_count, lp_count);
     adw_switch_row_set_active(s->lp_show_all, lp_all);
+    adw_combo_row_set_selected(s->sm_mode, sm_mode == "fullscreen" ? 1 : 0);
+    adw_combo_row_set_selected(s->sm_layout, sm_layout == "grid" ? 1 : 0);
+    for (gsize i = 0; i < kSessionActionCount; ++i)
+        adw_switch_row_set_active(s->sm_items[i], sm_items[i]);
+    update_sm_rows(s);
     adw_switch_row_set_active(s->nd_enabled, nd_enabled);
     adw_switch_row_set_active(s->nd_dnd, nd_dnd);
     adw_combo_row_set_selected(s->nd_density, nd_density == "compact" ? 1 : 0);
@@ -459,6 +554,83 @@ void on_bt_auto_toggled(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
+// -- App menu subpage: bar.app_menu -------------------------------------------
+
+json& app_menu_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["app_menu"].is_object())
+        bar["app_menu"] = json::object();
+    return bar["app_menu"];
+}
+
+const char* am_icon_key(guint index) {
+    if (index < kAmPresetCount)
+        return hyprshell::kAppMenuIconPresets[index].key;
+    if (index == kAmIconDistroIndex)
+        return hyprshell::kAppMenuIconDistro;
+    return hyprshell::kAppMenuIconCustom;
+}
+
+// label row only with a text display, icon rows only with an icon display,
+// the custom-icon entry only for the Custom choice
+void update_am_rows(Settings* s) {
+    const guint display = adw_combo_row_get_selected(s->am_display);
+    const bool show_text = display != 0;
+    const bool show_icon = display != 2;
+    gtk_widget_set_visible(GTK_WIDGET(s->am_text), show_text);
+    gtk_widget_set_visible(GTK_WIDGET(s->am_icon), show_icon);
+    gtk_widget_set_visible(GTK_WIDGET(s->am_custom_icon),
+                           show_icon &&
+                               adw_combo_row_get_selected(s->am_icon) == kAmIconCustomIndex);
+}
+
+void on_am_display_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_am_rows(s);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->am_display);
+    app_menu_object(s)["display"] = kAmDisplayKeys[selected < 3 ? selected : 0];
+    save(s);
+}
+
+void on_am_icon_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_am_rows(s);
+    if (s->loading)
+        return;
+    app_menu_object(s)["icon"] = am_icon_key(adw_combo_row_get_selected(s->am_icon));
+    save(s);
+}
+
+// entry rows with an "am-key" (label text, custom icon)
+void on_am_entry_changed(GtkEditable* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(G_OBJECT(row), "am-key"));
+    app_menu_object(s)[key] = gtk_editable_get_text(row);
+    save(s);
+}
+
+void on_am_columns_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    app_menu_object(s)["columns"] = static_cast<int>(adw_spin_row_get_value(s->am_columns));
+    save(s);
+}
+
+// switches with an "am-key" (settings button, session button)
+void on_am_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "am-key"));
+    app_menu_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
 json& battery_object(Settings* s) {
     json& bar = bar_object(s);
     if (!bar["battery"].is_object())
@@ -507,6 +679,58 @@ void on_launcher_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "launcher-key"));
     launcher_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Session menu page: the top-level "session" config object -----------------
+
+json& session_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["session"].is_object())
+        s->root["session"] = json::object();
+    return s->root["session"];
+}
+
+json& session_items_object(Settings* s) {
+    json& sm = session_object(s);
+    if (!sm["items"].is_object())
+        sm["items"] = json::object();
+    return sm["items"];
+}
+
+// the layout row only matters for the fullscreen style
+void update_sm_rows(Settings* s) {
+    gtk_widget_set_visible(GTK_WIDGET(s->sm_layout),
+                           adw_combo_row_get_selected(s->sm_mode) == 1);
+}
+
+void on_sm_mode_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_sm_rows(s);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->sm_mode);
+    session_object(s)["mode"] = kSmModeKeys[selected < 2 ? selected : 0];
+    save(s);
+}
+
+void on_sm_layout_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->sm_layout);
+    session_object(s)["fullscreen_layout"] = kSmLayoutKeys[selected < 2 ? selected : 0];
+    save(s);
+}
+
+// switches with an "sm-key" (one per session action)
+void on_sm_item_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "sm-key"));
+    session_items_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
 }
 
@@ -1365,6 +1589,101 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(bt_page),
                              ADW_PREFERENCES_GROUP(bt_group));
 
+    // -- App menu subpage -------------------------------------------------------
+    GtkWidget* am_page = adw_preferences_page_new();
+    GtkWidget* am_button_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(am_button_group), "Bar button");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(am_button_group),
+        "How the app menu shows in the bar. Changes apply live.");
+
+    GtkWidget* am_display_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_display_row), "Display");
+    const char* am_display_options[] = {"Icon", "Icon and text", "Text", nullptr};
+    GtkStringList* am_display_model = gtk_string_list_new(am_display_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(am_display_row), G_LIST_MODEL(am_display_model));
+    g_object_unref(am_display_model);
+    s->am_display = ADW_COMBO_ROW(am_display_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_display_row);
+
+    GtkWidget* am_text_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_text_row), "Label");
+    g_object_set_data(G_OBJECT(am_text_row), "am-key", const_cast<char*>("text"));
+    s->am_text = ADW_ENTRY_ROW(am_text_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_text_row);
+
+    GtkWidget* am_icon_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_icon_row), "Icon");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(am_icon_row),
+                                "Distro logo uses the LOGO icon from /etc/os-release.");
+    {
+        std::vector<const char*> am_icon_options;
+        for (const auto& preset : hyprshell::kAppMenuIconPresets)
+            am_icon_options.push_back(preset.label);
+        am_icon_options.push_back("Distro logo");
+        am_icon_options.push_back("Custom");
+        am_icon_options.push_back(nullptr);
+        GtkStringList* am_icon_model = gtk_string_list_new(am_icon_options.data());
+        adw_combo_row_set_model(ADW_COMBO_ROW(am_icon_row), G_LIST_MODEL(am_icon_model));
+        g_object_unref(am_icon_model);
+    }
+    s->am_icon = ADW_COMBO_ROW(am_icon_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_icon_row);
+
+    GtkWidget* am_custom_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_custom_row),
+                                  "Custom icon (icon theme name or image path)");
+    g_object_set_data(G_OBJECT(am_custom_row), "am-key", const_cast<char*>("custom_icon"));
+    s->am_custom_icon = ADW_ENTRY_ROW(am_custom_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_custom_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(am_page),
+                             ADW_PREFERENCES_GROUP(am_button_group));
+
+    GtkWidget* am_panel_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(am_panel_group), "Menu panel");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(am_panel_group),
+        "A search box over a grid of applications. Opens from the bar button "
+        "or a Hyprland keybind, e.g. the Super key alone:\n"
+        "bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu");
+
+    GtkWidget* am_columns_row = adw_spin_row_new_with_range(3, 8, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_columns_row), "Grid columns");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(am_columns_row),
+                                "Applications per row; fewer columns mean bigger icons.");
+    s->am_columns = ADW_SPIN_ROW(am_columns_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_panel_group), am_columns_row);
+
+    struct AmRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } am_rows[] = {
+        {"show_search", "Search bar", "Show the search box at the top of the panel.",
+         &s->am_show_search},
+        {"multiline_labels", "Two-line app names",
+         "Wrap long application names onto a second line instead of cutting "
+         "them short.",
+         &s->am_multiline},
+        {"show_settings_button", "Settings button",
+         "Button next to the search box that opens these settings.", &s->am_settings_btn},
+        {"show_session_button", "Session button",
+         "Power button opening the session menu (see the Session menu page).",
+         &s->am_session_btn},
+    };
+    for (const auto& info : am_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "am-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_panel_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_am_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(am_page),
+                             ADW_PREFERENCES_GROUP(am_panel_group));
+
     // -- Battery subpage -------------------------------------------------------
     GtkWidget* bat_page = adw_preferences_page_new();
     GtkWidget* bat_group = adw_preferences_group_new();
@@ -1477,6 +1796,61 @@ void on_activate(GtkApplication* app, gpointer) {
     }
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lp_page),
                              ADW_PREFERENCES_GROUP(lp_group));
+
+    // -- Session menu sidebar page (top-level "session" object) ---------------
+    GtkWidget* sm_page = adw_preferences_page_new();
+
+    GtkWidget* sm_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_group), "Session menu");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(sm_group),
+        "Opened by the bar's Session button and the app menu's power button, or "
+        "from a Hyprland keybind:\n"
+        "bind = SUPER SHIFT, E, exec, hypr-shell --session");
+
+    GtkWidget* sm_mode_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_mode_row), "Style");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_mode_row),
+                                "Dropdown lists the actions under the button; Fullscreen "
+                                "covers the screen with large buttons.");
+    const char* sm_mode_options[] = {"Dropdown", "Fullscreen", nullptr};
+    GtkStringList* sm_mode_model = gtk_string_list_new(sm_mode_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(sm_mode_row), G_LIST_MODEL(sm_mode_model));
+    g_object_unref(sm_mode_model);
+    s->sm_mode = ADW_COMBO_ROW(sm_mode_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_mode_row);
+
+    GtkWidget* sm_layout_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_layout_row), "Fullscreen layout");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_layout_row),
+                                "Large buttons in one row, or wrapped into a grid.");
+    const char* sm_layout_options[] = {"Single row", "Grid", nullptr};
+    GtkStringList* sm_layout_model = gtk_string_list_new(sm_layout_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(sm_layout_row), G_LIST_MODEL(sm_layout_model));
+    g_object_unref(sm_layout_model);
+    s->sm_layout = ADW_COMBO_ROW(sm_layout_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_layout_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page), ADW_PREFERENCES_GROUP(sm_group));
+
+    GtkWidget* sm_items_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_items_group), "Actions");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(sm_items_group),
+        "Which entries the session menus (and the launcher's session search) show.");
+    for (gsize i = 0; i < kSessionActionCount; ++i) {
+        const auto& action = hyprshell::kSessionActions[i];
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), action.label);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), action.description);
+        g_object_set_data(G_OBJECT(row), "sm-key", const_cast<char*>(action.key));
+        s->sm_items[i] = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_items_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_sm_item_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page),
+                             ADW_PREFERENCES_GROUP(sm_items_group));
+    g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
+    g_signal_connect(sm_layout_row, "notify::selected", G_CALLBACK(on_sm_layout_changed), s);
 
     // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
     GtkWidget* nd_page = adw_preferences_page_new();
@@ -1789,6 +2163,11 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(aw_text_row, "notify::selected", G_CALLBACK(on_aw_text_changed), s);
     g_signal_connect(aw_empty_row, "notify::selected", G_CALLBACK(on_aw_empty_changed), s);
     g_signal_connect(aw_icon_row, "notify::active", G_CALLBACK(on_aw_icon_toggled), s);
+    g_signal_connect(am_display_row, "notify::selected", G_CALLBACK(on_am_display_changed), s);
+    g_signal_connect(am_text_row, "changed", G_CALLBACK(on_am_entry_changed), s);
+    g_signal_connect(am_icon_row, "notify::selected", G_CALLBACK(on_am_icon_changed), s);
+    g_signal_connect(am_custom_row, "changed", G_CALLBACK(on_am_entry_changed), s);
+    g_signal_connect(am_columns_row, "notify::value", G_CALLBACK(on_am_columns_changed), s);
 
     // -- Navigation: main page + module subpages -----------------------------
     GtkWidget* nav = adw_navigation_view_new();
@@ -1832,6 +2211,26 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
                             adw_navigation_page_new_with_tag(bat_view, "Battery",
                                                              "battery"));
+
+    GtkWidget* am_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(am_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(am_view), am_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(am_view, "App menu",
+                                                             "app_menu"));
+
+    // cog on the App menu module row
+    GtkWidget* am_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(am_cog, "flat");
+    gtk_widget_set_valign(am_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(am_cog, "App menu settings");
+    g_signal_connect(am_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
+                                                         "app_menu");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("app_menu")]), am_cog);
 
     GtkWidget* notif_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(notif_view), adw_header_bar_new());
@@ -1930,6 +2329,13 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lp_view), lp_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lp_view), lp_page);
 
+    GtkWidget* sm_view = adw_toolbar_view_new();
+    GtkWidget* sm_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(sm_header),
+                                    adw_window_title_new("Session menu", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
+
     GtkWidget* nd_view = adw_toolbar_view_new();
     GtkWidget* nd_header = adw_header_bar_new();
     // inside a plain GtkStack there is no per-page AdwNavigationPage title —
@@ -1942,12 +2348,13 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* stack = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
+    gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Launcher", "Notifications"}) {
+    for (const char* title : {"Bar", "Launcher", "Session menu", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);
@@ -1960,11 +2367,8 @@ void on_activate(GtkApplication* app, gpointer) {
                          if (row == nullptr)
                              return;
                          const int index = gtk_list_box_row_get_index(row);
-                         const char* page = "bar";
-                         if (index == 1)
-                             page = "launcher_page";
-                         else if (index == 2)
-                             page = "notifications_page";
+                         const char* page =
+                             (index >= 0 && index < 4) ? kSidebarPages[index] : "bar";
                          gtk_stack_set_visible_child_name(GTK_STACK(stack_ptr), page);
                      }),
                      stack);
@@ -1988,16 +2392,19 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // dev hook (also the launcher's settings-search target):
     // HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly;
-    // launcher_page / notifications_page open those sidebar pages
+    // launcher_page / session_page / notifications_page open those sidebar pages
     if (const char* tag = g_getenv("HS_SETTINGS_PAGE")) {
+        int sidebar_row = -1;
         if (g_strcmp0(tag, "launcher_page") == 0)
-            gtk_list_box_select_row(
-                GTK_LIST_BOX(sidebar_list),
-                gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 1));
+            sidebar_row = 1;
+        else if (g_strcmp0(tag, "session_page") == 0)
+            sidebar_row = 2;
         else if (g_strcmp0(tag, "notifications_page") == 0)
+            sidebar_row = 3;
+        if (sidebar_row >= 0)
             gtk_list_box_select_row(
                 GTK_LIST_BOX(sidebar_list),
-                gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 2));
+                gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), sidebar_row));
         else
             adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
     }

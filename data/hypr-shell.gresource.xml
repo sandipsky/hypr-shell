@@ -7,5 +7,7 @@
     <file>css/panels.css</file>
     <file>css/notifications.css</file>
     <file>css/launcher.css</file>
+    <file>css/app_menu.css</file>
+    <file>css/session.css</file>
   </gresource>
 </gresources>

@@ -1,0 +1,120 @@
+/* app menu — Noctalia's Launcher bar widget (rocket glyph by default) and a
+ * bar popover with the launcher's grid view: search box with settings and
+ * session buttons on top, application tiles below */
+
+/* bar module: the glyph uses the shared .icon style; optional text label */
+.app-menu-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+popover.app-menu-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 12px;
+  font-family: "Fira Sans";
+}
+
+/* search input — the launcher's NTextInput port on a variant surface */
+entry.am-search {
+  background: #201f23; /* mSurfaceVariant */
+  color: #e5e1e6; /* mOnSurface */
+  border: 1px solid #46464f; /* mOutline */
+  border-radius: 999px;
+  padding: 6px 14px;
+  min-height: 24px;
+  font-size: 14px;
+  caret-color: #bfc2ff; /* mPrimary */
+  box-shadow: none;
+}
+
+entry.am-search:focus-within {
+  border-color: #c5c4dd; /* mSecondary — not GTK's blue focus ring */
+  outline: none;
+}
+
+entry.am-search selection {
+  background: #bfc2ff;
+  color: #202578;
+}
+
+/* round header buttons: settings, session (".active" while its dropdown is
+ * open; the dropdown itself is styled in session.css) */
+button.am-icon-btn {
+  background: #201f23; /* mSurfaceVariant */
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+button.am-icon-btn:hover,
+button.am-icon-btn.active {
+  background: #e8b9d5; /* mHover */
+  border-color: #e8b9d5;
+}
+
+.am-btn-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 17px;
+  color: #e5e1e6;
+}
+
+button.am-icon-btn:hover .am-btn-glyph,
+button.am-icon-btn.active .am-btn-glyph {
+  color: #46263b; /* mOnHover */
+}
+
+/* application tiles: mSurfaceVariant cards, mHover when selected (keyboard
+ * or hover), Noctalia's grid delegate */
+.am-tile {
+  background: #201f23; /* mSurfaceVariant */
+  border-radius: 14px;
+  padding: 10px 6px 8px 6px;
+}
+
+.am-tile.selected {
+  background: #e8b9d5; /* mHover */
+}
+
+.am-tile-name {
+  font-size: 12px;
+  font-weight: normal; /* user request: not bold */
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.am-tile.selected .am-tile-name {
+  color: #46263b; /* mOnHover */
+}
+
+.am-empty {
+  font-size: 13px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+
+/* grid scrollbar: thin themed thumb, like the launcher's */
+.app-menu-panel scrollbar {
+  background: transparent;
+  border: none;
+}
+
+.app-menu-panel scrollbar trough {
+  background: transparent;
+}
+
+.app-menu-panel scrollbar slider {
+  background: alpha(#e5e1e6, 0.22); /* mOnSurface */
+  border-radius: 999px;
+  min-width: 3px;
+  margin: 1px;
+}
+
+.app-menu-panel scrollbar slider:hover,
+.app-menu-panel scrollbar slider:active {
+  background: alpha(#e5e1e6, 0.4);
+}

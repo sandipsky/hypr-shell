@@ -1,0 +1,107 @@
+/* session menu — Noctalia's SessionMenu: bar power button, the dropdown
+ * popover (bar module + the app menu's power button) and the fullscreen
+ * large-buttons window */
+
+/* bar module: power glyph in mError, like the user's Noctalia widget
+ * (iconColor "error") */
+.session .icon {
+  color: #ffb4ab; /* mError */
+}
+
+/* dropdown: lock / suspend / reboot / logout / shutdown ... */
+popover.session-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 16px;
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 6px;
+  font-family: "Fira Sans";
+}
+
+button.session-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 10px;
+  padding: 7px 12px;
+  min-width: 150px;
+}
+
+button.session-item:hover {
+  background: #e8b9d5; /* mHover */
+}
+
+.session-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 16px;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.session-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e5e1e6;
+}
+
+/* Noctalia's isShutdown tint */
+button.session-item.destructive .session-glyph,
+button.session-item.destructive .session-label {
+  color: #ffb4ab; /* mError */
+}
+
+button.session-item:hover .session-glyph,
+button.session-item:hover .session-label {
+  color: #46263b; /* mOnHover */
+}
+
+.session-empty {
+  font-size: 12px;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+  padding: 6px 12px;
+}
+
+/* fullscreen menu: dimmed screen, 200px buttons — mSurface cards with an
+ * mOutline border, mPrimary when selected/hovered (Noctalia's LargeButton) */
+window.session-window {
+  background: alpha(#131316, 0.6);
+}
+
+button.session-big {
+  background: #131316; /* mSurface */
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: 0 4px 16px alpha(#000000, 0.35);
+  border-radius: 20px;
+  padding: 0;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+button.session-big:hover,
+button.session-big.selected {
+  background: #bfc2ff; /* mPrimary */
+  border-color: #bfc2ff;
+}
+
+.session-big-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 56px;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.session-big-label {
+  font-family: "Fira Sans";
+  font-size: 15px;
+  font-weight: 500;
+  color: #e5e1e6;
+}
+
+button.session-big.destructive .session-big-glyph,
+button.session-big.destructive .session-big-label {
+  color: #ffb4ab; /* mError */
+}
+
+button.session-big:hover .session-big-glyph,
+button.session-big:hover .session-big-label,
+button.session-big.selected .session-big-glyph,
+button.session-big.selected .session-big-label {
+  color: #202578; /* mOnPrimary */
+}

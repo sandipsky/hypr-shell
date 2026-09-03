@@ -130,6 +130,38 @@ public:
     };
     const Launcher& launcher() const { return launcher_; }
 
+    // bar.app_menu.* — the grid app menu bar button (Noctalia's Launcher bar
+    // widget + the launcher's grid view, shown in a bar popover)
+    struct AppMenu {
+        enum class Display { Icon, IconText, Text };
+        Display display = Display::Icon;
+        std::string icon = "rocket";      // preset key, "distro" or "custom" (app_menu_icons.hpp)
+        std::string custom_icon;          // themed icon name or image path for "custom"
+        std::string text = "Apps";        // label for the icon_text / text displays
+        bool show_search = true;          // search box at the top of the panel
+        bool show_settings_button = true; // panel button opening hypr-shell-settings
+        bool show_session_button = true;  // panel dropdown: lock/suspend/reboot/logout/shutdown
+        int columns = 5;                  // grid columns, 3..8
+        bool multiline_labels = false;    // tile names wrap to two lines instead of one
+    };
+    const AppMenu& app_menu() const { return app_menu_; }
+
+    // session.* (top level): the session menu shared by the bar's session
+    // module, the app menu's power button and `hypr-shell --session`
+    // (Noctalia's Settings.data.sessionMenu)
+    struct Session {
+        enum class Mode { Dropdown, Fullscreen }; // Noctalia's largeButtonsStyle
+        enum class Layout { SingleRow, Grid };    // Noctalia's largeButtonsLayout
+        Mode mode = Mode::Dropdown;
+        Layout fullscreen_layout = Layout::SingleRow;
+        std::map<std::string, bool> items; // session.items.<key>; absent = the action's default
+        bool item_enabled(const std::string& key, bool default_on) const {
+            auto it = items.find(key);
+            return it == items.end() ? default_on : it->second;
+        }
+    };
+    const Session& session() const { return session_; }
+
     // bar.clock.first_day_of_week: 0 = Sunday (default), 1 = Monday
     int clock_first_day_of_week() const { return clock_first_day_of_week_; }
     // strftime formats, Noctalia semantics: the horizontal one may contain
@@ -173,6 +205,8 @@ private:
     bool aw_show_icon_ = true;
     Notifications notifications_;
     Launcher launcher_;
+    AppMenu app_menu_;
+    Session session_;
     sigc::signal<void()> changed_;
 };
 

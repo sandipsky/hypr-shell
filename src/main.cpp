@@ -1,6 +1,7 @@
 #include "bar/bar.hpp"
 #include "bar/launcher_window.hpp"
 #include "bar/notification_popup.hpp"
+#include "bar/session_window.hpp"
 #include "services/config.hpp"
 
 #include <gtk4-layer-shell.h>
@@ -29,13 +30,38 @@ protected:
             if (launcher_window_)
                 launcher_window_->toggle();
         });
+        // `hypr-shell --app-menu` toggles the bar's app menu popover, e.g.
+        //   bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "app-menu", 'm',
+                              "Toggle the bar's app menu in the running instance");
+        add_action("app-menu", [this] {
+            if (bar_)
+                bar_->toggle_app_menu();
+        });
+        // `hypr-shell --session` toggles the session menu: the fullscreen
+        // window or the bar module's dropdown, per session.mode
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "session", 's',
+                              "Toggle the session menu in the running instance");
+        add_action("session", [this] {
+            if (Config::get().session().mode == Config::Session::Mode::Fullscreen) {
+                if (session_window_)
+                    session_window_->toggle();
+            } else if (bar_) {
+                bar_->toggle_session_menu();
+            }
+        });
     }
 
     // Runs in the *invoking* process before activate: forward --launcher to
     // the primary instance (GApplication uniqueness) and exit.
     int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
-        bool launcher = false;
-        if (options && options->lookup_value("launcher", launcher) && launcher) {
+        bool launcher = false, app_menu = false, session = false;
+        if (options) {
+            options->lookup_value("launcher", launcher);
+            options->lookup_value("app-menu", app_menu);
+            options->lookup_value("session", session);
+        }
+        if (launcher || app_menu || session) {
             try {
                 register_application();
             } catch (const Glib::Error& e) {
@@ -43,11 +69,18 @@ protected:
                 return 1;
             }
             if (is_remote()) {
-                activate_action("launcher");
+                if (launcher)
+                    activate_action("launcher");
+                if (app_menu)
+                    activate_action("app-menu");
+                if (session)
+                    activate_action("session");
                 return 0; // handled — don't start a second shell
             }
-            // no running instance: start up normally, then open the launcher
-            open_launcher_on_startup_ = true;
+            // no running instance: start up normally, then open what was asked
+            open_launcher_on_startup_ = launcher;
+            open_app_menu_on_startup_ = app_menu;
+            open_session_on_startup_ = session;
         }
         return -1; // continue normal startup
     }
@@ -79,10 +112,19 @@ protected:
         // the Bar itself re-shows when the config changes.
         if (Config::get().bar_visibility() != Config::BarVisibility::Hidden)
             bar_->present();
+        if (open_app_menu_on_startup_)
+            Glib::signal_timeout().connect_once([this] { bar_->toggle_app_menu(); }, 800);
 
         // notification toasts; presents itself while popups exist
         popups_ = std::make_unique<NotificationPopups>();
         add_window(*popups_);
+
+        // fullscreen session menu; hidden until toggled (session.mode = fullscreen)
+        session_window_ = std::make_unique<SessionWindow>();
+        add_window(*session_window_);
+        // dev hook: HS_OPEN_SESSION=1 opens the session menu (either mode)
+        if (open_session_on_startup_ || g_getenv("HS_OPEN_SESSION") != nullptr)
+            Glib::signal_timeout().connect_once([this] { activate_action("session"); }, 800);
 
         // app launcher overlay; hidden until toggled
         launcher_window_ = std::make_unique<LauncherWindow>();
@@ -156,7 +198,10 @@ private:
     std::unique_ptr<Bar> bar_;
     std::unique_ptr<NotificationPopups> popups_;
     std::unique_ptr<LauncherWindow> launcher_window_;
+    std::unique_ptr<SessionWindow> session_window_;
     bool open_launcher_on_startup_ = false;
+    bool open_app_menu_on_startup_ = false;
+    bool open_session_on_startup_ = false;
     Glib::RefPtr<Gtk::CssProvider> opacity_provider_;
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;

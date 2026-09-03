@@ -1,12 +1,14 @@
 #pragma once
 
 #include "bar/modules/active_window.hpp"
+#include "bar/modules/app_menu.hpp"
 #include "bar/modules/battery.hpp"
 #include "bar/modules/bluetooth.hpp"
 #include "bar/modules/clock.hpp"
 #include "bar/modules/launcher.hpp"
 #include "bar/modules/network.hpp"
 #include "bar/modules/notifications.hpp"
+#include "bar/modules/session.hpp"
 #include "bar/modules/volume.hpp"
 #include "bar/modules/workspaces.hpp"
 
@@ -18,6 +20,9 @@ class Bar : public Gtk::ApplicationWindow {
 public:
     Bar();
     ~Bar() override;
+
+    void toggle_app_menu();     // `hypr-shell --app-menu` / the "app-menu" action
+    void toggle_session_menu(); // the "session" action in dropdown mode
 
 private:
     void apply_config();
@@ -39,6 +44,7 @@ private:
     Gtk::Box center_box_{Gtk::Orientation::HORIZONTAL, 0};
     Gtk::Box end_box_{Gtk::Orientation::HORIZONTAL, 0};
     Launcher launcher_;
+    AppMenu app_menu_;
     Workspaces workspaces_;
     ActiveWindow active_window_;
     Network network_;
@@ -47,6 +53,7 @@ private:
     Battery battery_;
     Notifications notifications_;
     Clock clock_;
+    Session session_;
 
     Gtk::Window trigger_; // 1px hover strip that reveals the hidden bar
     Gtk::Box trigger_fill_;

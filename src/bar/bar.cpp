@@ -121,6 +121,19 @@ Bar::~Bar() {
     hide_timer_.disconnect();
 }
 
+void Bar::toggle_app_menu() {
+    // an auto-hidden bar slides back first; the open popover then keeps it up
+    if (hidden_)
+        peek();
+    app_menu_.toggle();
+}
+
+void Bar::toggle_session_menu() {
+    if (hidden_)
+        peek();
+    session_.toggle();
+}
+
 void Bar::apply_config() {
     auto& cfg = Config::get();
     auto* window = GTK_WINDOW(gobj());
@@ -323,6 +336,8 @@ void Bar::refresh_workspace_empty() {
 Gtk::Widget* Bar::module_widget(const std::string& name) {
     if (name == "launcher")
         return &launcher_;
+    if (name == "app_menu")
+        return &app_menu_;
     if (name == "workspaces")
         return &workspaces_;
     if (name == "active_window")
@@ -339,6 +354,8 @@ Gtk::Widget* Bar::module_widget(const std::string& name) {
         return &notifications_;
     if (name == "clock")
         return &clock_;
+    if (name == "session")
+        return &session_;
     return nullptr;
 }
 

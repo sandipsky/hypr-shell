@@ -2,8 +2,8 @@
 
 #include "services/apps.hpp"
 #include "services/config.hpp"
-#include "services/hyprland.hpp"
 #include "services/math_eval.hpp"
+#include "services/session.hpp"
 
 #include <gtk4-layer-shell.h>
 
@@ -18,11 +18,6 @@ namespace {
 constexpr const char* kIconCalculator = "\uEB80";
 constexpr const char* kIconSettings = "\uEB20";
 constexpr const char* kIconWorld = "\uEB54";
-constexpr const char* kIconLock = "\uEAE2";
-constexpr const char* kIconSuspend = "\uED45"; // player-pause, like Noctalia
-constexpr const char* kIconReboot = "\uEB13";  // refresh
-constexpr const char* kIconLogout = "\uEBA8";
-constexpr const char* kIconShutdown = "\uEB0D"; // power
 constexpr const char* kIconPin = "\uEC9C";
 constexpr const char* kIconUnpin = "\uED5F"; // pinned-off
 
@@ -36,17 +31,6 @@ constexpr int kPageJump = 10; // floor(600 / entryHeight)
 // spacing, footer) — subtracted from the panel cap to cap the list itself.
 constexpr int kPanelChromeHeight = 140;
 constexpr double kListAnimMs = 260.0; // Spotlight growth, soft ease-out
-
-void spawn(const std::vector<std::string>& argv) {
-    try {
-        Glib::spawn_async("", argv,
-                          Glib::SpawnFlags::SEARCH_PATH |
-                              Glib::SpawnFlags::STDOUT_TO_DEV_NULL |
-                              Glib::SpawnFlags::STDERR_TO_DEV_NULL);
-    } catch (const Glib::Error& e) {
-        g_warning("launcher: spawning %s failed: %s", argv[0].c_str(), e.what());
-    }
-}
 
 std::string trimmed(const std::string& text) {
     const auto begin = text.find_first_not_of(" \t\n");
@@ -354,7 +338,7 @@ void LauncherWindow::add_calc_result(const std::string& query) {
     r.glyph = kIconCalculator;
     r.score = 0.0; // like Noctalia: ties with the weakest app matches
     const std::string text = r.name;
-    r.activate = [text] { spawn({"wl-copy", text}); };
+    r.activate = [text] { spawn_detached({"wl-copy", text}); };
     results_.push_back(std::move(r));
 }
 
@@ -384,10 +368,20 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Active window title", "Bar › Active window", "active_window"},
         {"Window icon", "Bar › Active window", "active_window"},
         {"Bluetooth auto-connect", "Bar › Bluetooth", "bluetooth"},
+        {"App menu icon", "Bar › App menu", "app_menu"},
+        {"App menu label", "Bar › App menu", "app_menu"},
+        {"App menu buttons", "Bar › App menu", "app_menu"},
+        {"App menu grid columns", "Bar › App menu", "app_menu"},
+        {"App menu two-line names", "Bar › App menu", "app_menu"},
+        {"App menu search bar", "Bar › App menu", "app_menu"},
+        {"App menu keybind", "Bar › App menu", "app_menu"},
         {"Battery panel cards", "Bar › Battery", "battery"},
         {"Brightness slider", "Bar › Battery", "battery"},
         {"Power profiles", "Bar › Battery", "battery"},
         {"Notification unread badge", "Bar › Notifications", "notifications"},
+        {"Session menu style", "Session menu", "session_page"},
+        {"Session menu fullscreen layout", "Session menu", "session_page"},
+        {"Session menu actions", "Session menu", "session_page"},
         {"Launcher search providers", "Launcher", "launcher_page"},
         {"Session search", "Launcher", "launcher_page"},
         {"Web search", "Launcher", "launcher_page"},
@@ -413,12 +407,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         r.glyph = kIconSettings;
         r.score = score - 2.0; // Noctalia ranks settings below apps and session
         const std::string page = entry.page;
-        r.activate = [page] {
-            if (page.empty())
-                spawn({"hypr-shell-settings"});
-            else
-                spawn({"env", "HS_SETTINGS_PAGE=" + page, "hypr-shell-settings"});
-        };
+        r.activate = [page] { open_settings(page); };
         matches.push_back(std::move(r));
     }
     std::stable_sort(matches.begin(), matches.end(),
@@ -433,44 +422,21 @@ void LauncherWindow::add_session_results(const std::string& query) {
     if (!Config::get().launcher().enable_session_search || query.size() < 2)
         return;
 
-    // Noctalia's SessionProvider actions + keywords. No lock screen of our
-    // own yet (phase 5) — lock goes through logind.
-    struct Action {
-        const char* label;
-        const char* glyph;
-        const char* keywords;
-        const char* command; // sh -c; empty = Hyprland exit
-    };
-    static constexpr Action kActions[] = {
-        {"Lock", kIconLock, "lock screen secure", "loginctl lock-session"},
-        {"Suspend", kIconSuspend, "suspend sleep standby",
-         "systemctl suspend || loginctl suspend"},
-        {"Reboot", kIconReboot, "reboot restart reload",
-         "systemctl reboot || loginctl reboot"},
-        {"Logout", kIconLogout, "logout sign out exit leave", ""},
-        {"Shutdown", kIconShutdown, "shutdown power off turn off poweroff",
-         "systemctl poweroff || loginctl poweroff"},
-    };
-
+    // Noctalia's SessionProvider actions + keywords, from the shared session
+    // table (also the app menu's power dropdown).
     const std::string query_lc = lowercase(query);
     std::vector<Result> matches;
-    for (const auto& action : kActions) {
-        const double score = std::max(fuzzy_score(query_lc, action.label),
-                                      fuzzy_score(query_lc, action.keywords));
+    for (const auto* action : enabled_session_actions()) {
+        const double score = std::max(fuzzy_score(query_lc, action->label),
+                                      fuzzy_score(query_lc, action->keywords));
         if (score < 0)
             continue;
         Result r;
-        r.name = action.label;
+        r.name = action->label;
         r.description = "Session menu";
-        r.glyph = action.glyph;
+        r.glyph = action->glyph;
         r.score = score - 1.0; // Noctalia ranks session actions below apps
-        const std::string command = action.command;
-        r.activate = [command] {
-            if (command.empty())
-                Hyprland::get().dispatch("hl.dsp.exit()");
-            else
-                spawn({"sh", "-c", command});
-        };
+        r.activate = [action] { run_session_action(*action); };
         matches.push_back(std::move(r));
     }
     std::stable_sort(matches.begin(), matches.end(),

@@ -14,6 +14,7 @@ namespace {
 // modules a hand-edited bar.layout forgot to mention.
 constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"launcher", Config::BarSection::Left},
+    {"app_menu", Config::BarSection::Left},
     {"workspaces", Config::BarSection::Left},
     {"active_window", Config::BarSection::Center},
     {"network", Config::BarSection::Right},
@@ -22,6 +23,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"battery", Config::BarSection::Right},
     {"notifications", Config::BarSection::Right},
     {"clock", Config::BarSection::Right},
+    {"session", Config::BarSection::Right},
 };
 
 bool known_module(const std::string& name) {
@@ -88,6 +90,8 @@ void Config::load() {
     aw_show_icon_ = true;
     notifications_ = Notifications{};
     launcher_ = Launcher{};
+    app_menu_ = AppMenu{};
+    session_ = Session{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
         std::array<std::vector<std::string>, 3>& layout;
@@ -171,6 +175,21 @@ void Config::load() {
             battery_show_brightness_ = it->value("show_brightness", true);
             battery_show_refresh_ = it->value("show_refresh_rate", true);
         }
+        if (auto it = bar.find("app_menu"); it != bar.end() && it->is_object()) {
+            auto& a = app_menu_;
+            const std::string display = it->value("display", "icon");
+            a.display = display == "icon_text" ? AppMenu::Display::IconText
+                        : display == "text"    ? AppMenu::Display::Text
+                                               : AppMenu::Display::Icon;
+            a.icon = it->value("icon", a.icon);
+            a.custom_icon = it->value("custom_icon", "");
+            a.text = it->value("text", a.text);
+            a.show_search = it->value("show_search", true);
+            a.show_settings_button = it->value("show_settings_button", true);
+            a.show_session_button = it->value("show_session_button", true);
+            a.columns = std::clamp(it->value("columns", 5), 3, 8);
+            a.multiline_labels = it->value("multiline_labels", false);
+        }
         if (auto it = bar.find("clock"); it != bar.end() && it->is_object()) {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);
             clock_format_horizontal_ = it->value("format_horizontal", clock_format_horizontal_);
@@ -235,6 +254,17 @@ void Config::load() {
             l.enable_web_search = it->value("enable_web_search", false);
             l.show_result_count = it->value("show_result_count", true);
             l.show_all_apps = it->value("show_all_apps", true);
+        }
+        if (auto it = j.find("session"); it != j.end() && it->is_object()) {
+            auto& s = session_;
+            if (it->value("mode", "dropdown") == std::string("fullscreen"))
+                s.mode = Session::Mode::Fullscreen;
+            if (it->value("fullscreen_layout", "single_row") == std::string("grid"))
+                s.fullscreen_layout = Session::Layout::Grid;
+            if (auto items = it->find("items"); items != it->end() && items->is_object())
+                for (const auto& [key, v] : items->items())
+                    if (v.is_boolean())
+                        s.items[key] = v.get<bool>();
         }
         if (auto it = bar.find("layout"); it != bar.end() && it->is_object()) {
             constexpr const char* kSectionKeys[] = {"left", "center", "right"};

@@ -47,17 +47,17 @@ meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
 data/style.css                 default theme entry — @imports data/css/* (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
-                               notifications (GTK resolves the imports inside
-                               the resource bundle)
+                               notifications, launcher, app_menu, session (GTK
+                               resolves the imports inside the resource bundle)
 data/hypr-shell.gresource.xml
 data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
 data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
-src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, workspaces,
-                               active_window, clock, network, volume, battery,
-                               bluetooth, notifications)
+src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
+                               workspaces, active_window, clock, network, volume,
+                               battery, bluetooth, notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -75,8 +75,16 @@ src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
 src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
 src/bar/notification_ui.{hpp,cpp}       shared icon/relative-time helpers
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
+src/bar/app_menu_panel.{hpp,cpp}        app menu popover (search + settings/session buttons + app grid)
 src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps
 src/services/math_eval.{hpp,cpp}        launcher calculator (AdvancedMath.js port)
+src/services/session_actions.hpp        session action table (key/label/glyph/command/defaults),
+                                        shared with the settings app
+src/services/session.{hpp,cpp}          enabled session actions (session.items) + run,
+                                        detached spawn / open-settings helpers
+src/bar/session_menu.{hpp,cpp}          dropdown session list (bar module popover + app menu button)
+src/bar/session_window.{hpp,cpp}        fullscreen session menu (overlay layer window)
+src/services/app_menu_icons.hpp         app menu icon presets, shared with the settings app
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 docs/                                   long-form developer docs (start at docs/README.md)
 ```
@@ -192,7 +200,14 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       applications + calculator always on, settings/session/web search behind
       `launcher.*` toggles, bar search-icon module, `hypr-shell --launcher`
       for keybinds, pin-to-store; grid view, categories, clipboard/emoji/
-      windows providers, ">" command mode and usage tracking were NOT ported)*
+      windows providers, ">" command mode and usage tracking were NOT ported;
+      2026-09-03: the `app_menu` bar module landed — Noctalia's Launcher bar
+      widget (rocket / preset / distro / custom icon, icon+text, text) opening
+      a grid app menu popover with search, settings and session buttons;
+      `hypr-shell --app-menu` toggles it for keybinds; 2026-09-03: the
+      `session` bar module + shared session menu (dropdown or fullscreen
+      large buttons, single row / grid, per-action visibility) with its own
+      settings page and `hypr-shell --session`)*
 
 ## Decision log
 
@@ -550,6 +565,91 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   list also gained a persistent scrollbar (set_overlay_scrolling(false) —
   the default overlay one only appears while scrolling), slim-thumb styled
   in launcher.css.
+- 2026-09-03 — App menu module (`bar/modules/app_menu`, `bar/app_menu_panel`,
+  module key `app_menu`, default left section, enabled by default like every
+  new module — disable the search-icon `launcher` module if only one is
+  wanted). Bar button = Noctalia's Launcher widget: `bar.app_menu.display`
+  icon/icon_text/text, `text` (default "Apps"), `icon` = a preset key from
+  `services/app_menu_icons.hpp` (curated tabler glyphs, rocket default —
+  Noctalia's full icon picker was NOT ported), `"distro"` (the LOGO= icon
+  name from /etc/os-release, resolved by the icon theme — Noctalia's
+  useDistroLogo without its path probing) or `"custom"` + `custom_icon`
+  (themed icon name or image path via g_icon_new_for_string; Noctalia's
+  customIconPath; no colorization shader). The header is shared with
+  hypr-shell-settings so the dropdown and renderer never drift. Panel: a bar
+  popover (fixed 480 wide; the grid area's height is measured per open —
+  `grid_.measure()` works before mapping — for up to 5 rows and then held in a
+  Gtk::Stack so the "no matches" swap can't shrink it: popover-resize gotcha)
+  — Noctalia's launcher grid view rather than its overlay: search entry, then optional round buttons
+  (`show_settings_button` → hypr-shell-settings, `show_session_button` →
+  a **nested Gtk::Popover dropdown** via Gtk::MenuButton listing lock/
+  suspend/reboot/logout/shutdown; nested popovers work fine on Hyprland),
+  then a Gtk::Grid of **fixed-size tiles** (user request: a two-result row
+  must not stretch to fill the panel): width = (480 − gaps) / `columns`
+  (3..8, default 5) — the scrollbar's measured width is subtracted only when
+  the WHOLE app list overflows the 5-row area (filtering never adds rows),
+  and then the scrollbar policy is ALWAYS for that open so tiles never
+  shift; otherwise no scrollbar and no right gap (user request); height measured from
+  a probe tile holding one or two lines of text (`multiline_labels`, default
+  off = Noctalia's single line; on = wrap to 2 lines, ellipsized), attached
+  to the grid, measured, removed — CSS padding/font apply to in-tree widgets
+  even before mapping. Icon size from a per-column table; tile labels use
+  max_width_chars(1)+hexpand so long names never widen a tile; names are
+  normal weight (user request). Empty query lists every app alphabetically;
+  otherwise fuzzy_score over name/description/exec like the launcher,
+  unlimited; more than 5 rows scroll with the launcher's thin scrollbar. Keys on a CAPTURE controller: Left/Right/Tab step,
+  Up/Down move rows (wrapping), Home/End/PgUp/PgDn, Enter launches, Esc
+  closes — ignored while the session dropdown is open so GTK navigates it.
+  Actions run from an idle callback after the popover closes. The session
+  table moved to `services/session.{hpp,cpp}` (with `spawn_detached` /
+  `open_settings`) so the launcher's session provider and the dropdown share
+  one list. Settings: "App menu" module row + cog subpage (display, label,
+  icon dropdown + custom entry, columns, search bar (`show_search` — off
+  hides the entry, right-aligns the buttons and makes the panel itself the
+  focus target so arrows/Enter keep working), two-line names, the two
+  buttons). Keybinds: `hypr-shell --app-menu` (GApplication action "app-menu", same
+  handle-local-options forwarding as `--launcher`) toggles the popover in
+  the running instance — an auto-hidden bar peeks first; documented on the
+  subpage as `bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu` (release
+  bind = the bare Super key). Popup grabs work without any prior input on
+  the bar (the dev hooks prove it), so a keybind-opened popover gets
+  keyboard focus. Dev hook: HS_OPEN_APP_MENU=1 (=2 also pops the session
+  dropdown). Not ported: Noctalia's list/grid view toggle (grid
+  only, per user), categories, pin actions on tiles, icon colorization.
+- 2026-09-03 — Session menu (Noctalia's SessionMenu widget + panel). One
+  shared backend: `services/session_actions.hpp` is a header-only table
+  (key, label, description, glyph, keywords, `sh -c` command, destructive,
+  default_on) of Noctalia's 8 actions — lock, suspend, hibernate, reboot,
+  logout, shutdown, reboot to UEFI (`systemctl reboot --firmware-setup`),
+  userspace reboot (`systemctl soft-reboot`) — consumed by the shell AND
+  hypr-shell-settings so the settings page lists exactly the menu entries.
+  Defaults deviate from Noctalia (which enables everything): hibernate /
+  UEFI / soft-reboot start OFF, matching the user's own Noctalia config and
+  the five entries the menus had before; `session.items.<key>` toggles them
+  and applies to the bar module, the app menu's power button AND the
+  launcher's session search. Top-level `session` config: `mode` dropdown
+  (default) / fullscreen (Noctalia's largeButtonsStyle), `fullscreen_layout`
+  single_row (default) / grid. Dropdown = `SessionMenuList` (self-rebuilding
+  glyph+label buttons, shutdown tinted mError) in a popover — the bar
+  `session` module (power glyph in mError like the user's Noctalia widget;
+  default right section after the clock) anchors it to its icon label; the
+  app menu's power button became a plain Gtk::Button + parented Popover
+  (was a MenuButton) so it can branch on the mode at click time. Fullscreen
+  = `SessionWindow`, an overlay layer window like the launcher (exclusive
+  keyboard, 0.6-alpha dimmer, click-outside closes) with 200px buttons in
+  one row or Noctalia's grid (min(3, ceil(sqrt(n))) columns), nothing
+  selected until keyboard/mouse (Noctalia), navigateGrid port (row wrap,
+  column clamp), digits 1-9 pick an entry (Noctalia's default keybinds),
+  Space/Enter activate. The App owns it and exposes action "session" /
+  `hypr-shell --session` which dispatches on the mode: fullscreen → toggle
+  the window, dropdown → the bar module's popover (bar peeks if
+  auto-hidden). Settings: "Session menu" sidebar page (Bar / Launcher /
+  Session menu / Notifications; HS_SETTINGS_PAGE=session_page) with Style,
+  Fullscreen layout (hidden unless fullscreen) and one switch per action;
+  the Session bar module row has no cog (everything is on that page). Dev
+  hook: HS_OPEN_SESSION=1 activates the action after startup. NOT ported:
+  Noctalia's confirmation countdown, per-entry custom commands/keybinds,
+  header/close button, the panel-position setting, hover scale animation.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls
