@@ -167,3 +167,59 @@ window.bar.right .battery .icon {
 .vpn .color-secondary { color: #c5c4dd; }
 .vpn .color-tertiary { color: #e8b9d5; }
 .vpn .color-error { color: #ffb4ab; }
+
+/* taskbar (Noctalia's Taskbar widget) — app icons with a 4px indicator bar
+ * under each: mPrimary when focused, mHover while hovered. No capsule
+ * background (per user). */
+.taskbar {
+  padding: 0 6px;
+}
+
+.taskbar-capsule {
+  background: transparent;
+  min-height: 25px; /* Noctalia's default-density capsule */
+}
+
+window.bar.left .taskbar-capsule,
+window.bar.right .taskbar-capsule {
+  padding: 6px 0;
+  min-height: 0;
+}
+
+.taskbar-indicator {
+  border-radius: 2px;
+  background: transparent;
+  transition: background 150ms cubic-bezier(0.33, 1, 0.68, 1); /* OutCubic */
+}
+
+.taskbar-item.hovered .taskbar-indicator {
+  background: #e8b9d5; /* mHover */
+}
+
+.taskbar-item.focused .taskbar-indicator {
+  background: #bfc2ff; /* mPrimary */
+}
+
+/* bar.taskbar.show_title: icon + ellipsized title on a pill that lights up
+ * in mHover while hovered or focused */
+.taskbar-item.with-title {
+  border-radius: 16px;
+  padding: 0 9px;
+  min-height: 25px;
+  transition: background 150ms ease-in-out;
+}
+
+.taskbar-item.with-title.hovered,
+.taskbar-item.with-title.focused {
+  background: #e8b9d5; /* mHover */
+}
+
+.taskbar-title {
+  font-size: 12px;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.taskbar-item.with-title.hovered .taskbar-title,
+.taskbar-item.with-title.focused .taskbar-title {
+  color: #46263b; /* mOnHover */
+}

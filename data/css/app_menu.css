@@ -118,3 +118,42 @@ button.am-icon-btn.active .am-btn-glyph {
 .app-menu-panel scrollbar slider:active {
   background: alpha(#e5e1e6, 0.4);
 }
+
+/* right-click context menu on a tile: Pin to / Unpin from taskbar
+ * (session-dropdown look: mSurface card, mOutline border, mHover row) */
+popover.am-context-popover > contents {
+  background: #131316; /* mSurface */
+  border-radius: 12px;
+  border: 1px solid #46464f; /* mOutline */
+  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  padding: 4px;
+  font-family: "Fira Sans";
+}
+
+button.am-context-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+button.am-context-item:hover {
+  background: #e8b9d5; /* mHover */
+}
+
+.am-context-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 15px;
+  color: #e5e1e6; /* mOnSurface */
+}
+
+.am-context-label {
+  font-size: 13px;
+  color: #e5e1e6;
+}
+
+button.am-context-item:hover .am-context-glyph,
+button.am-context-item:hover .am-context-label {
+  color: #46263b; /* mOnHover */
+}

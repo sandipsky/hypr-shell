@@ -76,7 +76,9 @@ is missing.
 | Module | Base | Backend | Notes |
 |--------|------|---------|-------|
 | `launcher` | `Gtk::Box` + icon label | none | Search glyph; click activates the app's `launcher` GAction. Default section: left. |
+| `app_menu` | `Gtk::Box` + icon / text label | Apps | Noctalia's Launcher bar widget (`bar.app_menu.display` / `icon` / `text`); click toggles `AppMenuPanel`, also via `hypr-shell --app-menu`. Default section: left. |
 | `workspaces` | `Gtk::Box` of buttons | Hyprland | Rebuilds from `j/workspaces` + `j/activeworkspace` (serial-guarded). Scroll steps locally; fixed mode shows 1..N with placeholders. |
+| `taskbar` | `Gtk::Box` → capsule → items box of `Gtk::Overlay`s | Hyprland + Apps | Noctalia's Taskbar: running windows (`j/clients`, filtered to the bar's monitor / active workspaces) merged with the pinned apps in pinned order; focus/hover indicator, wheel cycles focus, drag reorders, hide modes, optional titles; no capsule background and no right-click menu (per user). |
 | `active_window` | `Gtk::Box` (icon + label + rotated drawing area) | Hyprland | `activewindow` event (`class,title`). Icon via `Gio::DesktopAppInfo`. Vertical bars draw the title rotated. |
 | `network` | `Gtk::Box` + icon label | NetworkManager | Glyph from connectivity + strength; ethernet wins. Click → `NetworkPanel`. |
 | `bluetooth` | `Gtk::Box` + icon label | Bluez | off / on / connected glyphs, tooltip = first connected device. Click → `BluetoothPanel`. |
@@ -92,6 +94,7 @@ is missing.
 | File | Opened by | Content |
 |------|-----------|---------|
 | `control_center_panel.{hpp,cpp}` (~560 lines) | control_center | Noctalia's ControlCenterPanel: profile row (avatar, name, uptime every 60 s, settings + session buttons), then the cards: audio (Pulse), brightness (Brightness), media (Mpris; `MediaBackground` draws blurred art with a GSK blur node under a 65% scrim), system monitor (`CircleStat` cairo gauges, 240° arc, 300ms eased). Fixed card heights 60 / 60 / 220 / 84, cards toggled by `bar.control_center.*`. |
+| `app_menu_panel.{hpp,cpp}` | app_menu | Noctalia's launcher grid as a 480px bar popover: search entry, settings + session buttons, fixed-size app tiles (`columns`, one or two-line names), keyboard navigation. Right-clicking a tile opens a one-entry popover: Pin to / Unpin from taskbar (`Apps::toggle_pinned`). |
 | `vpn_panel.{hpp,cpp}` | vpn | Noctalia's VPNPanel: header (shield, VPN, import button), one card per profile (switch + state text + delete with inline confirm) or the empty state with an import button; `Gtk::FileDialog` for `.conf` / `.ovpn`. Fixed 440x500. |
 | `avatar.{hpp,cpp}` | lock surface, control center | `load_avatar_texture(path, size)`: centre-cropped square texture, bundled `avatar-fallback.svg` when the path is empty/unreadable. |
 | `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
@@ -108,7 +111,7 @@ is missing.
 | `lock_surface.{hpp,cpp}` (~600 lines) | `LockScreen` | One monitor's lock UI: `LockBackground`, cover stage (clock/date), login stage (avatar, name, password dots), info/error/countdown pills, battery + power button, session menu with 10s countdown. Hidden `Gtk::Text` receives typing. |
 | `wallpaper_window.{hpp,cpp}` (~560 lines) | `App` (`WallpaperManager`) | The desktop wallpaper: `WallpaperTextureCache` (async decode at monitor pixel size per fill mode), `WallpaperView` (custom widget: fill modes as texture placement, transitions fade/wipe/disc/stripes as GSK cross-fade + mask nodes, no shaders), `WallpaperWindow` (background layer, one per monitor), `WallpaperManager` (monitor hotplug, config, `HS_WALLPAPER_DUMP` frame dumps). |
 | `lock_background.{hpp,cpp}` | `LockSurface` | Custom widget: wallpaper decoded async at monitor pixel size, cover-scaled, GSK-blurred once into a cached texture. |
-| `launcher_window.{hpp,cpp}` (~680 lines) | `App` via GAction | Fullscreen overlay: dim backdrop, centred panel with search entry, result list, footer. Providers: apps, calculator, settings search, session commands, web search. Keyboard navigation, hover-after-move selection, pin buttons, Spotlight-style grow animation when `show_all_apps` is off. |
+| `launcher_window.{hpp,cpp}` (~680 lines) | `App` via GAction | Fullscreen overlay: dim backdrop, centred panel with search entry, result list, footer. Providers: apps, calculator, settings search, session commands, web search. Keyboard navigation, hover-after-move selection, Spotlight-style grow animation when `show_all_apps` is off (the pin buttons were removed — pinning lives in the app menu). |
 
 CSS prefixes: `bp-*` (battery, reused as the generic card style), `ap-*`,
 `np-*`, `bt-*`, `cal-*`, `notif-*`, `launcher-*`, `lock-*`.
@@ -127,7 +130,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `network_manager` | `org.freedesktop.NetworkManager` + `nmcli` | Proxy chain root → ActiveConnection → AccessPoint, serial-guarded. Wi-Fi actions via `Gio::Subprocess`. Pending-target guard for the radio switch. |
 | `bluez` (~420 lines) | `org.bluez` + `bluetoothctl` + `rfkill` | `Gio::DBus::ObjectManagerClient`; every change → `rebuild()` + emit. Discovery, pair (bluetoothctl), trust+connect, disconnect, auto-connect on power-on edge. |
 | `notifications` (~950 lines) | owns `org.freedesktop.Notifications` on the session bus | Serves Notify/CloseNotification/GetCapabilities/GetServerInformation; history (100, persisted to `~/.cache`), image-data → PNG cache, Pango sanitising, rules, popups with countdown timer, sounds via `paplay`, DND. |
-| `apps` | desktop entries via `Gio::AppInfo` | Index + `AppInfoMonitor` reload, dedupe, `fuzzy_score()`, launch, pinned apps persisted to `~/.cache/hypr-shell/pinned_apps.json`. |
+| `apps` | desktop entries via `Gio::AppInfo` | Index + `AppInfoMonitor` reload, dedupe, `fuzzy_score()`, launch, pinned apps persisted to `~/.cache/hypr-shell/pinned_apps.json` (`pinned()` / `set_pinned()` for the taskbar's order; ids compared via `normalize_app_id()`), `lookup_for_class()` = Noctalia's ThemeIcons window-class → entry heuristics (cached). |
 | `math_eval` | nothing (pure) | `is_math_expression`, `evaluate` (recursive descent, functions, constants), `format_result`. Port of Noctalia's AdvancedMath.js. |
 | `pulse` | pipewire-pulse via libpulse | `pa_glib_mainloop`; default sink and source; by-name setters. |
 | `brightness` | sysfs + logind `SetBrightness` | `Gio::FileMonitor` on the sysfs file (userspace writes do raise inotify events) + explicit `refresh()`; debounced DBus write. |

@@ -42,7 +42,8 @@ public:
     void focus_workspace(int id);
     void focus_workspace(const std::string& selector);
 
-    // Focus a window by its j/clients address ("0x…").
+    // Focus a window by its j/clients address ("0x…") and raise it (Noctalia's
+    // focusWindow: focus + alter_zorder top).
     void focus_window(const std::string& address);
 
     // Turn every monitor's DPMS on or off (Noctalia's turnOn/OffMonitors).

@@ -11,6 +11,7 @@
 #include "bar/modules/network.hpp"
 #include "bar/modules/notifications.hpp"
 #include "bar/modules/session.hpp"
+#include "bar/modules/taskbar.hpp"
 #include "bar/modules/volume.hpp"
 #include "bar/modules/workspaces.hpp"
 
@@ -48,6 +49,7 @@ private:
     Launcher launcher_;
     AppMenu app_menu_;
     Workspaces workspaces_;
+    Taskbar taskbar_;
     ActiveWindow active_window_;
     Network network_;
     Bluetooth bluetooth_;

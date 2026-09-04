@@ -185,6 +185,30 @@ Cards shown in the battery panel (each also needs its backend).
 |-----|------|---------|---------|
 | `auto_connect` | bool | `false` | On the adapter's power-on edge (startup included), connect every paired device, staggered 500 ms, starting 1.5 s after the edge. Global, not per device. |
 
+## `bar.taskbar`
+
+Noctalia's Taskbar widget: one icon per running window plus the pinned apps
+(`~/.cache/hypr-shell/pinned_apps.json`). Left click
+focuses (or launches a pinned app), wheel cycles focus, dragging reorders
+(the pinned order is saved). Pinning happens in the app menu (right-click a
+tile → "Pin to taskbar" / "Unpin from taskbar"); the icons sit
+directly on the bar without Noctalia's capsule background.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `hide_mode` | `visible` / `hidden` / `transparent` | `hidden` | Behaviour with no matching windows: keep showing, hide, or keep the space at opacity 0. |
+| `only_same_monitor` | bool | `true` | Only windows on the bar's monitor. |
+| `only_active_workspaces` | bool | `true` | Only windows on a monitor's active (or active special) workspace. |
+| `show_pinned_apps` | bool | `true` | Show pinned apps that are not running (or filtered out) as launchers. |
+| `show_title` | bool | `false` | Icon + window title per running app (horizontal bars only). Config-only. |
+| `title_width` | int px | `120` | Title label width. Config-only. |
+| `smart_width` | bool | `true` | Shrink titles so the widget fits `max_width_percent` of the screen (min 20px). Config-only. |
+| `max_width_percent` | int 10..100 | `40` | Screen share for `smart_width`. Config-only. |
+| `icon_scale` | 0.5..1 | `0.8` | Icon size as a share of the 25px capsule (odd pixel sizes, like Noctalia). Config-only. |
+| `item_gap` | int px 0..24 | `6` | Space between items (Noctalia's default is 2). Config-only. |
+
+The settings subpage exposes the first four rows only (per user).
+
 ## `bar.vpn`
 
 The VPN pill (Noctalia's VPN bar widget). Shield icon, shield-lock while a
@@ -266,7 +290,9 @@ Application search and the calculator are always on.
 | `show_result_count` | bool | `true` | Footer under the list. |
 | `show_all_apps` | bool | `true` | `true`: fixed centred panel listing all apps when the query is empty. `false`: Spotlight mode, content-sized panel that grows downward with results. |
 
-Pinned apps are runtime state in `~/.cache/hypr-shell/pinned_apps.json`.
+Pinned apps (`~/.cache/hypr-shell/pinned_apps.json`) are set from the app
+menu's right-click menu and shown by the `taskbar` module, which also
+reorders them by drag. The launcher has no pin button any more.
 
 ## `lock_screen` (top level)
 

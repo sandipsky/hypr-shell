@@ -86,15 +86,19 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     panel_->signal_request_close().connect([this] { popover_.popdown(); });
 
     // dev hook: HS_OPEN_APP_MENU=1 pops the panel shortly after startup;
-    // =2 also opens its session dropdown
+    // =2 also opens its session dropdown, =3 the pin menu on the first tile
     if (const char* hook = g_getenv("HS_OPEN_APP_MENU")) {
         const bool session = g_strcmp0(hook, "2") == 0;
+        const bool pin = g_strcmp0(hook, "3") == 0;
         Glib::signal_timeout().connect_once(
-            [this, session] {
+            [this, session, pin] {
                 open();
                 if (session)
                     Glib::signal_timeout().connect_once(
                         [this] { panel_->show_session_menu(); }, 400);
+                if (pin)
+                    Glib::signal_timeout().connect_once(
+                        [this] { panel_->open_pin_menu(0); }, 400);
             },
             800);
     }

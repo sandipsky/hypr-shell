@@ -18,8 +18,6 @@ namespace {
 constexpr const char* kIconCalculator = "\uEB80";
 constexpr const char* kIconSettings = "\uEB20";
 constexpr const char* kIconWorld = "\uEB54";
-constexpr const char* kIconPin = "\uEC9C";
-constexpr const char* kIconUnpin = "\uED5F"; // pinned-off
 
 // Noctalia list metrics (default density): 36px badge, 60px entry.
 constexpr int kIconSize = 36;
@@ -495,9 +493,7 @@ void LauncherWindow::rebuild_rows() {
     while (auto* child = list_.get_first_child())
         list_.remove(*child);
     rows_.clear();
-    pin_buttons_.clear();
 
-    auto& apps = Apps::get();
     for (std::size_t i = 0; i < results_.size(); ++i) {
         const auto& result = results_[i];
 
@@ -536,30 +532,6 @@ void LauncherWindow::rebuild_rows() {
         }
         row->append(*text);
 
-        // pin action for applications, shown on the selected row (Noctalia's
-        // getItemActions). Pins are stored only — the future taskbar uses them.
-        Gtk::Button* pin_button = nullptr;
-        if (!result.app_id.empty()) {
-            pin_button = Gtk::make_managed<Gtk::Button>();
-            pin_button->add_css_class("launcher-pin");
-            pin_button->set_valign(Gtk::Align::CENTER);
-            pin_button->set_visible(false);
-            auto* pin_glyph = Gtk::make_managed<Gtk::Label>(
-                apps.is_pinned(result.app_id) ? kIconUnpin : kIconPin);
-            pin_glyph->add_css_class("launcher-pin-glyph");
-            pin_button->set_child(*pin_glyph);
-            pin_button->set_tooltip_text(apps.is_pinned(result.app_id) ? "Unpin"
-                                                                       : "Pin");
-            const std::string app_id = result.app_id;
-            pin_button->signal_clicked().connect([pin_button, pin_glyph, app_id] {
-                auto& a = Apps::get();
-                a.toggle_pinned(app_id);
-                pin_glyph->set_text(a.is_pinned(app_id) ? kIconUnpin : kIconPin);
-                pin_button->set_tooltip_text(a.is_pinned(app_id) ? "Unpin" : "Pin");
-            });
-            row->append(*pin_button);
-        }
-
         const int index = static_cast<int>(i);
         auto click = Gtk::GestureClick::create();
         click->signal_released().connect([this, index](int, double, double) {
@@ -576,7 +548,6 @@ void LauncherWindow::rebuild_rows() {
 
         list_.append(*row);
         rows_.push_back(row);
-        pin_buttons_.push_back(pin_button);
     }
 
     if (!rows_.empty())
@@ -591,14 +562,10 @@ void LauncherWindow::select(int index, bool scroll_into_view) {
     const auto old = static_cast<std::size_t>(selected_);
     if (old < rows_.size()) {
         rows_[old]->remove_css_class("selected");
-        if (pin_buttons_[old])
-            pin_buttons_[old]->set_visible(false);
     }
     selected_ = index;
     auto* row = rows_[static_cast<std::size_t>(index)];
     row->add_css_class("selected");
-    if (auto* pin = pin_buttons_[static_cast<std::size_t>(index)])
-        pin->set_visible(true);
 
     if (!scroll_into_view)
         return;

@@ -17,6 +17,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"launcher", Config::BarSection::Left},
     {"app_menu", Config::BarSection::Left},
     {"workspaces", Config::BarSection::Left},
+    {"taskbar", Config::BarSection::Left},
     {"active_window", Config::BarSection::Center},
     {"network", Config::BarSection::Right},
     {"bluetooth", Config::BarSection::Right},
@@ -78,6 +79,7 @@ void Config::load() {
     workspaces_scroll_wrap_ = true;
     bt_auto_connect_ = false;
     vpn_ = Vpn{};
+    taskbar_ = Taskbar{};
     control_center_ = ControlCenter{};
     notif_show_badge_ = true;
     notif_hide_zero_ = false;
@@ -195,6 +197,21 @@ void Config::load() {
             };
             vpn_.icon_color = color("icon_color");
             vpn_.text_color = color("text_color");
+        }
+        if (auto it = bar.find("taskbar"); it != bar.end() && it->is_object()) {
+            const std::string hide = it->value("hide_mode", "hidden");
+            taskbar_.hide_mode = hide == "visible"       ? Taskbar::HideMode::Visible
+                                 : hide == "transparent" ? Taskbar::HideMode::Transparent
+                                                         : Taskbar::HideMode::Hidden;
+            taskbar_.only_same_monitor = it->value("only_same_monitor", true);
+            taskbar_.only_active_workspaces = it->value("only_active_workspaces", true);
+            taskbar_.show_pinned_apps = it->value("show_pinned_apps", true);
+            taskbar_.show_title = it->value("show_title", false);
+            taskbar_.title_width = std::clamp(it->value("title_width", 120), 20, 600);
+            taskbar_.smart_width = it->value("smart_width", true);
+            taskbar_.max_width_percent = std::clamp(it->value("max_width_percent", 40), 10, 100);
+            taskbar_.icon_scale = std::clamp(it->value("icon_scale", 0.8), 0.5, 1.0);
+            taskbar_.item_gap = std::clamp(it->value("item_gap", 6), 0, 24);
         }
         if (auto it = bar.find("notifications"); it != bar.end() && it->is_object()) {
             notif_show_badge_ = it->value("show_unread_badge", true);

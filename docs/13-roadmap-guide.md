@@ -20,7 +20,7 @@ scaffold files for a later phase.
 | 4 Panels & OSD | calendar, battery panel, OSD (volume / mic / brightness / lock keys) | **control center** |
 | 5 Lock & idle | idle daemon (ext-idle-notify-v1, fade grace period), lock screen (ext-session-lock + PAM, Noctalia's cover/login UI, background + blur settings) | **idle inhibitor DBus API (`org.freedesktop.ScreenSaver`), per-monitor lock wallpaper/monitor selection** |
 | 6 Settings app | sidebar split view (Bar / Launcher / Notifications), module subpages | **full option coverage, search, the pages in todo.txt** |
-| 7 Extras | app launcher (list view, pins stored) | launcher grid view, taskbar, wallpaper, screenshots, systemd units |
+| 7 Extras | app launcher (list view), app menu (grid, right-click pin menu), taskbar, wallpaper, night light | launcher grid view, screenshots, systemd units |
 
 ## Phase 1 — per-monitor bars
 
@@ -126,10 +126,10 @@ pages the user listed in `todo.txt`:
   session dropdown): all in `todo.txt`. The list-view code in
   `launcher_window.cpp` is provider-agnostic; the grid is a second row
   renderer plus a `Gtk::FlowBox` or `Gtk::GridView`.
-- **Taskbar module**: the consumer of the launcher's pinned apps
-  (`Apps::is_pinned`, `~/.cache/hypr-shell/pinned_apps.json`) plus running
-  windows from `j/clients` grouped by class; click focuses via
-  `Hyprland::focus_window`.
+- **Taskbar module**: landed 2026-09-04 (`bar/modules/taskbar`). Left for
+  later: per-monitor filtering once per-monitor bars exist (today the single
+  bar's monitor is used), Noctalia's drag shift animation, capsule clipping
+  for `smart_width` without titles.
 - **Wallpaper** via `hyprpaper`/`swww` IPC, **screenshot** helper wrapping
   `grim`/`slurp`, **systemd user unit** as an alternative to `exec-once`.
 

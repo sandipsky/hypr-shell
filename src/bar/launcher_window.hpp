@@ -62,7 +62,6 @@ private:
 
     std::vector<Result> results_;
     std::vector<Gtk::Widget*> rows_;
-    std::vector<Gtk::Button*> pin_buttons_; // per row; null when not pinnable
     int selected_ = 0;
 
     // screen-derived panel metrics (defaults until the first allocation)

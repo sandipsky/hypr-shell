@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <regex>
+#include <string_view>
 
 using json = nlohmann::json;
 
@@ -59,6 +61,7 @@ Apps::Apps() {
 
 void Apps::reload() {
     entries_.clear();
+    lookup_cache_.clear();
 
     // Noctalia's duplicate handling: same desktop id with the same executable
     // is a true duplicate (skip), a different executable is a variant (keep).
@@ -82,8 +85,12 @@ void Apps::reload() {
         seen[entry.id] = entry.exec_name;
 
         auto desktop = std::dynamic_pointer_cast<Gio::DesktopAppInfo>(info);
-        if (desktop)
+        if (desktop) {
             entry.description = desktop->get_generic_name();
+            entry.wm_class = desktop->get_startup_wm_class();
+            if (desktop->has_key("Icon"))
+                entry.icon_name = desktop->get_string("Icon");
+        }
         if (entry.description.empty())
             entry.description = info->get_description();
         entry.icon = info->get_icon();
@@ -101,15 +108,15 @@ void Apps::launch(const Entry& entry) {
 }
 
 bool Apps::is_pinned(const std::string& id) const {
-    const std::string id_lc = lowercase(id);
+    const std::string key = normalize_app_id(id);
     return std::any_of(pinned_.begin(), pinned_.end(),
-                       [&](const std::string& p) { return lowercase(p) == id_lc; });
+                       [&](const std::string& p) { return normalize_app_id(p) == key; });
 }
 
 void Apps::toggle_pinned(const std::string& id) {
-    const std::string id_lc = lowercase(id);
+    const std::string key = normalize_app_id(id);
     auto it = std::find_if(pinned_.begin(), pinned_.end(), [&](const std::string& p) {
-        return lowercase(p) == id_lc;
+        return normalize_app_id(p) == key;
     });
     if (it != pinned_.end())
         pinned_.erase(it);
@@ -117,6 +124,186 @@ void Apps::toggle_pinned(const std::string& id) {
         pinned_.push_back(id);
     save_pins();
     changed_.emit();
+}
+
+void Apps::set_pinned(std::vector<std::string> ids) {
+    if (ids == pinned_)
+        return;
+    pinned_ = std::move(ids);
+    save_pins();
+    changed_.emit();
+}
+
+const Apps::Entry* Apps::find_by_id(const std::string& id) const {
+    const std::string key = normalize_app_id(id);
+    if (key.empty())
+        return nullptr;
+    for (const auto& entry : entries_)
+        if (normalize_app_id(entry.id) == key)
+            return &entry;
+    return nullptr;
+}
+
+// -- window class → desktop entry (Noctalia's ThemeIcons lookup chain) --------
+
+namespace {
+
+// Noctalia's manual overrides for tricky apps (ThemeIcons.substitutions)
+const std::map<std::string, std::string> kSubstitutions = {
+    {"code-url-handler", "visual-studio-code"},
+    {"Code", "visual-studio-code"},
+    {"gnome-tweaks", "org.gnome.tweaks"},
+    {"pavucontrol-qt", "pavucontrol"},
+    {"wps", "wps-office2019-kprometheus"},
+    {"wpsoffice", "wps-office2019-kprometheus"},
+    {"footclient", "foot"},
+};
+
+// ThemeIcons.regexSubstitutions (ECMAScript regex syntax, like QML's)
+struct RegexSubstitution {
+    std::regex regex;
+    const char* replace;
+};
+const std::vector<RegexSubstitution>& regex_substitutions() {
+    static const std::vector<RegexSubstitution> subs = {
+        {std::regex("^steam_app_(\\d+)$"), "steam_icon_$1"},
+        {std::regex("Minecraft.*"), "minecraft-launcher"},
+        {std::regex(".*polkit.*"), "system-lock-screen"},
+        {std::regex("gcr.prompter"), "system-lock-screen"},
+    };
+    return subs;
+}
+
+std::string strip_separators(const std::string& text) {
+    std::string out;
+    for (char c : lowercase(text))
+        if (c != '.' && c != '-' && c != '_')
+            out += c;
+    return out;
+}
+
+std::string reverse_domain_tail(const std::string& text) {
+    const auto dot = text.rfind('.');
+    return dot == std::string::npos ? text : text.substr(dot + 1);
+}
+
+} // namespace
+
+std::string normalize_app_id(const std::string& id) {
+    std::string out = id;
+    const auto begin = out.find_first_not_of(" \t\n\r");
+    if (begin == std::string::npos)
+        return "";
+    const auto end = out.find_last_not_of(" \t\n\r");
+    out = lowercase(out.substr(begin, end - begin + 1));
+    constexpr std::string_view kSuffix = ".desktop";
+    if (out.size() > kSuffix.size() &&
+        out.compare(out.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0)
+        out.erase(out.size() - kSuffix.size());
+    return out;
+}
+
+const Apps::Entry* Apps::lookup_for_class(const std::string& app_id) {
+    if (app_id.empty())
+        return nullptr;
+    if (auto it = lookup_cache_.find(app_id); it != lookup_cache_.end())
+        return it->second;
+    const Entry* entry = find_app_entry(app_id, 0);
+    lookup_cache_[app_id] = entry;
+    return entry;
+}
+
+const Apps::Entry* Apps::find_app_entry(const std::string& str, int depth) {
+    if (str.empty() || depth > 4)
+        return nullptr;
+
+    // checkHeuristic — Quickshell's DesktopEntries.heuristicLookup: the id
+    // itself, then StartupWMClass, case-insensitively
+    if (const Entry* e = find_by_id(str))
+        return e;
+    {
+        const std::string lc = lowercase(str);
+        for (const auto& entry : entries_)
+            if (!entry.wm_class.empty() && lowercase(entry.wm_class) == lc)
+                return &entry;
+    }
+
+    // checkSubstitutions
+    {
+        auto it = kSubstitutions.find(str);
+        if (it == kSubstitutions.end())
+            it = kSubstitutions.find(lowercase(str));
+        if (it != kSubstitutions.end() && it->second != str)
+            if (const Entry* e = find_app_entry(it->second, depth + 1))
+                return e;
+    }
+
+    // checkRegex
+    for (const auto& sub : regex_substitutions()) {
+        const std::string replaced = std::regex_replace(str, sub.regex, sub.replace);
+        if (replaced != str)
+            if (const Entry* e = find_app_entry(replaced, depth + 1))
+                return e;
+    }
+
+    // checkSimpleTransforms
+    {
+        const std::string lc = lowercase(str);
+        std::string hyphen_norm = lc, us_to_hyphen = lc, hyphen_to_us = lc;
+        std::replace_if(hyphen_norm.begin(), hyphen_norm.end(),
+                        [](unsigned char c) { return std::isspace(c); }, '-');
+        std::replace(us_to_hyphen.begin(), us_to_hyphen.end(), '_', '-');
+        std::replace(hyphen_to_us.begin(), hyphen_to_us.end(), '-', '_');
+        const std::string tail = reverse_domain_tail(str);
+        for (const auto& variant : {str, lc, tail, lowercase(tail), hyphen_norm,
+                                    us_to_hyphen, hyphen_to_us})
+            if (!variant.empty())
+                if (const Entry* e = find_by_id(variant))
+                    return e;
+    }
+
+    // checkFuzzySearch — ids first (with a -→_ retry), then icons, then names
+    {
+        const auto best = [this](const std::string& query,
+                                 std::string Entry::*field) -> const Entry* {
+            const std::string q = lowercase(query);
+            const Entry* found = nullptr;
+            double best_score = 0.0;
+            for (const auto& entry : entries_) {
+                // Noctalia's ids carry no ".desktop" — compare without it
+                const double score = fuzzy_score(
+                    q, field == &Entry::id ? normalize_app_id(entry.id) : entry.*field);
+                if (score > best_score) {
+                    best_score = score;
+                    found = &entry;
+                }
+            }
+            return found;
+        };
+        if (const Entry* e = best(str, &Entry::id))
+            return e;
+        std::string underscored = lowercase(str);
+        std::replace(underscored.begin(), underscored.end(), '-', '_');
+        if (underscored != str)
+            if (const Entry* e = best(underscored, &Entry::id))
+                return e;
+        if (const Entry* e = best(str, &Entry::icon_name))
+            return e;
+        if (const Entry* e = best(str, &Entry::name))
+            return e;
+    }
+
+    // checkCleanMatch — aggressive fallback: strip all separators
+    if (str.size() > 3) {
+        const std::string clean = strip_separators(str);
+        for (const auto& entry : entries_) {
+            const std::string clean_id = strip_separators(normalize_app_id(entry.id));
+            if (clean_id.find(clean) != std::string::npos ||
+                clean.find(clean_id) != std::string::npos)
+                return &entry;
+        }
+    }
+    return nullptr;
 }
 
 void Apps::load_pins() {

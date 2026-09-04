@@ -64,6 +64,24 @@ public:
     ActiveWindowEmpty active_window_empty_text() const { return aw_empty_; }
     bool active_window_show_icon() const { return aw_show_icon_; }
 
+    // bar.taskbar.* — Noctalia's Taskbar widget settings. The first five are
+    // on the settings subpage; the rest (titles, smart width, icon scale, gap)
+    // are config-only. Defaults are Noctalia's widget metadata.
+    struct Taskbar {
+        enum class HideMode { Visible, Hidden, Transparent };
+        HideMode hide_mode = HideMode::Hidden;
+        bool only_same_monitor = true;     // onlySameOutput
+        bool only_active_workspaces = true;
+        bool show_pinned_apps = true;
+        bool show_title = false;           // horizontal bars only
+        int title_width = 120;             // px
+        bool smart_width = true;           // cap the whole widget to max_width_percent
+        int max_width_percent = 40;        // of the screen width
+        double icon_scale = 0.8;           // of the 25px capsule
+        int item_gap = 6;                  // px between items (Noctalia: 2; user wants more)
+    };
+    const Taskbar& taskbar() const { return taskbar_; }
+
     // bar.battery.* — which cards the battery click panel shows (all default
     // on; each also needs its backend to be available)
     bool battery_show_power_profiles() const { return battery_show_profiles_; }
@@ -296,6 +314,7 @@ private:
     bool workspaces_scroll_wrap_ = true;
     bool bt_auto_connect_ = false;
     Vpn vpn_;
+    Taskbar taskbar_;
     ControlCenter control_center_;
     bool notif_show_badge_ = true;
     bool notif_hide_zero_ = false;

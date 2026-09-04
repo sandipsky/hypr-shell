@@ -37,6 +37,7 @@ constexpr ModuleInfo kModules[] = {
     {"launcher",      "Launcher",      "App launcher search button",  0},
     {"app_menu",      "App menu",      "Grid app menu with search",   0},
     {"workspaces",    "Workspaces",    "Hyprland workspace switcher", 0},
+    {"taskbar",       "Taskbar",       "Running and pinned apps",     0},
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
@@ -55,6 +56,7 @@ constexpr const char* kSectionTitles[] = {"Left section", "Center section", "Rig
 constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
 constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
+constexpr const char* kTbHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
@@ -151,6 +153,11 @@ struct Settings {
     AdwSwitchRow* cc_brightness = nullptr;
     AdwSwitchRow* cc_sysmon = nullptr;
 
+    // taskbar subpage (bar.taskbar): the four exposed options
+    AdwComboRow* tb_hide = nullptr; // Always visible / Hide when empty / Transparent when empty
+    AdwSwitchRow* tb_same_monitor = nullptr;
+    AdwSwitchRow* tb_active_workspaces = nullptr;
+    AdwSwitchRow* tb_pinned = nullptr;
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
     AdwEntryRow* am_text = nullptr;
@@ -372,6 +379,21 @@ void populate(Settings* s) {
         adw_switch_row_set_active(s->cc_sysmon, cc.value("show_sysmon", true));
         const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
         bt_auto = bt.value("auto_connect", false);
+    } catch (const json::exception&) {
+        // defaults
+    }
+
+    try {
+        const json tb = s->root.value("bar", json::object()).value("taskbar", json::object());
+        const std::string tb_hide = tb.value("hide_mode", "hidden");
+        adw_combo_row_set_selected(s->tb_hide, 1);
+        for (guint i = 0; i < 3; ++i)
+            if (tb_hide == kTbHideKeys[i])
+                adw_combo_row_set_selected(s->tb_hide, i);
+        adw_switch_row_set_active(s->tb_same_monitor, tb.value("only_same_monitor", true));
+        adw_switch_row_set_active(s->tb_active_workspaces,
+                                  tb.value("only_active_workspaces", true));
+        adw_switch_row_set_active(s->tb_pinned, tb.value("show_pinned_apps", true));
     } catch (const json::exception&) {
         // defaults
     }
@@ -787,6 +809,35 @@ void on_cc_toggled(GObject* row, GParamSpec*, gpointer data) {
     if (key == nullptr)
         return;
     control_center_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Taskbar subpage: bar.taskbar ---------------------------------------------
+
+json& taskbar_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["taskbar"].is_object())
+        bar["taskbar"] = json::object();
+    return bar["taskbar"];
+}
+
+void on_tb_hide_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->tb_hide);
+    taskbar_object(s)["hide_mode"] = kTbHideKeys[selected < 3 ? selected : 1];
+    save(s);
+}
+
+void on_tb_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const char* key = static_cast<const char*>(g_object_get_data(row, "config-key"));
+    if (key == nullptr)
+        return;
+    taskbar_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
 }
 
@@ -2501,6 +2552,50 @@ void on_activate(GtkApplication* app, gpointer) {
     }
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(cc_page), ADW_PREFERENCES_GROUP(cc_group));
 
+    // -- Taskbar subpage (Noctalia's TaskbarSettings, the four options kept) --
+    GtkWidget* tb_page = adw_preferences_page_new();
+    GtkWidget* tb_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(tb_group), "Taskbar");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(tb_group),
+                                          "Changes apply live to the running shell");
+    GtkWidget* tb_hide_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tb_hide_row), "Hiding mode");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(tb_hide_row),
+        "Controls how the widget behaves when there are no matching windows.");
+    const char* tb_hide_options[] = {"Always visible", "Hide when empty",
+                                     "Transparent when empty", nullptr};
+    GtkStringList* tb_hide_model = gtk_string_list_new(tb_hide_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(tb_hide_row), G_LIST_MODEL(tb_hide_model));
+    g_object_unref(tb_hide_model);
+    s->tb_hide = ADW_COMBO_ROW(tb_hide_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(tb_group), tb_hide_row);
+    struct TbRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** target;
+    };
+    const TbRow tb_rows[] = {
+        {"only_same_monitor", "Only from same monitor",
+         "Show only apps from the monitor where the bar is located.", &s->tb_same_monitor},
+        {"only_active_workspaces", "Only from active workspaces",
+         "Show only apps from active workspaces.", &s->tb_active_workspaces},
+        {"show_pinned_apps", "Show pinned apps",
+         "Show pinned apps from the dock in the taskbar.", &s->tb_pinned},
+    };
+    for (const auto& row : tb_rows) {
+        GtkWidget* sw = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sw), row.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(sw), row.subtitle);
+        g_object_set_data(G_OBJECT(sw), "config-key", const_cast<char*>(row.key));
+        *row.target = ADW_SWITCH_ROW(sw);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(tb_group), sw);
+        g_signal_connect(sw, "notify::active", G_CALLBACK(on_tb_toggled), s);
+    }
+    g_signal_connect(tb_hide_row, "notify::selected", G_CALLBACK(on_tb_hide_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(tb_page), ADW_PREFERENCES_GROUP(tb_group));
+
     // -- App menu subpage -------------------------------------------------------
     GtkWidget* am_page = adw_preferences_page_new();
     GtkWidget* am_button_group = adw_preferences_group_new();
@@ -3485,6 +3580,12 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
                             adw_navigation_page_new_with_tag(cc_view, "Control center", "control_center"));
 
+    GtkWidget* tb_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(tb_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(tb_view), tb_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(tb_view, "Taskbar", "taskbar"));
+
     GtkWidget* bat_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(bat_view), adw_header_bar_new());
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(bat_view), bat_page);
@@ -3558,6 +3659,18 @@ void on_activate(GtkApplication* app, gpointer) {
                      }),
                      nav);
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("control_center")]), cc_cog);
+
+    // cog on the Taskbar module row
+    GtkWidget* tb_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(tb_cog, "flat");
+    gtk_widget_set_valign(tb_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(tb_cog, "Taskbar settings");
+    g_signal_connect(tb_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "taskbar");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("taskbar")]), tb_cog);
 
     // cog on the Battery module row
     GtkWidget* bat_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");

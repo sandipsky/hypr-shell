@@ -14,6 +14,8 @@ namespace {
 // noctalia-tabler-icons glyphs (\u escapes — never literal PUA)
 constexpr const char* kIconSettings = "\uEB20";
 constexpr const char* kIconPower = "\uEB0D";
+constexpr const char* kIconPin = "\uEC9C";
+constexpr const char* kIconUnpin = "\uED5F"; // pinned-off
 
 // Fixed width; the grid area's height is fixed per open (popover-resize
 // gotcha: a mapped popover surface never resizes on Hyprland, and the grid
@@ -96,6 +98,30 @@ AppMenuPanel::AppMenuPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     header_.append(session_button_);
     append(header_);
 
+    // right-click context menu: pin / unpin the app on the taskbar
+    pin_button_.add_css_class("am-context-item");
+    auto* pin_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 9);
+    pin_glyph_.add_css_class("am-context-glyph");
+    pin_row->append(pin_glyph_);
+    pin_label_.add_css_class("am-context-label");
+    pin_label_.set_halign(Gtk::Align::START);
+    pin_label_.set_hexpand(true);
+    pin_row->append(pin_label_);
+    pin_button_.set_child(*pin_row);
+    pin_button_.signal_clicked().connect([this] {
+        if (pin_index_ >= 0 && pin_index_ < static_cast<int>(results_.size()))
+            Apps::get().toggle_pinned(results_[static_cast<std::size_t>(pin_index_)].id);
+        pin_popover_.popdown();
+    });
+    pin_popover_.set_child(pin_button_);
+    pin_popover_.set_has_arrow(false);
+    pin_popover_.set_position(Gtk::PositionType::BOTTOM);
+    pin_popover_.add_css_class("am-context-popover");
+    pin_popover_.signal_closed().connect([this] {
+        pin_index_ = -1;
+        focus_default();
+    });
+
     // -- application grid ---------------------------------------------------------
     // tiles have a fixed size (see rebuild_grid) — the grid never stretches a
     // short result row to fill the panel
@@ -152,12 +178,14 @@ AppMenuPanel::AppMenuPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
 
 AppMenuPanel::~AppMenuPanel() {
     session_popover_.unparent();
+    pin_popover_.unparent();
 }
 
 void AppMenuPanel::set_open(bool open) {
     open_ = open;
     if (!open) {
         session_popover_.popdown();
+        close_pin_menu();
         return;
     }
     mouse_active_ = false;
@@ -262,7 +290,9 @@ void AppMenuPanel::update_results() {
 void AppMenuPanel::rebuild_grid() {
     while (auto* child = grid_.get_first_child())
         grid_.remove(*child);
+    close_pin_menu();
     tiles_.clear();
+    tile_icons_.clear();
     selected_ = -1;
 
     const int cols = std::clamp(columns_, kMinColumns, kMaxColumns);
@@ -350,6 +380,13 @@ void AppMenuPanel::rebuild_grid() {
         click->signal_released().connect(
             [this, index](int, double, double) { activate_index(index); });
         tile->add_controller(click);
+        // right click: pin / unpin context menu
+        auto right_click = Gtk::GestureClick::create();
+        right_click->set_button(GDK_BUTTON_SECONDARY);
+        right_click->signal_released().connect(
+            [this, index](int, double, double) { open_pin_menu(index); });
+        tile->add_controller(right_click);
+        tile_icons_.push_back(dynamic_cast<Gtk::Image*>(tile->get_first_child()));
 
         auto hover = Gtk::EventControllerMotion::create();
         hover->signal_enter().connect([this, index](double, double) {
@@ -401,6 +438,33 @@ void AppMenuPanel::activate_index(int index) {
     run_after_close([entry] { Apps::get().launch(entry); });
 }
 
+void AppMenuPanel::close_pin_menu() {
+    if (pin_popover_.get_visible())
+        pin_popover_.popdown();
+    if (pin_popover_.get_parent())
+        pin_popover_.unparent();
+    pin_index_ = -1;
+}
+
+void AppMenuPanel::open_pin_menu(int index) {
+    if (index < 0 || index >= static_cast<int>(results_.size()) ||
+        index >= static_cast<int>(tile_icons_.size()) || !tile_icons_[static_cast<std::size_t>(index)])
+        return;
+    close_pin_menu();
+    select(index, /*scroll_into_view=*/false);
+    pin_index_ = index;
+    const bool pinned = Apps::get().is_pinned(results_[static_cast<std::size_t>(index)].id);
+    pin_glyph_.set_text(pinned ? kIconUnpin : kIconPin);
+    pin_label_.set_text(pinned ? "Unpin from taskbar" : "Pin to taskbar");
+    // GTK anchors a popover by its halign: START hangs it off the icon's left
+    // edge, END off its right — keeps the menu inside the panel instead of
+    // centring it past the edge on the outer columns
+    const int cols = std::clamp(columns_, kMinColumns, kMaxColumns);
+    pin_popover_.set_halign(index % cols < cols / 2 ? Gtk::Align::START : Gtk::Align::END);
+    pin_popover_.set_parent(*tile_icons_[static_cast<std::size_t>(index)]);
+    pin_popover_.popup();
+}
+
 // Close first so the launched app / settings window can take focus
 // (Noctalia's closeImmediately + deferred execution).
 void AppMenuPanel::run_after_close(std::function<void()> action) {
@@ -416,7 +480,7 @@ void AppMenuPanel::focus_default() {
 }
 
 bool AppMenuPanel::on_key_pressed(guint keyval, guint, Gdk::ModifierType) {
-    if (session_popover_.get_visible())
+    if (session_popover_.get_visible() || pin_popover_.get_visible())
         return false; // GTK navigates the dropdown itself (Esc closes just it)
 
     const int count = static_cast<int>(tiles_.size());

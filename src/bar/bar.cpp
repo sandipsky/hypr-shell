@@ -340,6 +340,8 @@ Gtk::Widget* Bar::module_widget(const std::string& name) {
         return &app_menu_;
     if (name == "workspaces")
         return &workspaces_;
+    if (name == "taskbar")
+        return &taskbar_;
     if (name == "active_window")
         return &active_window_;
     if (name == "network")

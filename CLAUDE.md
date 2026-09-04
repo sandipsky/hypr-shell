@@ -59,9 +59,9 @@ src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS ho
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
-                               workspaces, active_window, clock, network, volume,
-                               battery, bluetooth, vpn, control_center, notifications,
-                               session)
+                               workspaces, taskbar, active_window, clock, network,
+                               volume, battery, bluetooth, vpn, control_center,
+                               notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -88,7 +88,8 @@ src/services/osd.{hpp,cpp}              OSD trigger logic (Pulse/Brightness/Lock
 src/bar/osd_window.{hpp,cpp}            on-screen display layer window (volume/mic/brightness/lock keys)
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
 src/bar/app_menu_panel.{hpp,cpp}        app menu popover (search + settings/session buttons + app grid)
-src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps
+src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps +
+                                        window-class → entry lookup (Noctalia's ThemeIcons)
 src/services/math_eval.{hpp,cpp}        launcher calculator (AdvancedMath.js port)
 src/services/session_actions.hpp        session action table (key/label/glyph/command/defaults),
                                         shared with the settings app
@@ -226,7 +227,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       keyboard layout, system stats.
       *(pulled forward 2026-08-30: battery + network + audio status icons landed;
       2026-09-01: bluetooth (BlueZ) icon + click panel landed; 2026-09-04: VPN
-      pill + panel (Noctalia's VPN widget over nmcli) landed;
+      pill + panel (Noctalia's VPN widget over nmcli) landed; 2026-09-04:
+      taskbar (Noctalia's Taskbar widget — running + pinned apps) landed;
       tray, keyboard layout, stats remain)*
 - [x] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
       popups, history/notification center, do-not-disturb. Only one daemon can own the
@@ -617,10 +619,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   Keyboard: Esc/Enter/Up/Down-wrapped/Tab/Shift-Tab/Home/End/PgUp/PgDn on a
   CAPTURE-phase key controller so the entry keeps focus; hover only selects
   after the mouse moved ≥5px since opening (Noctalia's ignoreMouseHover).
-  **Pinning**: the selected row of an application shows a pin/unpin button;
-  pins are stored in ~/.cache/hypr-shell/pinned_apps.json (shell never writes
-  config.json) and are ONLY stored for now — **the future taskbar module is
-  their consumer**. NOT ported: grid view + view toggle, categories, density,
+  **Pinning**: the selected row of an application showed a pin/unpin button
+  (removed 2026-09-04 per user — pinning moved to the app menu's right-click
+  menu); pins are stored in ~/.cache/hypr-shell/pinned_apps.json (shell never
+  writes config.json) and are consumed by the taskbar module. NOT ported: grid view + view toggle, categories, density,
   clipboard/emoji/windows/command providers, ">" command mode, usage tracking
   (sortByMostUsed), custom launch prefix/terminal override, entrance
   animation. Gotcha: a GTK entry draws its own blue focus ring — needs
@@ -1056,6 +1058,66 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   `set_offset()` along the bar's normal (+y below a top bar, -y above a
   bottom bar, ±x for vertical bars). `kBarPopoverGap` is a compile-time
   constant, not config — nothing in Noctalia/Waybar exposes it either.
+- 2026-09-04 — Taskbar module (Noctalia's Taskbar widget + TaskbarSettings,
+  ported 1:1 except where noted; module key `taskbar`, default left section
+  after workspaces, enabled by default like every module). Data: `j/monitors`
+  → `j/clients` → `j/activewindow` on every window/workspace/monitor event,
+  coalesced 30 ms and serial-guarded; a window is "focused" only when it is
+  the active window AND sits on an active workspace (Noctalia's check);
+  windows sort by workspace, x, y, address (toSortedWindowList). Filters:
+  `only_same_monitor` compares the client's monitor name with the bar
+  surface's `Gdk::Monitor` connector (single bar today; refreshed on map),
+  `only_active_workspaces` uses each monitor's activeWorkspace (+ special).
+  Pinned apps are the launcher's store (`Apps::pinned()`,
+  `~/.cache/hypr-shell/pinned_apps.json`, Noctalia's dock.pinnedApps role);
+  ids compare through `normalize_app_id()` (lowercase, ".desktop" stripped)
+  so Noctalia-style and our ids both match, and `Apps::is_pinned` /
+  `toggle_pinned` now use it too. Model = Noctalia's updateCombinedModel +
+  sortApps: pinned first in pinned order (running or not), then running
+  apps in a transient session order; drag-and-drop (Gtk::DragSource /
+  DropTarget carrying the index) reorders and persists the pinned order
+  (`Apps::set_pinned`); Noctalia's shift animation while dragging was NOT
+  ported. Pinning itself happens in the app menu's right-click menu (the
+  taskbar has no menu). Window class → desktop entry is `Apps::lookup_for_class()`, a port
+  of ThemeIcons.findAppEntry: id / StartupWMClass, the substitutions and
+  regex tables, reverse-domain / hyphen variants, fuzzy over ids, icons,
+  names, then separator-stripped containment — cached until entries
+  reload; icon = entry icon, else the class as an icon name, else
+  application-x-executable. Look: 25px mSurfaceVariant capsule (Noctalia's
+  default-density capsuleHeight, radiusM, marginM padding), items to_odd(25
+  × `icon_scale`) = 21px, a 4px indicator hanging 2px under the icon —
+  mPrimary focused, mHover hovered — via a per-item Gtk::Overlay.
+  Hide modes visible / hidden / transparent (300 ms OutCubic opacity tick).
+  Left click focuses (`focus_window` now also raises via
+  `hl.dsp.window.alter_zorder`, Noctalia's focusWindow) or launches a pinned
+  entry via GIO; wheel cycles focus with the 150 ms cooldown. Config-only
+  extras (Noctalia's remaining widget settings): `show_title` (+
+  `title_width`, `smart_width`, `max_width_percent` shrink titles to fit the
+  screen share — the capsule itself is not clipped), `icon_scale`,
+  `item_gap` (default 6 — Noctalia's 2 was too tight for the user).
+  Settings: "Taskbar" module row + cog subpage with the four rows the user
+  kept (Hiding mode, Only from same monitor, Only from active workspaces,
+  Show pinned apps). Removed the same day per user: the right-click context
+  menu (Focus / Pin / Close / desktop actions / Widget settings — it had
+  shipped for one build, with a GSK colour-matrix "colorize icons" option
+  and `Hyprland::close_window`, all dropped), the capsule background (the
+  icons sit directly on the bar, so Noctalia's capsuleColor is not
+  reproduced) and the Colorize icons option.
+- 2026-09-04 — Pinning moved from the launcher to the app menu (user
+  request): the launcher's per-row pin button is gone; right-clicking an app
+  menu tile opens a one-entry context popover ("Pin to taskbar" / "Unpin
+  from taskbar", pin / pinned-off glyphs) that toggles `Apps::toggle_pinned`
+  on the entry id. One `Gtk::Popover` is re-parented to the clicked tile's
+  Gtk::Image on each open (an Image ignores popover children in its layout;
+  a tile Box would allocate the popover inline — the popover-anchor gotcha)
+  and unparented on every grid rebuild / close; keys are left to GTK while
+  it is open, like the session dropdown. **Popover-alignment finding**: GTK
+  anchors a popover by the popover's own `halign` — START hangs it off the
+  parent's left edge, END off the right, FILL/CENTER centres it — so the
+  menu uses START on the left half of the columns and END on the right half
+  and stays inside the panel (centred, it spilled past the panel on the
+  first column). Dev hook: HS_OPEN_APP_MENU=3 opens
+  it on the first tile.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

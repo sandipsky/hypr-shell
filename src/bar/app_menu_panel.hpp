@@ -24,6 +24,7 @@ public:
     void set_open(bool open); // popover mapped state — resets search + focus
     void apply_config();      // grid columns, header buttons
     void show_session_menu(); // session button: dropdown, or the fullscreen window
+    void open_pin_menu(int index); // right-click pin / unpin menu on a tile (dev hook too)
 
     // Launching an app, opening settings or running a session action wants
     // the popover closed first.
@@ -34,6 +35,7 @@ private:
     void rebuild_grid();
     void select(int index, bool scroll_into_view);
     void activate_index(int index);
+    void close_pin_menu();
     bool on_key_pressed(guint keyval, guint keycode, Gdk::ModifierType state);
     void run_after_close(std::function<void()> action);
     void focus_default(); // the search box, or the panel itself when it is hidden
@@ -51,6 +53,15 @@ private:
     Gtk::Button session_button_;
     Gtk::Popover session_popover_; // nested dropdown (session.mode = dropdown)
     SessionMenuList* session_list_ = nullptr;
+    // right-click context menu on a tile: Pin to / Unpin from taskbar. One
+    // popover, re-parented to the clicked tile's icon (a Gtk::Image ignores
+    // popover children in its layout — a Box would allocate it inline).
+    Gtk::Popover pin_popover_;
+    Gtk::Button pin_button_;
+    Gtk::Label pin_glyph_;
+    Gtk::Label pin_label_;
+    int pin_index_ = -1;
+    std::vector<Gtk::Image*> tile_icons_;
 
     Gtk::Stack content_stack_; // grid scroller or the empty label, fixed height per open
     Gtk::ScrolledWindow scroller_;

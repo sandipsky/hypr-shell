@@ -97,6 +97,8 @@ void Hyprland::focus_window(const std::string& address) {
                      [](char c) { return g_ascii_isalnum(c); }))
         return;
     dispatch("hl.dsp.focus({ window = \"address:" + address + "\" })");
+    dispatch("hl.dsp.window.alter_zorder({ mode = \"top\", window = \"address:" + address +
+             "\" })");
 }
 
 void Hyprland::set_dpms(bool on) {
