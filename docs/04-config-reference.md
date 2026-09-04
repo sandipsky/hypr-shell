@@ -185,6 +185,21 @@ Cards shown in the battery panel (each also needs its backend).
 |-----|------|---------|---------|
 | `auto_connect` | bool | `false` | On the adapter's power-on edge (startup included), connect every paired device, staggered 500 ms, starting 1.5 s after the edge. Global, not per device. |
 
+## `bar.vpn`
+
+The VPN pill (Noctalia's VPN bar widget). Shield icon, shield-lock while a
+profile is active, with the first active profile's name (+ N more) as pill
+text. Profiles are NetworkManager's `vpn` / `wireguard` connections.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `display_mode` | `on_hover` / `always_show` / `always_hide` | `on_hover` | When the name shows next to the icon (Noctalia's BarPill: revealed 500 ms after hover, always, never). Vertical bars are always icon-only. |
+| `icon_color` / `text_color` | `none` / `primary` / `secondary` / `tertiary` / `error` | `none` | Noctalia palette colour for the icon / text; `none` inherits the module colour. |
+
+These keys are config-only: the settings app has no VPN subpage (per user).
+Click opens the VPN panel (toggle, import `.conf` / `.ovpn`, delete with
+confirmation); there is no right-click menu. Dev hook: `HS_OPEN_VPN=1`.
+
 ## `bar.notifications` (the bell module)
 
 | Key | Type | Default | Meaning |

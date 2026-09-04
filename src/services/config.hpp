@@ -70,6 +70,16 @@ public:
     bool battery_show_brightness() const { return battery_show_brightness_; }
     bool battery_show_refresh_rate() const { return battery_show_refresh_; }
 
+    // bar.vpn.* — Noctalia's VPN bar widget settings (BarPill display mode
+    // and the icon / text colour keys)
+    struct Vpn {
+        enum class DisplayMode { OnHover, AlwaysShow, AlwaysHide };
+        DisplayMode display_mode = DisplayMode::OnHover;
+        std::string icon_color = "none"; // none | primary | secondary | tertiary | error
+        std::string text_color = "none";
+    };
+    const Vpn& vpn() const { return vpn_; }
+
     // bar.bluetooth.auto_connect: reconnect every paired device when the
     // adapter powers on (default off); toggled in hypr-shell-settings.
     bool bluetooth_auto_connect() const { return bt_auto_connect_; }
@@ -274,6 +284,7 @@ private:
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
     bool bt_auto_connect_ = false;
+    Vpn vpn_;
     bool notif_show_badge_ = true;
     bool notif_hide_zero_ = false;
     bool notif_hide_zero_unread_ = false;

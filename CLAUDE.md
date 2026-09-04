@@ -59,7 +59,7 @@ src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, active_window, clock, network, volume,
-                               battery, bluetooth, notifications, session)
+                               battery, bluetooth, vpn, notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -72,6 +72,8 @@ src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
 src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectManager)
 src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
+src/services/vpn.{hpp,cpp}              VPN profiles via nmcli (list/up/down/delete/import)
+src/bar/vpn_panel.{hpp,cpp}             VPN click panel (profile toggles, import, delete)
 src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + history
 src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
 src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
@@ -164,7 +166,10 @@ transition passes those marks, frame-final.png after 4s) and
   `STYLE_PROVIDER_PRIORITY_USER`. CSS classes: `bar`, `bar-inner`, `module`, plus one
   class per module (`workspaces`, `active-window`, `clock`, ...).
 - App id `dev.hyprshell.Shell` — GApplication uniqueness gives single-instance for free.
-- Layer-shell gotchas: call `gtk_layer_init_for_window()` **before** the window
+- Layer-shell gotchas: **never parent a dialog (file chooser etc.) to a
+  layer-shell window** — `xdg_toplevel.set_parent` on a layer surface is a
+  protocol error that kills the shell; pass a null parent (the portal shows
+  it). Call `gtk_layer_init_for_window()` **before** the window
   is realized/presented; `set_decorated(false)` (GTK4 draws a CSD titlebar otherwise);
   keep `window.bar { background: transparent; }` in CSS. Layer namespace is
   `hypr-shell`, so users can target it in hyprland.conf: `layerrule = blur, hypr-shell`.
@@ -213,7 +218,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       bluetooth (BlueZ), audio (PipeWire), system tray (StatusNotifierItem + DBusMenu),
       keyboard layout, system stats.
       *(pulled forward 2026-08-30: battery + network + audio status icons landed;
-      2026-09-01: bluetooth (BlueZ) icon + click panel landed;
+      2026-09-01: bluetooth (BlueZ) icon + click panel landed; 2026-09-04: VPN
+      pill + panel (Noctalia's VPN widget over nmcli) landed;
       tray, keyboard layout, stats remain)*
 - [x] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
       popups, history/notification center, do-not-disturb. Only one daemon can own the
@@ -933,6 +939,44 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   dragging doesn't restart hyprsunset per pixel), a Scheduling heading with
   Sunrise/Sunset combos in 30-minute steps, Force activation. Disabling
   clears `forced`, like Noctalia. Dev: `HS_NIGHT_LIGHT_DRY_RUN=1`.
+- 2026-09-04 — VPN module (Noctalia's VPN widget + VPNPanel + VPNService,
+  1:1). Service `VpnService` (`services/vpn`): everything through nmcli like
+  Noctalia — `-t -f NAME,UUID,TYPE,DEVICE connection show` parsed from the
+  right so names with ':' survive, only `vpn` / `wireguard` types, active =
+  bound to a device; `connection up|down|delete uuid X`, `connection import
+  type wireguard|openvpn file P` (type from the `.ovpn` extension), success
+  judged by Noctalia's output strings ("successfully activated" /
+  "Connection successfully" / "successfully deleted" / "successfully added"),
+  stderr's first line as `last_error`. Refresh 1 s after any
+  `NetworkManager::signal_changed` (Noctalia greps `nmcli monitor` lines
+  instead) plus a 60 s poll. Module `vpn` (default right section, enabled by
+  default like every module) is the first **BarPill** port: icon label +
+  `Gtk::Revealer` text (SLIDE_LEFT when the module sits in the right section
+  — text on the inner side of the icon, Noctalia's oppositeDirection —,
+  SLIDE_RIGHT otherwise), `bar.vpn.display_mode` on_hover (500 ms delay,
+  300 ms slide, hidden on leave) / always_show / always_hide, icon-only on
+  vertical bars or with empty text; text = first active profile (+ N) or
+  the connecting one; `icon_color` / `text_color` palette keys become
+  `.color-<key>` CSS classes. Panel = Noctalia's VPNPanel
+  at its 440x500 (popover-resize gotcha): header card with shield (mPrimary
+  when active), "VPN", a round import button; per profile a
+  card with NToggle-style switch (name + Connected / Not connected /
+  Connecting… / Disconnecting… / Removing…), trash button → inline confirm
+  row ("Delete this VPN profile?", Delete in mError, X); empty state with
+  shield-off, hint and Import button; import via `Gtk::FileDialog`
+  (*.conf, *.ovpn, starts in ~/Downloads). The panel refreshes on every open
+  like Noctalia. Removed the same day per user: the right-click context
+  menu (Noctalia's NPopupContextMenu with Disconnect/Connect/Widget
+  settings), the panel's refresh and close buttons, and the settings cog
+  subpage — `bar.vpn.display_mode` / `icon_color` / `text_color` stay
+  config-only (the "VPN" module row has no cog). Not ported: Noctalia's
+  toasts on connect/disconnect/import/delete (no toast UI). Tested with a
+  temporary `nmcli connection add type wireguard` profile (deleted
+  afterwards); the machine has no real VPN profiles. The import dialog is
+  opened with a **null parent**: parenting it to the bar (a layer surface)
+  was a Wayland protocol error that closed the whole shell ("Lost connection
+  to Wayland compositor") — shipped that way for one build. Dev hooks:
+  HS_OPEN_VPN=1 (panel), =3 (panel + import dialog).
 - 2026-09-04 — Module popovers float 6px off the bar (user request): the
   eight per-module "pick the free side" switches collapsed into
   `place_bar_popover()` (`bar/bar_popover.hpp`), which sets the position AND

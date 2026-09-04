@@ -40,6 +40,7 @@ constexpr ModuleInfo kModules[] = {
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
+    {"vpn",           "VPN",           "VPN profiles pill",            2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
     {"notifications", "Notifications", "Notification bell and history", 2},
@@ -142,6 +143,7 @@ struct Settings {
     AdwEntryRow* clock_fmt_v = nullptr;
 
     AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
+
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
     AdwEntryRow* am_text = nullptr;

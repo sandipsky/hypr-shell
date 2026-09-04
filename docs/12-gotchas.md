@@ -51,6 +51,15 @@ is in a different logind scope). Fall back to `$XDG_SESSION_ID` →
 
 ## GTK
 
+**Never parent a dialog to a layer-shell window.** `gtk_file_dialog_open()`
+(or any transient window) with the bar as parent makes GTK call
+`xdg_toplevel.set_parent` on a surface that is not an xdg_toplevel — a
+Wayland protocol error, and the compositor drops the connection ("Lost
+connection to Wayland compositor": the whole shell exits). Pass a null
+parent; the dialog then opens through the desktop portal on its own. Pop the
+originating popover down first so its grab does not fight the dialog. The
+VPN panel's import button shipped with this crash for one build.
+
 **A `Gtk::Picture` grows to the image's natural size** — `set_size_request`
 is a minimum. For a fixed avatar, pre-scale and crop the pixbuf to the target
 size and hand the texture to `set_paintable()`. Expand flags on a child also

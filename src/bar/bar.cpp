@@ -346,6 +346,8 @@ Gtk::Widget* Bar::module_widget(const std::string& name) {
         return &network_;
     if (name == "bluetooth")
         return &bluetooth_;
+    if (name == "vpn")
+        return &vpn_;
     if (name == "volume")
         return &volume_;
     if (name == "battery")

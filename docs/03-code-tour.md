@@ -84,11 +84,13 @@ is missing.
 | `battery` | `Gtk::Box` with `Gtk::Overlay` of two labels | UPower + PowerProfiles | Win11 look; CSS classes `charging` / `saver`. Click → `BatteryPanel`. |
 | `notifications` | `Gtk::Box` with `Gtk::Overlay` (icon + badge) | NotificationService | Bell / bell-off (DND), unread dot. Click → `NotificationPanel`; right click toggles DND. `bar.notifications.*` hide rules. |
 | `clock` | `Gtk::Label` | none | strftime formats from config. Click → `Calendar`. |
+| `vpn` | `Gtk::Box` (icon label + `Gtk::Revealer` text) | VpnService | Noctalia's BarPill: profile name slides in on hover / always / never (`bar.vpn.display_mode`), icon-only on vertical bars, colour classes from `icon_color` / `text_color`. Click → `VpnPanel`. |
 
 ### Panels and other windows
 
 | File | Opened by | Content |
 |------|-----------|---------|
+| `vpn_panel.{hpp,cpp}` | vpn | Noctalia's VPNPanel: header (shield, VPN, import button), one card per profile (switch + state text + delete with inline confirm) or the empty state with an import button; `Gtk::FileDialog` for `.conf` / `.ovpn`. Fixed 440x500. |
 | `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
 | `battery_panel.{hpp,cpp}` | battery | Charge card, power-profile slider, brightness slider, refresh-rate buttons; cards hide per backend / `bar.battery`. |
@@ -132,6 +134,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `pam_auth` | Linux-PAM | `PamAuth`: one worker thread per attempt (the project's only thread), conversation prompts handed to the main loop via `Glib::Dispatcher`, `respond()` wakes the waiting conversation. |
 | `wallpaper` | the wallpaper folder + `~/.cache/hypr-shell/wallpaper.json` | Async folder scan (`Gio::FileEnumerator`, rescans on `Gio::FileMonitor` changes), current image persisted with the random shuffle bag, slideshow timer, config `current` adopted on value-change edges. `signal_current_changed(previous, animate)` drives the windows. |
 | `night_light` | `hyprsunset` (Gio::Subprocess), logind `PrepareForSleep` | Noctalia's NightLightService: runs `hyprsunset -t <K>` during the night phase or when forced, boundary timer to the next configured sunrise/sunset, crash restart, resume re-apply; every start first kills a stale hyprsunset/wlsunset and waits for it to be gone (one CTM manager per compositor). |
+| `vpn` | `nmcli` (Gio::Subprocess) + `NetworkManager::signal_changed` | Noctalia's VPNService: `connection show` parsed from the right for `vpn` / `wireguard` types (active = has a device), `up` / `down` / `delete` / `import type <wireguard|openvpn>` with Noctalia's success-text checks, busy flags per operation, `last_error()` from stderr's first line; refresh 1 s after NM changes + 60 s poll. |
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |
 | `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
 

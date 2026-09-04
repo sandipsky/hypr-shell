@@ -20,6 +20,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"active_window", Config::BarSection::Center},
     {"network", Config::BarSection::Right},
     {"bluetooth", Config::BarSection::Right},
+    {"vpn", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
     {"notifications", Config::BarSection::Right},
@@ -75,6 +76,7 @@ void Config::load() {
     workspaces_fixed_count_ = 5;
     workspaces_scroll_wrap_ = true;
     bt_auto_connect_ = false;
+    vpn_ = Vpn{};
     notif_show_badge_ = true;
     notif_hide_zero_ = false;
     notif_hide_zero_unread_ = false;
@@ -170,6 +172,21 @@ void Config::load() {
         }
         if (auto it = bar.find("bluetooth"); it != bar.end() && it->is_object()) {
             bt_auto_connect_ = it->value("auto_connect", false);
+        }
+        if (auto it = bar.find("vpn"); it != bar.end() && it->is_object()) {
+            const std::string mode = it->value("display_mode", "on_hover");
+            vpn_.display_mode = mode == "always_show" ? Vpn::DisplayMode::AlwaysShow
+                                : mode == "always_hide" ? Vpn::DisplayMode::AlwaysHide
+                                                        : Vpn::DisplayMode::OnHover;
+            const auto color = [&](const char* key) {
+                const std::string v = it->value(key, "none");
+                for (const char* k : {"none", "primary", "secondary", "tertiary", "error"})
+                    if (v == k)
+                        return v;
+                return std::string("none");
+            };
+            vpn_.icon_color = color("icon_color");
+            vpn_.text_color = color("text_color");
         }
         if (auto it = bar.find("notifications"); it != bar.end() && it->is_object()) {
             notif_show_badge_ = it->value("show_unread_badge", true);

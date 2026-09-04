@@ -321,3 +321,48 @@ button.bp-rate-btn.active {
   border-color: #bfc2ff;
   color: #202578; /* mOnPrimary */
 }
+
+/* -- VPN panel (Noctalia's VPNPanel in the shared card design) ------------- */
+popover.vpn-popover > contents {
+  background: #131316;
+  border: 1px solid alpha(#cdd6f4, 0.08);
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.vp-header { padding: 9px 12px; }
+.vp-header-icon { font-family: "noctalia-tabler-icons"; font-size: 18pt; color: #c7c5d0; }
+.vp-header-icon.active { color: #bfc2ff; }
+button.vp-round-btn {
+  min-width: 26px; min-height: 26px; padding: 0; border-radius: 999px;
+  background: #201f23; color: #e5e1e6; border: none; box-shadow: none;
+}
+button.vp-round-btn:hover { background: #e8b9d5; color: #46263b; }
+button.vp-round-btn:disabled { opacity: 0.4; }
+.vp-round-icon { font-family: "noctalia-tabler-icons"; font-size: 12pt; }
+button.vp-trash-btn { color: #ffb4ab; }
+.vp-profile { padding: 9px 12px; }
+.vp-profile-icon { font-family: "noctalia-tabler-icons"; font-size: 15pt; color: #c7c5d0; margin-right: 4px; }
+.vp-trash-icon { font-family: "noctalia-tabler-icons"; font-size: 13pt; color: #ffb4ab; }
+.vp-confirm-text { font-size: 10pt; color: #ffb4ab; }
+button.vp-delete-btn {
+  background: #ffb4ab; color: #690005; border: none; box-shadow: none;
+  border-radius: 999px; padding: 2px 12px; font-size: 9pt; font-weight: 600;
+}
+button.vp-delete-btn:hover { background: #ffc9c2; }
+.vp-empty { padding: 20px 16px; }
+.vp-empty-icon { font-family: "noctalia-tabler-icons"; font-size: 48pt; color: #c7c5d0; }
+.vp-empty-title { font-size: 13pt; color: #c7c5d0; }
+.vp-empty-hint { font-size: 10pt; color: #c7c5d0; }
+button.vp-import-btn {
+  background: #bfc2ff; color: #202578; border: none; box-shadow: none;
+  border-radius: 999px; padding: 6px 14px; font-weight: 600;
+}
+button.vp-import-btn:hover { background: #d3d5ff; }
+.vp-btn-icon { font-family: "noctalia-tabler-icons"; font-size: 12pt; }
+.vp-error { font-size: 10pt; color: #ffb4ab; margin: 0 6px; }
+/* NToggle switch look shared with the network / bluetooth panels */
+.vpn-panel switch { min-width: 34px; min-height: 20px; border-radius: 999px; background: #131316; border: 1px solid #46464f; }
+.vpn-panel switch:checked { background: #bfc2ff; border-color: #bfc2ff; }
+.vpn-panel switch slider { min-width: 14px; min-height: 14px; margin: 1px; border-radius: 999px; background: #bfc2ff; border: 2px solid #131316; box-shadow: none; }
+.vpn-panel switch:checked slider { background: #202578; border-color: #bfc2ff; }

@@ -60,6 +60,7 @@ sources = files(
   'src/bar/osd_window.cpp',
   'src/bar/session_menu.cpp',
   'src/bar/session_window.cpp',
+  'src/bar/vpn_panel.cpp',
   'src/bar/wallpaper_window.cpp',
   'src/bar/calendar.cpp',
   'src/bar/idle_fade.cpp',
@@ -81,6 +82,7 @@ sources = files(
   'src/bar/modules/notifications.cpp',
   'src/bar/modules/session.cpp',
   'src/bar/modules/volume.cpp',
+  'src/bar/modules/vpn.cpp',
   'src/bar/modules/workspaces.cpp',
   'src/services/hyprland.cpp',
   'src/services/idle.cpp',
@@ -95,6 +97,7 @@ sources = files(
   'src/services/pulse.cpp',
   'src/services/session.cpp',
   'src/services/upower.cpp',
+  'src/services/vpn.cpp',
   'src/services/wallpaper.cpp',
 )
 
