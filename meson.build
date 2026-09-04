@@ -87,6 +87,7 @@ sources = files(
   'src/services/lock_keys.cpp',
   'src/services/math_eval.cpp',
   'src/services/network_manager.cpp',
+  'src/services/night_light.cpp',
   'src/services/notifications.cpp',
   'src/services/osd.cpp',
   'src/services/pam_auth.cpp',

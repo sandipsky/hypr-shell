@@ -215,6 +215,18 @@ public:
     };
     const Wallpaper& wallpaper() const { return wallpaper_; }
 
+    // night_light.* (top level): Noctalia's Settings.data.nightLight driven
+    // through hyprsunset. The day temperature is fixed at 6500 K (neutral: no
+    // filter process during the day), per user.
+    struct NightLight {
+        bool enabled = false;
+        bool forced = false;               // ignore the schedule, filter now
+        int night_temp = 4000;             // 1000..6000 K
+        std::string manual_sunrise = "06:30";
+        std::string manual_sunset = "18:30";
+    };
+    const NightLight& night_light() const { return night_light_; }
+
     // osd.* (top level): the on-screen display for volume / microphone /
     // brightness / lock-key changes (Noctalia's Settings.data.osd). Only the
     // two options hypr-shell-settings shows are configurable; auto-hide
@@ -283,6 +295,7 @@ private:
     Idle idle_;
     LockScreen lock_screen_;
     Wallpaper wallpaper_;
+    NightLight night_light_;
     Osd osd_;
     sigc::signal<void()> changed_;
 };

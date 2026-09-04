@@ -58,11 +58,11 @@ constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // sidebar rows -> GtkStack page names
-// (Bar / Wallpaper / Launcher / Session menu / Lock screen / Idle /
-// On-screen display / Notifications)
-constexpr const char* kSidebarPages[] = {"bar",       "wallpaper_page", "launcher_page",
-                                         "session_page", "lock_page",   "idle_page",
-                                         "osd_page",  "notifications_page"};
+// (Bar / Wallpaper / Night light / Launcher / Session menu / Lock screen /
+// Idle / On-screen display / Notifications)
+constexpr const char* kSidebarPages[] = {"bar",          "wallpaper_page", "night_light_page",
+                                         "launcher_page", "session_page",  "lock_page",
+                                         "idle_page",     "osd_page",      "notifications_page"};
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 // wallpaper page (Noctalia's fillModeModel order / transitionsModel minus the
@@ -81,6 +81,11 @@ constexpr int kWpThumbWidth = 120;  // tile image size (Noctalia: cell x 0.67)
 constexpr int kWpThumbHeight = 80;
 constexpr int kWpThumbCache = 384;  // cached square thumbnail, like Noctalia's
 constexpr int kWpGridMaxHeight = 420; // grid scrolls beyond this
+// night light: Noctalia's slider range with the day temperature fixed at 6500
+// (night must stay 500 K below it)
+constexpr int kNlTempMin = 1000;
+constexpr int kNlTempMax = 6000;
+constexpr int kNlTimeOptions = 48; // "HH:MM" every 30 minutes
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
 // app menu icon dropdown: the shared presets, then Distro logo, then Custom
 constexpr guint kAmPresetCount = G_N_ELEMENTS(hyprshell::kAppMenuIconPresets);
@@ -109,6 +114,8 @@ void update_bar_visibility_rows(Settings* s);
 void update_nd_rows(Settings* s);
 void rebuild_rule_rows(Settings* s);
 void update_wp_rows(Settings* s);
+void update_nl_rows(Settings* s);
+std::string nl_time_option(guint index);
 void wp_set_directory(Settings* s, const std::string& directory);
 void wp_rescan(Settings* s);
 void wp_update_highlight(Settings* s);
@@ -166,6 +173,18 @@ struct Settings {
     AdwComboRow* osd_location = nullptr;
     AdwComboRow* osd_orientation = nullptr; // Automatic / Landscape / Portrait
     AdwSwitchRow* osd_enabled = nullptr;
+
+    // Night light sidebar page (top-level "night_light" object)
+    AdwSwitchRow* nl_enabled = nullptr;
+    GtkWidget* nl_temp_group = nullptr;
+    GtkWidget* nl_schedule_group = nullptr;
+    GtkAdjustment* nl_temp = nullptr; // K
+    guint nl_temp_source = 0;         // debounced save while dragging
+    GtkWidget* nl_manual_label = nullptr; // "Scheduling" heading row
+    AdwComboRow* nl_sunrise = nullptr;
+    AdwComboRow* nl_sunset = nullptr;
+    AdwSwitchRow* nl_forced = nullptr;
+    bool nl_available = false; // hyprsunset found in PATH
 
     // Wallpaper sidebar page (top-level "wallpaper" object)
     AdwEntryRow* wp_directory = nullptr;
@@ -463,6 +482,19 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Night light page (top-level "night_light" object)
+    bool nl_enabled = false, nl_forced = false;
+    int nl_temp = 4000;
+    std::string nl_sunrise = "06:30", nl_sunset = "18:30";
+    {
+        const json nl = s->root.value("night_light", json::object());
+        nl_enabled = nl.value("enabled", false);
+        nl_forced = nl.value("forced", false);
+        nl_temp = std::clamp(nl.value("night_temp", 4000), kNlTempMin, kNlTempMax);
+        nl_sunrise = nl.value("manual_sunrise", nl_sunrise);
+        nl_sunset = nl.value("manual_sunset", nl_sunset);
+    }
+
     // Wallpaper page (top-level "wallpaper" object)
     bool wp_transitions = true, wp_slideshow = false;
     std::string wp_directory, wp_fill = "crop", wp_order = "random";
@@ -613,6 +645,16 @@ void populate(Settings* s) {
         if (wp_fill == kWpFillKeys[i])
             adw_combo_row_set_selected(s->wp_fill, i);
     adw_switch_row_set_active(s->wp_transitions, wp_transitions);
+    adw_switch_row_set_active(s->nl_enabled, nl_enabled && s->nl_available);
+    gtk_adjustment_set_value(s->nl_temp, nl_temp);
+    for (guint i = 0; i < kNlTimeOptions; ++i) {
+        if (nl_time_option(i) == nl_sunrise)
+            adw_combo_row_set_selected(s->nl_sunrise, i);
+        if (nl_time_option(i) == nl_sunset)
+            adw_combo_row_set_selected(s->nl_sunset, i);
+    }
+    adw_switch_row_set_active(s->nl_forced, nl_forced);
+    update_nl_rows(s);
     for (gsize i = 0; i < kWpTransitionCount; ++i)
         adw_switch_row_set_active(s->wp_transition[i],
                                   std::find(wp_types.begin(), wp_types.end(), kWpTransitions[i].key) !=
@@ -1070,6 +1112,86 @@ void on_wp_interval_changed(GObject*, GParamSpec*, gpointer data) {
         return;
     // Noctalia: minutes in the UI, seconds on disk
     wp_object(s)["slideshow_interval_s"] = (int)std::round(adw_spin_row_get_value(s->wp_interval)) * 60;
+    save(s);
+}
+
+// -- Night light page: the top-level "night_light" config object ---------------
+
+json& nl_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["night_light"].is_object())
+        s->root["night_light"] = json::object();
+    return s->root["night_light"];
+}
+
+std::string nl_time_option(guint index) {
+    return g_strdup_printf("%02u:%02u", index / 2, (index % 2) * 30);
+}
+
+// Noctalia: everything below the enable switch is greyed out while off; the
+// sunrise/sunset times are greyed out while force activation is on
+void update_nl_rows(Settings* s) {
+    const bool enabled = adw_switch_row_get_active(s->nl_enabled) != FALSE;
+    gtk_widget_set_sensitive(s->nl_temp_group, enabled && s->nl_available);
+    gtk_widget_set_sensitive(s->nl_schedule_group, enabled && s->nl_available);
+    const bool forced = adw_switch_row_get_active(s->nl_forced) != FALSE;
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nl_sunrise), !forced);
+    gtk_widget_set_sensitive(GTK_WIDGET(s->nl_sunset), !forced);
+}
+
+void on_nl_enabled_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_nl_rows(s);
+    if (s->loading)
+        return;
+    const bool enabled = adw_switch_row_get_active(s->nl_enabled) != FALSE;
+    nl_object(s)["enabled"] = enabled;
+    if (!enabled) { // Noctalia also drops force when disabling
+        nl_object(s)["forced"] = false;
+        adw_switch_row_set_active(s->nl_forced, FALSE);
+    }
+    save(s);
+}
+
+void on_nl_temp_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    // Noctalia writes on release; GtkScale has no release signal, so coalesce
+    if (s->nl_temp_source != 0)
+        g_source_remove(s->nl_temp_source);
+    s->nl_temp_source = g_timeout_add(
+        250,
+        [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            s->nl_temp_source = 0;
+            nl_object(s)["night_temp"] = (int)std::round(gtk_adjustment_get_value(s->nl_temp));
+            save(s);
+            return G_SOURCE_REMOVE;
+        },
+        s);
+    (void)adjustment;
+}
+
+void on_nl_time_changed(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const guint selected = adw_combo_row_get_selected(ADW_COMBO_ROW(row));
+    if (selected >= kNlTimeOptions)
+        return;
+    const char* key = ADW_COMBO_ROW(row) == s->nl_sunrise ? "manual_sunrise" : "manual_sunset";
+    nl_object(s)[key] = nl_time_option(selected);
+    save(s);
+}
+
+void on_nl_forced_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_nl_rows(s);
+    if (s->loading)
+        return;
+    nl_object(s)["forced"] = adw_switch_row_get_active(s->nl_forced) != FALSE;
     save(s);
 }
 
@@ -2660,6 +2782,92 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
                              ADW_PREFERENCES_GROUP(lock_group));
 
+    // -- Night light sidebar page (top-level "night_light" object) -------------
+    GtkWidget* nl_page = adw_preferences_page_new();
+    GtkWidget* nl_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_group), "Night light");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nl_group),
+        "Reduce blue light emission to help you sleep better and reduce eye strain.");
+    gchar* hyprsunset_path = g_find_program_in_path("hyprsunset");
+    s->nl_available = hyprsunset_path != nullptr;
+    g_free(hyprsunset_path);
+    GtkWidget* nl_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_enabled_row), "Enable Night Light");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_enabled_row),
+                                s->nl_available
+                                    ? "Apply a warm color filter to reduce blue light emission."
+                                    : "hyprsunset is not installed — Night Light is unavailable "
+                                      "(pacman -S hyprsunset).");
+    gtk_widget_set_sensitive(nl_enabled_row, s->nl_available);
+    s->nl_enabled = ADW_SWITCH_ROW(nl_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_group), nl_enabled_row);
+    g_signal_connect(nl_enabled_row, "notify::active", G_CALLBACK(on_nl_enabled_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_group));
+
+    GtkWidget* nl_temp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_temp_group), "Color temperature");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(nl_temp_group),
+                                          "Set the color warmth for nighttime.");
+    s->nl_temp_group = nl_temp_group;
+    GtkWidget* nl_temp_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_temp_row), "Night");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_temp_row), "Controls the temperature during nighttime.");
+    s->nl_temp = gtk_adjustment_new(4000, kNlTempMin, kNlTempMax, 1, 100, 0);
+    GtkWidget* nl_temp_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nl_temp);
+    gtk_scale_set_draw_value(GTK_SCALE(nl_temp_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(nl_temp_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(nl_temp_scale),
+        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%dK", (int)std::round(value)); },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(nl_temp_scale, 260, -1);
+    gtk_widget_set_valign(nl_temp_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(nl_temp_row), nl_temp_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_temp_group), nl_temp_row);
+    g_signal_connect(s->nl_temp, "value-changed", G_CALLBACK(on_nl_temp_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_temp_group));
+
+    GtkWidget* nl_sched = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_sched), "Schedule");
+    s->nl_schedule_group = nl_sched;
+    GtkWidget* nl_manual_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_manual_row), "Scheduling");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_manual_row),
+                                "The filter is on from sunset to sunrise.");
+    gtk_widget_set_sensitive(nl_manual_row, FALSE); // a heading row, like Noctalia's NLabel
+    s->nl_manual_label = nl_manual_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_manual_row);
+
+    GtkStringList* nl_times = gtk_string_list_new(nullptr);
+    for (guint i = 0; i < kNlTimeOptions; ++i)
+        gtk_string_list_append(nl_times, nl_time_option(i).c_str());
+    GtkWidget* nl_sunrise_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunrise_row), "Sunrise time");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunrise_row), "Night light turns off.");
+    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunrise_row), G_LIST_MODEL(nl_times));
+    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunrise_row), 13); // 06:30
+    s->nl_sunrise = ADW_COMBO_ROW(nl_sunrise_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunrise_row);
+    g_signal_connect(nl_sunrise_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
+    GtkWidget* nl_sunset_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunset_row), "Sunset time");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunset_row), "Night light turns on.");
+    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunset_row), G_LIST_MODEL(nl_times));
+    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunset_row), 37); // 18:30
+    s->nl_sunset = ADW_COMBO_ROW(nl_sunset_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunset_row);
+    g_signal_connect(nl_sunset_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
+
+    GtkWidget* nl_forced_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_forced_row), "Force activation");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_forced_row),
+                                "Ignores the schedule and applies the night filter immediately.");
+    s->nl_forced = ADW_SWITCH_ROW(nl_forced_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_forced_row);
+    g_signal_connect(nl_forced_row, "notify::active", G_CALLBACK(on_nl_forced_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_sched));
+
     // -- Wallpaper sidebar page (top-level "wallpaper" object) -----------------
     GtkWidget* wp_page = adw_preferences_page_new();
     GtkWidget* wp_group = adw_preferences_group_new();
@@ -3332,6 +3540,12 @@ void on_activate(GtkApplication* app, gpointer) {
                                     adw_window_title_new("Wallpaper", nullptr));
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(wp_view), wp_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(wp_view), wp_page);
+    GtkWidget* nl_view = adw_toolbar_view_new();
+    GtkWidget* nl_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nl_header),
+                                    adw_window_title_new("Night light", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nl_view), nl_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nl_view), nl_page);
     GtkWidget* lp_view = adw_toolbar_view_new();
     GtkWidget* lp_header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(lp_header),
@@ -3379,6 +3593,7 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* stack = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
     gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
+    gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
     gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
@@ -3389,8 +3604,8 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Wallpaper", "Launcher", "Session menu", "Lock screen",
-                              "Idle", "On-screen display", "Notifications"}) {
+    for (const char* title : {"Bar", "Wallpaper", "Night light", "Launcher", "Session menu",
+                              "Lock screen", "Idle", "On-screen display", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);

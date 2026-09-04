@@ -102,6 +102,8 @@ src/bar/lock_background.{hpp,cpp}       blurred cover-scaled wallpaper widget (G
 src/services/wallpaper.{hpp,cpp}        wallpaper folder scan, current image + slideshow (state in
                                         ~/.cache/hypr-shell/wallpaper.json)
 src/services/wallpaper_files.hpp        image extension list, shared with the settings app
+src/services/night_light.{hpp,cpp}      hyprsunset runner: sunrise/sunset schedule, forced mode,
+                                        stale-instance kill, crash restart, resume re-apply
 src/bar/wallpaper_window.{hpp,cpp}      per-monitor background layer window: fill modes + GSK
                                         mask-node transitions (fade/wipe/disc/stripes)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
@@ -134,6 +136,12 @@ Lock screen testing: `HS_LOCK_PREVIEW=1` shows the lock UI as a plain overlay
 window (Escape on the cover closes it; `=2` also opens the session menu),
 `HS_LOCK_AVATAR=<path>` overrides `~/.face`, `HS_PAM_SERVICE=<name>` the PAM
 service. Real lock: `hypr-shell --lock` — keep a TTY open the first time.
+Night light testing: `HS_NIGHT_LIGHT_DRY_RUN=1` logs the hyprsunset command
+instead of spawning it (and skips the stale-process kill). Only one
+hyprsunset can hold Hyprland's CTM: two night light daemons fight (each
+restarts 2s after being killed), so Noctalia's nightLight.enabled was set to
+false in ~/.config/noctalia/settings.json on 2026-09-04 (backup:
+settings.json.pre-hypr-shell-nightlight).
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
 renders the first monitor's frames offscreen (frame-25/50/75.png as the first
 transition passes those marks, frame-final.png after 4s) and
@@ -259,7 +267,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       handling landed — the shell draws the wallpaper itself (per-monitor
       background layer, Noctalia's fill modes + fade/wipe/disc/stripes
       transitions, slideshow) with a "Wallpaper" settings page holding the
-      folder picker and image grid; no separate selector window, per user)*
+      folder picker and image grid; no separate selector window, per user;
+      2026-09-04: night light landed — Noctalia's NightLightService over
+      hyprsunset with a "Night light" settings page, minus the day
+      temperature option, per user)*
 
 ## Decision log
 
@@ -892,6 +903,36 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   colour mode, fill colour, `useOriginalImages`, the separate wallpaper
   selector panel (per user: settings only), `hypr-shell --wallpaper-*` IPC.
   Dev hooks: `HS_WALLPAPER_DUMP`, `HS_WALLPAPER_TRANSITION` (see dev loop).
+- 2026-09-04 — Night light (Noctalia's NightLightService + NightLightSubTab
+  over hyprsunset; two user cuts: no day temperature — day is a fixed
+  neutral 6500 K, so the day phase simply has no filter process, Noctalia's
+  own "6500 → stop hyprsunset" branch — and no automatic (location-based)
+  scheduling: the sunrise/sunset times are the only schedule, greyed out in
+  the settings while force activation is on. A first version had ported the
+  location flow (api.noctalia.dev geocode + Open-Meteo sun times via curl);
+  it was removed the same day at the user's request). `services/night_light`
+  spawns `hyprsunset -t <K>` (Gio::Subprocess, `wait_async` → crash
+  handling: a non-requested exit while night/forced restarts after 2 s, 5
+  attempts, like runner.onExited) and computes the schedule itself since
+  hyprsunset has none: night = `[sunset, sunrise)` (inverted pairs handled),
+  a one-shot timer to the next boundary; forced mode bypasses it. **Only one
+  CTM manager may run per compositor**: a second hyprsunset prints "A CTM
+  manager is already running" and exits within milliseconds — that is why
+  the feature "did not work" next to Noctalia's daemon, and why every start
+  first runs Noctalia's `pkill -x hyprsunset; pkill -x wlsunset`, then waits
+  until the processes are gone **plus 300 ms** (Hyprland frees the slot a
+  moment after the client disconnects; without the grace the first start
+  still died once). Resume: logind `PrepareForSleep(false)` → apply(force)
+  + a 2 s retry (Time.onResumed + resumeRetryTimer). Not ported: Noctalia's
+  toasts on toggle. Config `night_light.*` (enabled, forced, night_temp
+  1000..6000 — Noctalia's 6500-500 cap —, manual_sunrise/sunset "HH:MM").
+  Settings: "Night light" page after Wallpaper — Enable (insensitive with
+  an explanatory subtitle when `hyprsunset` is not in PATH, replacing
+  Noctalia's `command -v hyprsunset` check + warning toast), Night slider
+  (saves debounced 250 ms; the shell debounces temp changes 300 ms too so
+  dragging doesn't restart hyprsunset per pixel), a Scheduling heading with
+  Sunrise/Sunset combos in 30-minute steps, Force activation. Disabling
+  clears `forced`, like Noctalia. Dev: `HS_NIGHT_LIGHT_DRY_RUN=1`.
 - 2026-09-04 — Module popovers float 6px off the bar (user request): the
   eight per-module "pick the free side" switches collapsed into
   `place_bar_popover()` (`bar/bar_popover.hpp`), which sets the position AND

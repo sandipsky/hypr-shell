@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 
 using json = nlohmann::json;
 
@@ -95,6 +96,7 @@ void Config::load() {
     idle_ = Idle{};
     lock_screen_ = LockScreen{};
     wallpaper_ = Wallpaper{};
+    night_light_ = NightLight{};
     osd_ = Osd{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
@@ -333,6 +335,24 @@ void Config::load() {
             w.slideshow_order = it->value("slideshow_order", "random") == "alphabetical"
                                     ? Wallpaper::Order::Alphabetical
                                     : Wallpaper::Order::Random;
+        }
+        if (auto it = j.find("night_light"); it != j.end() && it->is_object()) {
+            auto& n = night_light_;
+            n.enabled = it->value("enabled", false);
+            n.forced = it->value("forced", false);
+            n.night_temp = std::clamp(it->value("night_temp", 4000), 1000, 6000);
+            const auto valid_time = [](const std::string& t) {
+                return t.size() == 5 && t[2] == ':' && std::isdigit(static_cast<unsigned char>(t[0])) &&
+                       std::isdigit(static_cast<unsigned char>(t[1])) &&
+                       std::isdigit(static_cast<unsigned char>(t[3])) &&
+                       std::isdigit(static_cast<unsigned char>(t[4]));
+            };
+            const std::string sunrise = it->value("manual_sunrise", "06:30");
+            const std::string sunset = it->value("manual_sunset", "18:30");
+            if (valid_time(sunrise))
+                n.manual_sunrise = sunrise;
+            if (valid_time(sunset))
+                n.manual_sunset = sunset;
         }
         if (auto it = j.find("osd"); it != j.end() && it->is_object()) {
             osd_.enabled = it->value("enabled", true);

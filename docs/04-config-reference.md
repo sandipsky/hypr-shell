@@ -100,6 +100,14 @@ launcher).
     "slideshow_order": "random"
   },
 
+  "night_light": {
+    "enabled": false,
+    "forced": false,
+    "night_temp": 4000,
+    "manual_sunrise": "06:30",
+    "manual_sunset": "18:30"
+  },
+
   "osd": {
     "enabled": true,
     "location": "top_right",
@@ -264,6 +272,29 @@ shell simply maps no wallpaper window.
 | `slideshow` | bool | `false` | Change the wallpaper automatically. Turning it on changes it immediately, like Noctalia. |
 | `slideshow_interval_s` | 60..86400 | `300` | Seconds between changes (the settings app edits minutes). A manual pick restarts the timer. |
 | `slideshow_order` | `random` / `alphabetical` | `random` | `random` is a shuffle bag (every image once before repeats, never the same twice in a row), `alphabetical` steps through the sorted folder. |
+
+## `night_light` (top level)
+
+Exposed as `Config::get().night_light()` (struct `Config::NightLight`).
+Noctalia's `Settings.data.nightLight` driven through **hyprsunset** (must be
+installed; the settings page greys out when it is not). The day temperature
+is fixed at a neutral 6500 K, so during the day no filter process runs at
+all (per user: no day temperature option).
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enabled` | bool | `false` | Master switch. Turning it off also clears `forced`. |
+| `forced` | bool | `false` | Apply the night temperature now, ignoring the schedule. |
+| `night_temp` | 1000..6000 | `4000` | Kelvin passed as `hyprsunset -t`. |
+| `manual_sunrise` / `manual_sunset` | `"HH:MM"` | `06:30` / `18:30` | Night is `[sunset, sunrise)`, also when the pair is inverted. The settings app offers 30-minute steps and greys them out while `forced` is on. |
+
+Noctalia's automatic (location-based) scheduling was dropped per user: only
+the two times exist. Only one hyprsunset may run per compositor, so before
+every start the shell kills a stale `hyprsunset` / `wlsunset` (a previous
+shell's, or another shell's daemon), waits until it is gone plus 300 ms, then
+spawns its own; crashes restart it (2 s, 5 attempts) and a system resume
+re-applies it (logind `PrepareForSleep`). `HS_NIGHT_LIGHT_DRY_RUN=1` logs the
+command instead of spawning it.
 
 ## `osd` (top level)
 

@@ -8,6 +8,7 @@
 #include "bar/wallpaper_window.hpp"
 #include "services/config.hpp"
 #include "services/idle.hpp"
+#include "services/night_light.hpp"
 #include "services/osd.hpp"
 #include "services/session.hpp"
 
@@ -170,6 +171,9 @@ protected:
             Glib::signal_timeout().connect_once([this] { lock_screen_->open_preview(); }, 600);
         if (lock_on_startup_)
             Glib::signal_timeout().connect_once([this] { lock_screen_->lock(); }, 600);
+
+        // night light: hyprsunset scheduled by sunrise/sunset (or forced)
+        NightLight::get();
 
         // idle daemon (ext-idle-notify-v1) and its fade-to-black grace overlay
         Idle::get();
