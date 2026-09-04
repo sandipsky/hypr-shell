@@ -1,5 +1,7 @@
 #include "bar/modules/clock.hpp"
 
+#include "bar/bar_popover.hpp"
+
 #include "services/config.hpp"
 
 #include <string>
@@ -67,20 +69,7 @@ void Clock::update() {
     set_label(text);
 
     // keep the calendar on the free side of the bar
-    switch (cfg.bar_position()) {
-    case Config::BarPosition::Top:
-        popover_.set_position(Gtk::PositionType::BOTTOM);
-        break;
-    case Config::BarPosition::Bottom:
-        popover_.set_position(Gtk::PositionType::TOP);
-        break;
-    case Config::BarPosition::Left:
-        popover_.set_position(Gtk::PositionType::RIGHT);
-        break;
-    case Config::BarPosition::Right:
-        popover_.set_position(Gtk::PositionType::LEFT);
-        break;
-    }
+    place_bar_popover(popover_);
 }
 
 void Clock::schedule_next_minute() {

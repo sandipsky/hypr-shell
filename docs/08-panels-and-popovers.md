@@ -27,12 +27,7 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {
-        switch (Config::get().bar_position()) {     // open on the free side
-        case Config::BarPosition::Top:    popover_.set_position(Gtk::PositionType::BOTTOM); break;
-        case Config::BarPosition::Bottom: popover_.set_position(Gtk::PositionType::TOP);    break;
-        case Config::BarPosition::Left:   popover_.set_position(Gtk::PositionType::RIGHT);  break;
-        case Config::BarPosition::Right:  popover_.set_position(Gtk::PositionType::LEFT);   break;
-        }
+        place_bar_popover(popover_);   // bar/bar_popover.hpp: free side + 6px gap
         panel_->refresh();
         popover_.popup();
     });
@@ -43,6 +38,12 @@ Volume::~Volume() {
     popover_.unparent();   // a parented popover must be unparented before its parent dies
 }
 ```
+
+`place_bar_popover()` (`src/bar/bar_popover.hpp`) is shared by every module
+popover: it picks the side facing away from the bar (below a top bar, above a
+bottom bar, right of a left bar, ...) and applies `set_offset()` so the
+popover floats `kBarPopoverGap` (6px) away from the bar instead of touching
+it. Call it right before `popup()` — the bar position can change at runtime.
 
 The panel itself is a `Gtk::Box` subclass that builds its widgets in the
 constructor, subscribes to services, and exposes `refresh()` for things

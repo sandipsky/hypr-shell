@@ -158,7 +158,7 @@ Gtk::Popover popover_;
 popover_.set_child(*panel);
 popover_.set_parent(anchor_widget);     // a Label or Overlay, never the module Box
 popover_.set_has_arrow(false);
-popover_.set_position(Gtk::PositionType::BOTTOM);
+place_bar_popover(popover_);            // bar/bar_popover.hpp: side + 6px gap from the bar
 popover_.popup();  popover_.popdown();  popover_.get_mapped()
 // destructor of the owner: popover_.unparent();
 ```

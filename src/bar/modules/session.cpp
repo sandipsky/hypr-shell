@@ -1,5 +1,7 @@
 #include "bar/modules/session.hpp"
 
+#include "bar/bar_popover.hpp"
+
 #include "services/config.hpp"
 #include "services/session.hpp"
 
@@ -64,20 +66,7 @@ void Session::open() {
         return;
     }
     // keep the dropdown on the free side of the bar
-    switch (Config::get().bar_position()) {
-    case Config::BarPosition::Top:
-        popover_.set_position(Gtk::PositionType::BOTTOM);
-        break;
-    case Config::BarPosition::Bottom:
-        popover_.set_position(Gtk::PositionType::TOP);
-        break;
-    case Config::BarPosition::Left:
-        popover_.set_position(Gtk::PositionType::RIGHT);
-        break;
-    case Config::BarPosition::Right:
-        popover_.set_position(Gtk::PositionType::LEFT);
-        break;
-    }
+    place_bar_popover(popover_);
     popover_.popup();
 }
 

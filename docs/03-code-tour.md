@@ -89,6 +89,7 @@ is missing.
 
 | File | Opened by | Content |
 |------|-----------|---------|
+| `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
 | `battery_panel.{hpp,cpp}` | battery | Charge card, power-profile slider, brightness slider, refresh-rate buttons; cards hide per backend / `bar.battery`. |
 | `audio_panel.{hpp,cpp}` | volume | Output and Input cards: device, slider, percent, mute. |

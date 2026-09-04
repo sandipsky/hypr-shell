@@ -56,6 +56,7 @@ data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
+src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, active_window, clock, network, volume,
                                battery, bluetooth, notifications, session)
@@ -826,6 +827,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   which does nothing without Noctalia; wpctl/brightnessctl trigger the OSD.
   NOT ported: per-monitor OSD (phase 1), volumeOverdrive >100% coloring, the
   drop-shadow effect beyond a CSS box-shadow, IPC custom-text OSD.
+- 2026-09-04 — Module popovers float 6px off the bar (user request): the
+  eight per-module "pick the free side" switches collapsed into
+  `place_bar_popover()` (`bar/bar_popover.hpp`), which sets the position AND
+  `set_offset()` along the bar's normal (+y below a top bar, -y above a
+  bottom bar, ±x for vertical bars). `kBarPopoverGap` is a compile-time
+  constant, not config — nothing in Noctalia/Waybar exposes it either.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls
