@@ -12,5 +12,6 @@
     <file>css/idle.css</file>
     <file>css/lock.css</file>
     <file>css/osd.css</file>
+    <file>css/wallpaper.css</file>
   </gresource>
 </gresources>

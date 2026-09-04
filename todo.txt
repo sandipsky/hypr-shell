@@ -5,8 +5,6 @@
     - accent color selection 
     - dark mode toggle (By default on)
 
-- Wallpaper 
-
 - Night Light
 
 - VPN 
@@ -15,10 +13,6 @@
 
 
 -- Bar 
-
- - Clock settings 
-  - ad / bs date type on calendar mode
-  - tooltip format
 
  - taskbar module 
 

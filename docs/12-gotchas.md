@@ -94,6 +94,31 @@ toggle that should be 36×22 is written as 34×20 + 1px border.
 is ellipsized (to decide whether to show an expand chevron) must happen in a
 tick callback, not in the constructor.
 
+**Transitions without shaders: mask nodes.** `GtkGLShader` is gone since
+GTK 4.16, so the wallpaper transitions are built from
+`gtk_snapshot_push_mask(ALPHA)`: record the mask (linear / radial gradients
+for soft edges), `pop()` once to switch to the source, draw the new image,
+`pop()` again. Gradients clamp their end colours beyond the endpoints, which
+is exactly the "everything past the edge is revealed" behaviour a wipe needs.
+`push_cross_fade(progress)` does the fade. Keep the widget's own `snapshot_vfunc`
+callable from outside (`Gtk::Snapshot::create()` + `gtk_snapshot_to_node` +
+`gsk_renderer_render_texture`) — that is how frames get verified when the
+desktop is covered by windows.
+
+**A view that should animate its first image in must start empty.** The
+wallpaper windows are created before the startup transition fires; handing
+them the image immediately made the later animated `show_image()` a no-op
+(same path, nothing to do), so the first image simply appeared.
+
+**A scrolled window nested in a scrolling page collapses.** A viewport
+allocates its child at the child's *minimum* height (GTK's default
+`GTK_SCROLL_MINIMUM` policy), and a `GtkScrolledWindow`'s minimum is a
+sliver, so the moment the page overflowed, the settings app's wallpaper grid
+shrank to one label row. `propagate_natural_height` only raises the natural
+size. Fix: measure the content (`gtk_widget_measure`, exact before mapping
+when the columns are fixed) and pin `min_content_height` to
+`min(natural, cap)`.
+
 **The default overlay scrollbar only appears while scrolling.** For a
 persistent one call `set_overlay_scrolling(false)` on the
 `Gtk::ScrolledWindow` and style `scrollbar slider`.
@@ -120,6 +145,12 @@ silently is a warning you never saw. Run from a terminal when debugging.
 
 **Absent module = enabled.** New modules default on. Don't change this
 without thinking about existing users' files.
+
+**The settings app may need shell state, not just config.** The wallpaper
+grid highlights the image on screen, which after a slideshow pick is *not*
+`wallpaper.current` — the shell never writes config.json. The settings app
+therefore watches `~/.cache/hypr-shell/wallpaper.json` (a `GFileMonitor`) and
+falls back to the config value; keep such state files tiny and JSON.
 
 **Reset every default at the top of `Config::load()`.** A key deleted from
 the file must revert; the parser only overwrites keys it finds.

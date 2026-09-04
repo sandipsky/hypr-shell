@@ -192,6 +192,29 @@ public:
     };
     const LockScreen& lock_screen() const { return lock_screen_; }
 
+    // wallpaper.* (top level): the desktop wallpaper (Noctalia's
+    // Settings.data.wallpaper, single directory, same image on every monitor).
+    // `current` is the settings app's pick; slideshow picks are runtime state
+    // persisted by the shell in ~/.cache/hypr-shell/wallpaper.json.
+    struct Wallpaper {
+        enum class FillMode { Center, Crop, Fit, Stretch, Repeat }; // Noctalia's fillMode
+        enum class Order { Random, Alphabetical };            // wallpaperChangeMode
+        std::string directory;              // ~ expanded; empty = no wallpapers
+        std::string current;                // image path chosen in the settings app
+        FillMode fill_mode = FillMode::Crop;
+        bool transitions_enabled = true;    // off = instant swap (user's addition)
+        // Noctalia's transitionType multi-select: one is picked at random per
+        // change. pixelate/honeycomb are accepted but not rendered (see the
+        // decision log) — an empty set means instant.
+        std::vector<std::string> transitions = {"fade", "disc", "stripes", "wipe", "pixelate", "honeycomb"};
+        int transition_duration_ms = 1500;  // 500..10000
+        double edge_smoothness = 0.05;      // 0..1 feathering of wipe/disc/stripes edges (config only)
+        bool slideshow = false;             // automationEnabled
+        int slideshow_interval_s = 300;     // randomIntervalSec
+        Order slideshow_order = Order::Random;
+    };
+    const Wallpaper& wallpaper() const { return wallpaper_; }
+
     // osd.* (top level): the on-screen display for volume / microphone /
     // brightness / lock-key changes (Noctalia's Settings.data.osd). Only the
     // two options hypr-shell-settings shows are configurable; auto-hide
@@ -259,6 +282,7 @@ private:
     Session session_;
     Idle idle_;
     LockScreen lock_screen_;
+    Wallpaper wallpaper_;
     Osd osd_;
     sigc::signal<void()> changed_;
 };

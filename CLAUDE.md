@@ -48,7 +48,7 @@ install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to 
 data/style.css                 default theme entry — @imports data/css/* (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
                                notifications, launcher, app_menu, session, idle,
-                               lock, osd
+                               lock, osd, wallpaper
                                (GTK resolves the imports inside the resource bundle)
 data/hypr-shell.gresource.xml
 data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
@@ -99,6 +99,11 @@ src/bar/lock_screen.{hpp,cpp}           session lock (gtk4-session-lock) + LockC
                                         logind Lock signal; one LockSurface per monitor
 src/bar/lock_surface.{hpp,cpp}          per-monitor lock UI (cover/login stages, pills, session menu)
 src/bar/lock_background.{hpp,cpp}       blurred cover-scaled wallpaper widget (GSK blur, cached)
+src/services/wallpaper.{hpp,cpp}        wallpaper folder scan, current image + slideshow (state in
+                                        ~/.cache/hypr-shell/wallpaper.json)
+src/services/wallpaper_files.hpp        image extension list, shared with the settings app
+src/bar/wallpaper_window.{hpp,cpp}      per-monitor background layer window: fill modes + GSK
+                                        mask-node transitions (fade/wipe/disc/stripes)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
 docs/                                   long-form developer docs (start at docs/README.md)
 ```
@@ -129,6 +134,11 @@ Lock screen testing: `HS_LOCK_PREVIEW=1` shows the lock UI as a plain overlay
 window (Escape on the cover closes it; `=2` also opens the session menu),
 `HS_LOCK_AVATAR=<path>` overrides `~/.face`, `HS_PAM_SERVICE=<name>` the PAM
 service. Real lock: `hypr-shell --lock` — keep a TTY open the first time.
+Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
+renders the first monitor's frames offscreen (frame-25/50/75.png as the first
+transition passes those marks, frame-final.png after 4s) and
+`HS_WALLPAPER_TRANSITION=fade|wipe|disc|stripes` forces the type; change
+`wallpaper.current` in config.json to trigger an image-to-image transition.
 
 ## Architecture rules
 
@@ -245,7 +255,11 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       `hypr-shell --app-menu` toggles it for keybinds; 2026-09-03: the
       `session` bar module + shared session menu (dropdown or fullscreen
       large buttons, single row / grid, per-action visibility) with its own
-      settings page and `hypr-shell --session`)*
+      settings page and `hypr-shell --session`; 2026-09-04: wallpaper
+      handling landed — the shell draws the wallpaper itself (per-monitor
+      background layer, Noctalia's fill modes + fade/wipe/disc/stripes
+      transitions, slideshow) with a "Wallpaper" settings page holding the
+      folder picker and image grid; no separate selector window, per user)*
 
 ## Decision log
 
@@ -827,6 +841,57 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   which does nothing without Noctalia; wpctl/brightnessctl trigger the OSD.
   NOT ported: per-monitor OSD (phase 1), volumeOverdrive >100% coloring, the
   drop-shadow effect beyond a CSS box-shadow, IPC custom-text OSD.
+- 2026-09-04 — Wallpaper (Noctalia's WallpaperService + Background.qml, phase
+  7). Rendering is in-process like Noctalia: `WallpaperWindow` = one
+  background-layer window per `Gdk::Monitor` (`gtk_layer_set_monitor`,
+  exclusive zone -1, hotplug via the monitor list's items-changed), mapped
+  only while there is an image so an empty setup leaves any other wallpaper
+  tool visible — there is no enable switch (per user; Noctalia's
+  wallpaper.enabled was dropped the same day it landed). `WallpaperView` draws one `append_scaled_texture` per fill
+  mode (Noctalia's calculateUV: center 1:1, crop cover, fit contain, stretch,
+  repeat via `push_repeat` from the top-left) on black, textures decoded
+  async at monitor pixel size per fill (`WallpaperTextureCache`, cover /
+  contain / exact / native capped at 2x screen, EXIF orientation applied).
+  Transitions are Noctalia's shaders re-expressed as GSK nodes — no GLSL
+  (GtkGLShader is gone): fade = `push_cross_fade`; wipe / disc / stripes =
+  `push_mask(ALPHA)` with linear / radial gradients as the mask, reproducing
+  the shader math (wipe's biased float direction buckets, disc's aspect-
+  corrected radius from a random centre, stripes' 4..24 bands at a random
+  angle with the 10% wave lag and alternating sweep), InOutCubic over
+  `transition_duration_ms`, edge softness with Noctalia's quadratic mapping
+  (0.001+0.499s² / 0.001+0.299s²), one type picked at random per change from
+  the `transitions` set. **pixelate and honeycomb are NOT rendered** (they
+  need per-frame offscreen re-rendering); the keys are accepted so a Noctalia
+  config round-trips, and the settings page lists only the four. Startup
+  animates the first image from black (Noctalia's startup transition, 100ms
+  after mapping, centred disc) — the views must stay empty until then. The
+  `Wallpaper` service scans the folder asynchronously (not recursive, hidden
+  files skipped, extensions in the shared `wallpaper_files.hpp`), rescans on
+  folder changes (300ms coalesce), keeps the image on screen + the random
+  shuffle bag in `~/.cache/hypr-shell/wallpaper.json` (the shell never writes
+  config.json; `wallpaper.current` is the settings app's pick, adopted on
+  value-change edges like DND), and runs the slideshow (Noctalia's timings:
+  interval restarts on any manual pick, enabling or changing the order
+  switches immediately; random = shuffle bag, alphabetical = next in sorted
+  order). Settings: "Wallpaper" sidebar page right after Bar — enable, folder
+  entry + folder dialog (no enable switch), a 4-column `GtkFlowBox` grid of 120x80 cover
+  thumbnails (Noctalia's tile: rounded, accent border on the current one,
+  others dimmed until hovered, filename underneath; thumbnails decoded async,
+  centre-cropped to 384px squares and cached as PNG under
+  `~/.cache/hypr-shell/wallpapers/thumbnails/<sha256(path@384x384@mtime)>.png`
+  like Noctalia's ImageCacheService; the grid is the LAST group, inside a
+  ScrolledWindow capped at 420px that scrolls — per user), fill mode,
+  transitions switch (user's addition — Noctalia has none), transition types
+  expander, duration slider (0.5–10s), slideshow switch, order, interval in
+  minutes (stored in seconds). `edge_smoothness` stays config-only (its
+  slider was removed per user). The grid follows the folder (GFileMonitor) and the
+  shell's state file so slideshow picks move the highlight. The settings
+  binary now loads a small CSS provider for the tiles (first custom CSS in
+  hypr-shell-settings). NOT ported: per-monitor folders/wallpapers,
+  recursive/browse view modes, sort orders, favorites, Wallhaven, solid
+  colour mode, fill colour, `useOriginalImages`, the separate wallpaper
+  selector panel (per user: settings only), `hypr-shell --wallpaper-*` IPC.
+  Dev hooks: `HS_WALLPAPER_DUMP`, `HS_WALLPAPER_TRANSITION` (see dev loop).
 - 2026-09-04 — Module popovers float 6px off the bar (user request): the
   eight per-module "pick the free side" switches collapsed into
   `place_bar_popover()` (`bar/bar_popover.hpp`), which sets the position AND

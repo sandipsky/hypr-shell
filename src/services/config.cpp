@@ -94,6 +94,7 @@ void Config::load() {
     session_ = Session{};
     idle_ = Idle{};
     lock_screen_ = LockScreen{};
+    wallpaper_ = Wallpaper{};
     osd_ = Osd{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
@@ -301,6 +302,37 @@ void Config::load() {
                 background = Glib::get_home_dir() + background.substr(1);
             lock_screen_.background = background;
             lock_screen_.blur = std::clamp(it->value("blur", 0.0), 0.0, 1.0);
+        }
+        if (auto it = j.find("wallpaper"); it != j.end() && it->is_object()) {
+            auto& w = wallpaper_;
+            const auto expand = [](std::string path) {
+                if (!path.empty() && path[0] == '~')
+                    path = Glib::get_home_dir() + path.substr(1);
+                return path;
+            };
+            w.directory = expand(it->value("directory", ""));
+            w.current = expand(it->value("current", ""));
+            const std::string fill = it->value("fill_mode", "crop");
+            using F = Wallpaper::FillMode;
+            w.fill_mode = fill == "fit"       ? F::Fit
+                          : fill == "stretch" ? F::Stretch
+                          : fill == "center"  ? F::Center
+                          : fill == "repeat"  ? F::Repeat
+                                              : F::Crop;
+            w.transitions_enabled = it->value("transitions_enabled", true);
+            if (auto list = it->find("transitions"); list != it->end() && list->is_array()) {
+                w.transitions.clear();
+                for (const auto& entry : *list)
+                    if (entry.is_string())
+                        w.transitions.push_back(entry.get<std::string>());
+            }
+            w.transition_duration_ms = std::clamp(it->value("transition_duration_ms", 1500), 500, 10000);
+            w.edge_smoothness = std::clamp(it->value("edge_smoothness", 0.05), 0.0, 1.0);
+            w.slideshow = it->value("slideshow", false);
+            w.slideshow_interval_s = std::clamp(it->value("slideshow_interval_s", 300), 60, 86400);
+            w.slideshow_order = it->value("slideshow_order", "random") == "alphabetical"
+                                    ? Wallpaper::Order::Alphabetical
+                                    : Wallpaper::Order::Random;
         }
         if (auto it = j.find("osd"); it != j.end() && it->is_object()) {
             osd_.enabled = it->value("enabled", true);

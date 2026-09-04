@@ -5,6 +5,7 @@
 #include "bar/notification_popup.hpp"
 #include "bar/osd_window.hpp"
 #include "bar/session_window.hpp"
+#include "bar/wallpaper_window.hpp"
 #include "services/config.hpp"
 #include "services/idle.hpp"
 #include "services/osd.hpp"
@@ -130,6 +131,10 @@ protected:
         if (open_app_menu_on_startup_)
             Glib::signal_timeout().connect_once([this] { bar_->toggle_app_menu(); }, 800);
 
+        // desktop wallpaper: one background layer window per monitor, fed by
+        // the Wallpaper service (directory scan, slideshow, persisted pick)
+        wallpaper_ = std::make_unique<WallpaperManager>(*this);
+
         // notification toasts; presents itself while popups exist
         popups_ = std::make_unique<NotificationPopups>();
         add_window(*popups_);
@@ -249,6 +254,7 @@ private:
     }
 
     std::unique_ptr<Bar> bar_;
+    std::unique_ptr<WallpaperManager> wallpaper_;
     std::unique_ptr<NotificationPopups> popups_;
     std::unique_ptr<OsdWindow> osd_window_;
     std::unique_ptr<LauncherWindow> launcher_window_;

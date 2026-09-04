@@ -10,9 +10,13 @@
 
 #include "services/app_menu_icons.hpp"
 #include "services/session_actions.hpp"
+#include "services/wallpaper_files.hpp"
+
+#include <sys/stat.h>
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <cmath>
 #include <string>
 #include <string_view>
@@ -54,13 +58,29 @@ constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // sidebar rows -> GtkStack page names
-// (Bar / Launcher / Session menu / Lock screen / Idle / On-screen display /
-// Notifications)
-constexpr const char* kSidebarPages[] = {"bar",       "launcher_page", "session_page",
-                                         "lock_page", "idle_page",     "osd_page",
-                                         "notifications_page"};
+// (Bar / Wallpaper / Launcher / Session menu / Lock screen / Idle /
+// On-screen display / Notifications)
+constexpr const char* kSidebarPages[] = {"bar",       "wallpaper_page", "launcher_page",
+                                         "session_page", "lock_page",   "idle_page",
+                                         "osd_page",  "notifications_page"};
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
+// wallpaper page (Noctalia's fillModeModel order / transitionsModel minus the
+// two shader-only types the shell does not render)
+constexpr const char* kWpFillKeys[] = {"center", "crop", "fit", "stretch", "repeat"};
+constexpr guint kWpFillCount = G_N_ELEMENTS(kWpFillKeys);
+constexpr const char* kWpOrderKeys[] = {"random", "alphabetical"};
+struct WpTransition {
+    const char* key;
+    const char* label;
+};
+constexpr WpTransition kWpTransitions[] = {
+    {"fade", "Fade"}, {"disc", "Disc"}, {"stripes", "Stripes"}, {"wipe", "Wipe"}};
+constexpr gsize kWpTransitionCount = G_N_ELEMENTS(kWpTransitions);
+constexpr int kWpThumbWidth = 120;  // tile image size (Noctalia: cell x 0.67)
+constexpr int kWpThumbHeight = 80;
+constexpr int kWpThumbCache = 384;  // cached square thumbnail, like Noctalia's
+constexpr int kWpGridMaxHeight = 420; // grid scrolls beyond this
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
 // app menu icon dropdown: the shared presets, then Distro logo, then Custom
 constexpr guint kAmPresetCount = G_N_ELEMENTS(hyprshell::kAppMenuIconPresets);
@@ -88,6 +108,11 @@ void update_sm_rows(Settings* s);
 void update_bar_visibility_rows(Settings* s);
 void update_nd_rows(Settings* s);
 void rebuild_rule_rows(Settings* s);
+void update_wp_rows(Settings* s);
+void wp_set_directory(Settings* s, const std::string& directory);
+void wp_rescan(Settings* s);
+void wp_update_highlight(Settings* s);
+std::string wp_effective_current(Settings* s);
 
 struct Settings {
     std::string path;           // ~/.config/hypr-shell/config.json
@@ -141,6 +166,30 @@ struct Settings {
     AdwComboRow* osd_location = nullptr;
     AdwComboRow* osd_orientation = nullptr; // Automatic / Landscape / Portrait
     AdwSwitchRow* osd_enabled = nullptr;
+
+    // Wallpaper sidebar page (top-level "wallpaper" object)
+    AdwEntryRow* wp_directory = nullptr;
+    GtkWidget* wp_grid_group = nullptr;  // AdwPreferencesGroup holding the grid
+    GtkWidget* wp_grid = nullptr;        // GtkFlowBox of thumbnail tiles
+    GtkWidget* wp_grid_scroller = nullptr; // its GtkScrolledWindow (capped height)
+    GtkWidget* wp_grid_status = nullptr; // "no folder" / "no images" label
+    GtkWidget* wp_look_group = nullptr;
+    GtkWidget* wp_slideshow_group = nullptr;
+    AdwComboRow* wp_fill = nullptr;
+    AdwSwitchRow* wp_transitions = nullptr;
+    GtkWidget* wp_transition_types = nullptr; // AdwExpanderRow
+    AdwSwitchRow* wp_transition[kWpTransitionCount] = {};
+    GtkWidget* wp_duration_row = nullptr;
+    GtkAdjustment* wp_duration = nullptr; // ms
+    AdwSwitchRow* wp_slideshow = nullptr;
+    AdwComboRow* wp_order = nullptr;
+    AdwSpinRow* wp_interval = nullptr; // minutes (stored in seconds)
+    std::string wp_scanned_dir;        // folder the grid currently shows
+    std::string wp_current;            // highlighted tile (shell state, else config)
+    std::vector<std::string> wp_images;
+    GFileMonitor* wp_dir_monitor = nullptr;
+    GFileMonitor* wp_state_monitor = nullptr;
+    guint wp_rescan_source = 0;
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -414,6 +463,28 @@ void populate(Settings* s) {
         // defaults
     }
 
+    // Wallpaper page (top-level "wallpaper" object)
+    bool wp_transitions = true, wp_slideshow = false;
+    std::string wp_directory, wp_fill = "crop", wp_order = "random";
+    std::vector<std::string> wp_types = {"fade", "disc", "stripes", "wipe", "pixelate", "honeycomb"};
+    int wp_duration = 1500, wp_interval = 300;
+    {
+        const json wp = s->root.value("wallpaper", json::object());
+        wp_directory = wp.value("directory", "");
+        wp_fill = wp.value("fill_mode", wp_fill);
+        wp_transitions = wp.value("transitions_enabled", true);
+        if (auto it = wp.find("transitions"); it != wp.end() && it->is_array()) {
+            wp_types.clear();
+            for (const auto& entry : *it)
+                if (entry.is_string())
+                    wp_types.push_back(entry.get<std::string>());
+        }
+        wp_duration = std::clamp(wp.value("transition_duration_ms", 1500), 500, 10000);
+        wp_slideshow = wp.value("slideshow", false);
+        wp_order = wp.value("slideshow_order", wp_order);
+        wp_interval = std::clamp(wp.value("slideshow_interval_s", 300), 60, 86400);
+    }
+
     // On-screen display page (top-level "osd" object)
     bool osd_enabled = true;
     std::string osd_location = "top_right";
@@ -537,6 +608,23 @@ void populate(Settings* s) {
     update_sm_rows(s);
     gtk_editable_set_text(GTK_EDITABLE(s->lock_background), lock_background.c_str());
     gtk_adjustment_set_value(s->lock_blur, std::round(lock_blur * 100.0));
+    gtk_editable_set_text(GTK_EDITABLE(s->wp_directory), wp_directory.c_str());
+    for (guint i = 0; i < kWpFillCount; ++i)
+        if (wp_fill == kWpFillKeys[i])
+            adw_combo_row_set_selected(s->wp_fill, i);
+    adw_switch_row_set_active(s->wp_transitions, wp_transitions);
+    for (gsize i = 0; i < kWpTransitionCount; ++i)
+        adw_switch_row_set_active(s->wp_transition[i],
+                                  std::find(wp_types.begin(), wp_types.end(), kWpTransitions[i].key) !=
+                                      wp_types.end());
+    gtk_adjustment_set_value(s->wp_duration, wp_duration);
+    adw_switch_row_set_active(s->wp_slideshow, wp_slideshow);
+    adw_combo_row_set_selected(s->wp_order, wp_order == "alphabetical" ? 1 : 0);
+    adw_spin_row_set_value(s->wp_interval, std::round(wp_interval / 60.0));
+    update_wp_rows(s);
+    wp_set_directory(s, wp_directory);
+    s->wp_current = wp_effective_current(s);
+    wp_update_highlight(s);
     adw_switch_row_set_active(s->osd_enabled, osd_enabled);
     for (guint i = 0; i < kOsdLocationCount; ++i)
         if (osd_location == kOsdLocationKeys[i])
@@ -850,6 +938,435 @@ void on_lock_blur_changed(GtkAdjustment* adjustment, gpointer data) {
         return;
     lock_object(s)["blur"] = std::round(gtk_adjustment_get_value(adjustment)) / 100.0;
     save(s);
+}
+
+// -- Wallpaper page: the top-level "wallpaper" config object ------------------
+
+json& wp_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["wallpaper"].is_object())
+        s->root["wallpaper"] = json::object();
+    return s->root["wallpaper"];
+}
+
+// transition details hide behind the transitions switch, slideshow details
+// behind its switch
+void update_wp_rows(Settings* s) {
+    const bool transitions = adw_switch_row_get_active(s->wp_transitions) != FALSE;
+    gtk_widget_set_visible(s->wp_transition_types, transitions);
+    gtk_widget_set_visible(s->wp_duration_row, transitions);
+    const bool slideshow = adw_switch_row_get_active(s->wp_slideshow) != FALSE;
+    gtk_widget_set_visible(GTK_WIDGET(s->wp_order), slideshow);
+    gtk_widget_set_visible(GTK_WIDGET(s->wp_interval), slideshow);
+}
+
+void on_wp_directory_changed(GtkEditable* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const std::string directory = gtk_editable_get_text(row);
+    wp_object(s)["directory"] = directory;
+    save(s);
+    wp_set_directory(s, directory);
+}
+
+// folder button on the directory row: pick a folder into the entry (its
+// changed handler then writes the config and rescans)
+void on_wp_browse_clicked(GtkButton* button, gpointer) {
+    auto* entry = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(button), "target-entry"));
+    GtkFileDialog* dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, "Select wallpaper folder");
+    const char* current = gtk_editable_get_text(GTK_EDITABLE(entry));
+    std::string initial = (current != nullptr && *current != '\0')
+                              ? std::string(current)
+                              : std::string(g_get_home_dir()) + "/Pictures";
+    if (!initial.empty() && initial[0] == '~')
+        initial = std::string(g_get_home_dir()) + initial.substr(1);
+    if (g_file_test(initial.c_str(), G_FILE_TEST_IS_DIR)) {
+        GFile* folder = g_file_new_for_path(initial.c_str());
+        gtk_file_dialog_set_initial_folder(dialog, folder);
+        g_object_unref(folder);
+    }
+    auto* root = gtk_widget_get_root(GTK_WIDGET(button));
+    gtk_file_dialog_select_folder(
+        dialog, GTK_WINDOW(root), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer entry_ptr) {
+            GFile* file =
+                gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), result, nullptr);
+            if (file != nullptr) {
+                gchar* path = g_file_get_path(file);
+                if (path != nullptr)
+                    gtk_editable_set_text(GTK_EDITABLE(entry_ptr), path);
+                g_free(path);
+                g_object_unref(file);
+            }
+        },
+        entry);
+    g_object_unref(dialog);
+}
+
+void on_wp_fill_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->wp_fill);
+    wp_object(s)["fill_mode"] = kWpFillKeys[selected < kWpFillCount ? selected : 1];
+    save(s);
+}
+
+void on_wp_transitions_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_wp_rows(s);
+    if (s->loading)
+        return;
+    wp_object(s)["transitions_enabled"] = adw_switch_row_get_active(s->wp_transitions) != FALSE;
+    save(s);
+}
+
+// the four switches form Noctalia's transitionType array (a random one of the
+// checked types is used per change); none checked = instant swap
+void on_wp_transition_type_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    json list = json::array();
+    for (gsize i = 0; i < kWpTransitionCount; ++i)
+        if (adw_switch_row_get_active(s->wp_transition[i]))
+            list.push_back(kWpTransitions[i].key);
+    wp_object(s)["transitions"] = list;
+    save(s);
+}
+
+void on_wp_duration_changed(GtkAdjustment* adjustment, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    wp_object(s)["transition_duration_ms"] = (int)std::round(gtk_adjustment_get_value(adjustment));
+    save(s);
+}
+
+void on_wp_slideshow_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_wp_rows(s);
+    if (s->loading)
+        return;
+    wp_object(s)["slideshow"] = adw_switch_row_get_active(s->wp_slideshow) != FALSE;
+    save(s);
+}
+
+void on_wp_order_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->wp_order);
+    wp_object(s)["slideshow_order"] = kWpOrderKeys[selected < 2 ? selected : 0];
+    save(s);
+}
+
+void on_wp_interval_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    // Noctalia: minutes in the UI, seconds on disk
+    wp_object(s)["slideshow_interval_s"] = (int)std::round(adw_spin_row_get_value(s->wp_interval)) * 60;
+    save(s);
+}
+
+// -- wallpaper grid: thumbnails -----------------------------------------------
+
+std::string wp_expand(std::string path) {
+    if (!path.empty() && path[0] == '~')
+        path = std::string(g_get_home_dir()) + path.substr(1);
+    return path;
+}
+
+// ~/.cache/hypr-shell/wallpapers/thumbnails/<sha256(path@384x384@mtime)>.png —
+// Noctalia's ImageCacheService key, so a re-saved image gets a fresh thumbnail
+std::string wp_thumb_cache_path(const std::string& path) {
+    static std::string dir;
+    if (dir.empty()) {
+        dir = std::string(g_get_user_cache_dir()) + "/hypr-shell/wallpapers/thumbnails";
+        g_mkdir_with_parents(dir.c_str(), 0700);
+    }
+    struct stat st{};
+    const std::string mtime = stat(path.c_str(), &st) == 0 ? std::to_string(st.st_mtime) : "unknown";
+    const std::string key = path + "@" + std::to_string(kWpThumbCache) + "x" +
+                            std::to_string(kWpThumbCache) + "@" + mtime;
+    gchar* hash = g_compute_checksum_for_string(G_CHECKSUM_SHA256, key.c_str(), -1);
+    const std::string result = dir + "/" + hash + ".png";
+    g_free(hash);
+    return result;
+}
+
+struct WpThumbJob {
+    GtkPicture* picture; // ref held while decoding
+    std::string path;
+    std::string cache_path;
+};
+
+// decode → center-crop to a 384px square → cache as PNG → show
+void wp_thumb_decoded(GObject*, GAsyncResult* result, gpointer data) {
+    std::unique_ptr<WpThumbJob> job(static_cast<WpThumbJob*>(data));
+    GError* error = nullptr;
+    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_stream_finish(result, &error);
+    if (pixbuf == nullptr) {
+        g_message("wallpaper thumbnail: %s: %s", job->path.c_str(), error ? error->message : "?");
+        g_clear_error(&error);
+        g_object_unref(job->picture);
+        return;
+    }
+    GdkPixbuf* oriented = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+    g_object_unref(pixbuf);
+    const int w = gdk_pixbuf_get_width(oriented);
+    const int h = gdk_pixbuf_get_height(oriented);
+    const int side = std::min({w, h, kWpThumbCache});
+    GdkPixbuf* sub = gdk_pixbuf_new_subpixbuf(oriented, (w - side) / 2, (h - side) / 2, side, side);
+    GdkPixbuf* square = gdk_pixbuf_copy(sub);
+    g_object_unref(sub);
+    g_object_unref(oriented);
+    if (!gdk_pixbuf_save(square, job->cache_path.c_str(), "png", &error, "compression", "1", nullptr)) {
+        g_message("wallpaper thumbnail: cannot cache %s: %s", job->cache_path.c_str(),
+                  error ? error->message : "?");
+        g_clear_error(&error);
+    }
+    GdkTexture* texture = gdk_texture_new_for_pixbuf(square);
+    gtk_picture_set_paintable(job->picture, GDK_PAINTABLE(texture));
+    g_object_unref(texture);
+    g_object_unref(square);
+    g_object_unref(job->picture);
+}
+
+void wp_thumb_opened(GObject* source, GAsyncResult* result, gpointer data) {
+    auto* job = static_cast<WpThumbJob*>(data);
+    GError* error = nullptr;
+    GFileInputStream* stream = g_file_read_finish(G_FILE(source), result, &error);
+    if (stream == nullptr) {
+        g_message("wallpaper thumbnail: cannot open %s: %s", job->path.c_str(),
+                  error ? error->message : "?");
+        g_clear_error(&error);
+        g_object_unref(job->picture);
+        delete job;
+        return;
+    }
+    // cover-scale the shorter side to 384 (header read is cheap), crop after
+    int image_w = 0, image_h = 0;
+    int target_w = kWpThumbCache, target_h = kWpThumbCache;
+    if (gdk_pixbuf_get_file_info(job->path.c_str(), &image_w, &image_h) != nullptr && image_w > 0 &&
+        image_h > 0) {
+        if (image_w > image_h)
+            target_w = -1;
+        else
+            target_h = -1;
+    }
+    gdk_pixbuf_new_from_stream_at_scale_async(G_INPUT_STREAM(stream), target_w, target_h, TRUE,
+                                              nullptr, wp_thumb_decoded, job);
+    g_object_unref(stream);
+}
+
+void wp_load_thumbnail(GtkPicture* picture, const std::string& path) {
+    const std::string cache = wp_thumb_cache_path(path);
+    if (g_file_test(cache.c_str(), G_FILE_TEST_IS_REGULAR)) {
+        gtk_picture_set_filename(picture, cache.c_str());
+        return;
+    }
+    auto* job = new WpThumbJob{GTK_PICTURE(g_object_ref(picture)), path, cache};
+    GFile* file = g_file_new_for_path(path.c_str());
+    g_file_read_async(file, G_PRIORITY_LOW, nullptr, wp_thumb_opened, job);
+    g_object_unref(file);
+}
+
+// The wallpaper on screen: the shell persists slideshow picks in
+// ~/.cache/hypr-shell/wallpaper.json; before it ever wrote one, the config's
+// own pick is the answer.
+std::string wp_effective_current(Settings* s) {
+    const std::string state_path = std::string(g_get_user_cache_dir()) + "/hypr-shell/wallpaper.json";
+    gchar* contents = nullptr;
+    gsize length = 0;
+    if (g_file_get_contents(state_path.c_str(), &contents, &length, nullptr)) {
+        std::string current;
+        try {
+            current = json::parse(contents, contents + length).value("current", "");
+        } catch (const json::exception&) {
+        }
+        g_free(contents);
+        if (!current.empty())
+            return current;
+    }
+    return wp_expand(s->root.value("wallpaper", json::object()).value("current", ""));
+}
+
+void wp_update_highlight(Settings* s) {
+    for (GtkWidget* child = gtk_widget_get_first_child(s->wp_grid); child != nullptr;
+         child = gtk_widget_get_next_sibling(child)) {
+        GtkWidget* tile = gtk_flow_box_child_get_child(GTK_FLOW_BOX_CHILD(child));
+        const char* path = static_cast<const char*>(g_object_get_data(G_OBJECT(tile), "wp-path"));
+        const bool current = path != nullptr && s->wp_current == path;
+        if (current)
+            gtk_widget_add_css_class(tile, "current");
+        else
+            gtk_widget_remove_css_class(tile, "current");
+    }
+}
+
+void on_wp_tile_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const char* path = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "wp-path"));
+    if (path == nullptr)
+        return;
+    wp_object(s)["current"] = path;
+    save(s);
+    s->wp_current = path;
+    wp_update_highlight(s);
+}
+
+// Noctalia's grid tile: cover-cropped rounded thumbnail (accent border on the
+// current one), filename underneath, dimmed until hovered
+GtkWidget* wp_make_tile(Settings* s, const std::string& path) {
+    GtkWidget* button = gtk_button_new();
+    gtk_widget_add_css_class(button, "flat");
+    gtk_widget_add_css_class(button, "wp-tile");
+    gtk_widget_set_tooltip_text(button, path.c_str());
+    g_object_set_data_full(G_OBJECT(button), "wp-path", g_strdup(path.c_str()), g_free);
+
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    GtkWidget* frame = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_add_css_class(frame, "wp-frame");
+    gtk_widget_set_halign(frame, GTK_ALIGN_CENTER);
+    GtkWidget* picture = gtk_picture_new();
+    gtk_widget_add_css_class(picture, "wp-thumb");
+    gtk_picture_set_content_fit(GTK_PICTURE(picture), GTK_CONTENT_FIT_COVER);
+    gtk_picture_set_can_shrink(GTK_PICTURE(picture), TRUE);
+    gtk_widget_set_size_request(picture, kWpThumbWidth, kWpThumbHeight);
+    gtk_widget_set_overflow(picture, GTK_OVERFLOW_HIDDEN);
+    gtk_box_append(GTK_BOX(frame), picture);
+    gtk_box_append(GTK_BOX(box), frame);
+
+    gchar* basename = g_path_get_basename(path.c_str());
+    GtkWidget* label = gtk_label_new(basename);
+    g_free(basename);
+    gtk_widget_add_css_class(label, "caption");
+    gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+    gtk_label_set_max_width_chars(GTK_LABEL(label), 1); // never wider than the thumbnail
+    gtk_label_set_xalign(GTK_LABEL(label), 0.5f);
+    gtk_box_append(GTK_BOX(box), label);
+
+    gtk_button_set_child(GTK_BUTTON(button), box);
+    g_signal_connect(button, "clicked", G_CALLBACK(on_wp_tile_clicked), s);
+    wp_load_thumbnail(GTK_PICTURE(picture), path);
+    return button;
+}
+
+void wp_rebuild_grid(Settings* s) {
+    while (GtkWidget* child = gtk_widget_get_first_child(s->wp_grid))
+        gtk_flow_box_remove(GTK_FLOW_BOX(s->wp_grid), child);
+    for (const auto& path : s->wp_images)
+        gtk_flow_box_append(GTK_FLOW_BOX(s->wp_grid), wp_make_tile(s, path));
+    const char* status = s->wp_scanned_dir.empty() ? "Choose a folder to see its images here."
+                         : s->wp_images.empty()   ? "No images found in this folder."
+                                                  : nullptr;
+    gtk_label_set_text(GTK_LABEL(s->wp_grid_status), status != nullptr ? status : "");
+    gtk_widget_set_visible(s->wp_grid_status, status != nullptr);
+    gtk_widget_set_visible(s->wp_grid, !s->wp_images.empty());
+    // The page's viewport allocates children at their MINIMUM height (GTK's
+    // default scroll policy) and a scrolled window's minimum is tiny, so once
+    // the page overflows the grid collapsed to a sliver. Pin the scroller's
+    // minimum to the grid's natural height, capped — the flow box has fixed
+    // columns, so measuring it before mapping is exact.
+    int min_w = 0, nat_w = 0, min_h = 0, nat_h = 0, dummy = 0;
+    gtk_widget_measure(s->wp_grid, GTK_ORIENTATION_HORIZONTAL, -1, &min_w, &nat_w, &dummy, &dummy);
+    gtk_widget_measure(s->wp_grid, GTK_ORIENTATION_VERTICAL, nat_w, &min_h, &nat_h, &dummy, &dummy);
+    const int height = s->wp_images.empty() ? 0 : std::min(nat_h, kWpGridMaxHeight);
+    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(s->wp_grid_scroller), height);
+    gtk_widget_set_visible(s->wp_grid_scroller, !s->wp_images.empty());
+    wp_update_highlight(s);
+}
+
+// List the folder (local, small: synchronous like the shell's config read),
+// sorted case-insensitively by name; hidden files skipped like Noctalia.
+void wp_rescan(Settings* s) {
+    s->wp_images.clear();
+    if (!s->wp_scanned_dir.empty()) {
+        GFile* dir = g_file_new_for_path(s->wp_scanned_dir.c_str());
+        GFileEnumerator* enumerator = g_file_enumerate_children(
+            dir, "standard::name,standard::type,standard::is-hidden", G_FILE_QUERY_INFO_NONE, nullptr,
+            nullptr);
+        if (enumerator != nullptr) {
+            while (GFileInfo* info = g_file_enumerator_next_file(enumerator, nullptr, nullptr)) {
+                const char* name = g_file_info_get_name(info);
+                if (g_file_info_get_file_type(info) == G_FILE_TYPE_REGULAR &&
+                    !g_file_info_get_is_hidden(info) && name != nullptr &&
+                    hyprshell::is_wallpaper_image(name))
+                    s->wp_images.push_back(s->wp_scanned_dir + "/" + name);
+                g_object_unref(info);
+            }
+            g_object_unref(enumerator);
+        }
+        g_object_unref(dir);
+        std::sort(s->wp_images.begin(), s->wp_images.end(),
+                  [](const std::string& a, const std::string& b) {
+                      gchar* ka = g_utf8_casefold(a.c_str() + a.rfind('/'), -1);
+                      gchar* kb = g_utf8_casefold(b.c_str() + b.rfind('/'), -1);
+                      const bool less = g_strcmp0(ka, kb) < 0;
+                      g_free(ka);
+                      g_free(kb);
+                      return less;
+                  });
+    }
+    wp_rebuild_grid(s);
+}
+
+void wp_schedule_rescan(Settings* s) {
+    if (s->wp_rescan_source != 0)
+        g_source_remove(s->wp_rescan_source);
+    s->wp_rescan_source = g_timeout_add(
+        400,
+        [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            s->wp_rescan_source = 0;
+            wp_rescan(s);
+            return G_SOURCE_REMOVE;
+        },
+        s);
+}
+
+// point the grid at a folder: rescan now, follow changes on disk
+void wp_set_directory(Settings* s, const std::string& directory) {
+    const std::string expanded = wp_expand(directory);
+    if (expanded == s->wp_scanned_dir && s->wp_dir_monitor != nullptr)
+        return;
+    s->wp_scanned_dir = g_file_test(expanded.c_str(), G_FILE_TEST_IS_DIR) ? expanded : "";
+    if (s->wp_dir_monitor != nullptr) {
+        g_file_monitor_cancel(s->wp_dir_monitor);
+        g_clear_object(&s->wp_dir_monitor);
+    }
+    if (!s->wp_scanned_dir.empty()) {
+        GFile* dir = g_file_new_for_path(s->wp_scanned_dir.c_str());
+        s->wp_dir_monitor = g_file_monitor_directory(dir, G_FILE_MONITOR_NONE, nullptr, nullptr);
+        g_object_unref(dir);
+        if (s->wp_dir_monitor != nullptr)
+            g_signal_connect(s->wp_dir_monitor, "changed",
+                             G_CALLBACK(+[](GFileMonitor*, GFile*, GFile*, GFileMonitorEvent,
+                                            gpointer data) { wp_schedule_rescan(static_cast<Settings*>(data)); }),
+                             s);
+    }
+    wp_rescan(s);
+}
+
+// follow the shell's slideshow picks so the highlighted tile is what's on screen
+void wp_watch_state(Settings* s) {
+    const std::string state_path = std::string(g_get_user_cache_dir()) + "/hypr-shell/wallpaper.json";
+    GFile* file = g_file_new_for_path(state_path.c_str());
+    s->wp_state_monitor = g_file_monitor_file(file, G_FILE_MONITOR_NONE, nullptr, nullptr);
+    g_object_unref(file);
+    if (s->wp_state_monitor != nullptr)
+        g_signal_connect(s->wp_state_monitor, "changed",
+                         G_CALLBACK(+[](GFileMonitor*, GFile*, GFile*, GFileMonitorEvent, gpointer data) {
+                             auto* s = static_cast<Settings*>(data);
+                             s->wp_current = wp_effective_current(s);
+                             wp_update_highlight(s);
+                         }),
+                         s);
 }
 
 // -- On-screen display page: the top-level "osd" config object ---------------
@@ -1520,6 +2037,23 @@ void on_activate(GtkApplication* app, gpointer) {
     s->path = std::string(g_get_user_config_dir()) + "/hypr-shell/config.json";
     load(s);
 
+    // wallpaper grid tiles (Noctalia's panel look: rounded cover thumbnails,
+    // accent border on the current one, others veiled until hovered)
+    GtkCssProvider* css = gtk_css_provider_new();
+    gtk_css_provider_load_from_string(
+        css,
+        ".wp-tile { padding: 4px; border-radius: 20px; }"
+        ".wp-frame { border-radius: 16px; border: 3px solid transparent; }"
+        ".wp-tile.current .wp-frame { border-color: @accent_bg_color; }"
+        ".wp-thumb { border-radius: 13px; background-color: @card_bg_color; opacity: 0.7;"
+        "  transition: opacity 150ms ease; }"
+        ".wp-tile:hover .wp-thumb, .wp-tile.current .wp-thumb { opacity: 1; }"
+        ".wp-tile label { color: @dim_label_color; }"
+        ".wp-tile:hover label, .wp-tile.current label { color: @window_fg_color; }");
+    gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
+
     GtkWidget* win = adw_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(win), "Settings");
     gtk_window_set_default_size(GTK_WINDOW(win), 860, 640);
@@ -2126,6 +2660,150 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
                              ADW_PREFERENCES_GROUP(lock_group));
 
+    // -- Wallpaper sidebar page (top-level "wallpaper" object) -----------------
+    GtkWidget* wp_page = adw_preferences_page_new();
+    GtkWidget* wp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_group), "Wallpaper");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(wp_group),
+        "The shell draws the wallpaper itself on every monitor. Pick the folder holding "
+        "your images; the grid at the bottom lists them.");
+    GtkWidget* wp_dir_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dir_row), "Wallpaper folder");
+    GtkWidget* wp_browse = gtk_button_new_from_icon_name("folder-open-symbolic");
+    gtk_widget_add_css_class(wp_browse, "flat");
+    gtk_widget_set_valign(wp_browse, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(wp_browse, "Select a folder");
+    g_object_set_data(G_OBJECT(wp_browse), "target-entry", wp_dir_row);
+    g_signal_connect(wp_browse, "clicked", G_CALLBACK(on_wp_browse_clicked), nullptr);
+    adw_entry_row_add_suffix(ADW_ENTRY_ROW(wp_dir_row), wp_browse);
+    s->wp_directory = ADW_ENTRY_ROW(wp_dir_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_group), wp_dir_row);
+    g_signal_connect(wp_dir_row, "changed", G_CALLBACK(on_wp_directory_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_group));
+
+    GtkWidget* wp_look = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_look), "Look");
+    s->wp_look_group = wp_look;
+    GtkWidget* wp_fill_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_fill_row), "Fill mode");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_fill_row),
+                                "How the image scales to the monitor's resolution.");
+    const char* wp_fill_labels[] = {"Center", "Crop (Fill)", "Fit (Contain)", "Stretch",
+                                    "Repeat (Tile)", nullptr};
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_fill_row), G_LIST_MODEL(gtk_string_list_new(wp_fill_labels)));
+    s->wp_fill = ADW_COMBO_ROW(wp_fill_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_fill_row);
+    g_signal_connect(wp_fill_row, "notify::selected", G_CALLBACK(on_wp_fill_changed), s);
+
+    GtkWidget* wp_tr_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_tr_row), "Transitions");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_tr_row),
+                                "Animate the change from one wallpaper to the next.");
+    s->wp_transitions = ADW_SWITCH_ROW(wp_tr_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_tr_row);
+    g_signal_connect(wp_tr_row, "notify::active", G_CALLBACK(on_wp_transitions_toggled), s);
+
+    GtkWidget* wp_types_row = adw_expander_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_types_row), "Transition type");
+    adw_expander_row_set_subtitle(ADW_EXPANDER_ROW(wp_types_row),
+                                  "One of the selected animations is picked at random for each change.");
+    for (gsize i = 0; i < kWpTransitionCount; ++i) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), kWpTransitions[i].label);
+        s->wp_transition[i] = ADW_SWITCH_ROW(row);
+        adw_expander_row_add_row(ADW_EXPANDER_ROW(wp_types_row), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_wp_transition_type_toggled), s);
+    }
+    s->wp_transition_types = wp_types_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_types_row);
+
+    GtkWidget* wp_dur_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dur_row), "Transition duration");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_dur_row), "Length of the animation.");
+    s->wp_duration = gtk_adjustment_new(1500, 500, 10000, 100, 500, 0);
+    GtkWidget* wp_dur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->wp_duration);
+    gtk_scale_set_draw_value(GTK_SCALE(wp_dur_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(wp_dur_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(wp_dur_scale),
+        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%.1fs", value / 1000.0); },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(wp_dur_scale, 200, -1);
+    gtk_widget_set_valign(wp_dur_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(wp_dur_row), wp_dur_scale);
+    s->wp_duration_row = wp_dur_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_dur_row);
+    g_signal_connect(s->wp_duration, "value-changed", G_CALLBACK(on_wp_duration_changed), s);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_look));
+
+    GtkWidget* wp_auto = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_auto), "Slideshow");
+    s->wp_slideshow_group = wp_auto;
+    GtkWidget* wp_ss_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_ss_row), "Slideshow");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_ss_row),
+                                "Automatically change the wallpaper at regular intervals.");
+    s->wp_slideshow = ADW_SWITCH_ROW(wp_ss_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_ss_row);
+    g_signal_connect(wp_ss_row, "notify::active", G_CALLBACK(on_wp_slideshow_toggled), s);
+
+    GtkWidget* wp_order_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_order_row), "Change order");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_order_row),
+                                "Random shows every image once before repeating.");
+    const char* wp_order_labels[] = {"Random", "Alphabetical", nullptr};
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_order_row),
+                            G_LIST_MODEL(gtk_string_list_new(wp_order_labels)));
+    s->wp_order = ADW_COMBO_ROW(wp_order_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_order_row);
+    g_signal_connect(wp_order_row, "notify::selected", G_CALLBACK(on_wp_order_changed), s);
+
+    GtkWidget* wp_int_row = adw_spin_row_new_with_range(1, 1440, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_int_row), "Time until next wallpaper");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_int_row), "Minutes between changes.");
+    s->wp_interval = ADW_SPIN_ROW(wp_int_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_int_row);
+    g_signal_connect(wp_int_row, "notify::value", G_CALLBACK(on_wp_interval_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_auto));
+
+    // the grid: Noctalia's wallpaper panel as a preferences group
+    GtkWidget* wp_grid_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_grid_group), "Wallpapers");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(wp_grid_group),
+                                          "Click an image to set it as the wallpaper.");
+    s->wp_grid_group = wp_grid_group;
+    GtkWidget* wp_grid_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    s->wp_grid_status = gtk_label_new("");
+    gtk_widget_add_css_class(s->wp_grid_status, "dim-label");
+    gtk_label_set_xalign(GTK_LABEL(s->wp_grid_status), 0.0f);
+    gtk_widget_set_margin_top(s->wp_grid_status, 6);
+    gtk_box_append(GTK_BOX(wp_grid_box), s->wp_grid_status);
+    s->wp_grid = gtk_flow_box_new();
+    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(s->wp_grid), GTK_SELECTION_NONE);
+    gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(s->wp_grid), TRUE);
+    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4); // Noctalia's 4 columns
+    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4);
+    gtk_widget_set_halign(s->wp_grid, GTK_ALIGN_CENTER);
+    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
+    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
+    gtk_widget_add_css_class(s->wp_grid, "wp-grid");
+    gtk_widget_set_valign(s->wp_grid, GTK_ALIGN_START);
+    // grows with its content up to a cap, then scrolls (user request)
+    GtkWidget* wp_scroller = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(wp_scroller), GTK_POLICY_NEVER,
+                                   GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(wp_scroller), TRUE);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(wp_scroller), kWpGridMaxHeight);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(wp_scroller), s->wp_grid);
+    s->wp_grid_scroller = wp_scroller;
+    gtk_box_append(GTK_BOX(wp_grid_box), wp_scroller);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_grid_group), wp_grid_box);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_grid_group));
+
+    wp_watch_state(s);
+
     // -- On-screen display sidebar page (top-level "osd" object) --------------
     GtkWidget* osd_page = adw_preferences_page_new();
     GtkWidget* osd_group = adw_preferences_group_new();
@@ -2648,6 +3326,12 @@ void on_activate(GtkApplication* app, gpointer) {
                               ws_cog);
 
     // -- GNOME-Settings-style sidebar: Bar, Launcher, Notifications ----------
+    GtkWidget* wp_view = adw_toolbar_view_new();
+    GtkWidget* wp_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(wp_header),
+                                    adw_window_title_new("Wallpaper", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(wp_view), wp_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(wp_view), wp_page);
     GtkWidget* lp_view = adw_toolbar_view_new();
     GtkWidget* lp_header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(lp_header),
@@ -2694,6 +3378,7 @@ void on_activate(GtkApplication* app, gpointer) {
 
     GtkWidget* stack = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
+    gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
     gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
@@ -2704,8 +3389,8 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Launcher", "Session menu", "Lock screen", "Idle",
-                              "On-screen display", "Notifications"}) {
+    for (const char* title : {"Bar", "Wallpaper", "Launcher", "Session menu", "Lock screen",
+                              "Idle", "On-screen display", "Notifications"}) {
         GtkWidget* label = gtk_label_new(title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
         gtk_widget_set_margin_top(label, 9);

@@ -60,6 +60,7 @@ sources = files(
   'src/bar/osd_window.cpp',
   'src/bar/session_menu.cpp',
   'src/bar/session_window.cpp',
+  'src/bar/wallpaper_window.cpp',
   'src/bar/calendar.cpp',
   'src/bar/idle_fade.cpp',
   'src/bar/launcher_window.cpp',
@@ -93,6 +94,7 @@ sources = files(
   'src/services/pulse.cpp',
   'src/services/session.cpp',
   'src/services/upower.cpp',
+  'src/services/wallpaper.cpp',
 )
 
 # Icon fonts. Tabler (wifi/volume glyphs) is MIT; SegoeIcons.ttf (battery

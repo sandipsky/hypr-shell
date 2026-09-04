@@ -18,8 +18,9 @@ struct Settings       parsed JSON root + pointer to every row widget + loading f
 load() / save()       file I/O; save() dumps root with 2-space indent
 bar_object(s)         returns root["bar"], creating it as an object if needed
 <sub>_object(s)       same for bar.workspaces, bar.clock, bar.battery, bar.active_window,
-                      bar.bluetooth, bar.notifications; nd_object / launcher_object
-                      for the top-level notifications / launcher objects
+                      bar.bluetooth, bar.notifications; nd_object / launcher_object /
+                      wp_object ... for the top-level notifications / launcher /
+                      wallpaper ... objects
 populate(s)           loading = true; read root → set every widget; loading = false
 on_*_changed(...)     handlers: if (loading) return; write key; save()
 resolve_layout /      the bar.layout editor (up/down buttons, section dropdown)
@@ -147,8 +148,8 @@ adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("key")]), cog);
 
 ## Adding a sidebar page
 
-For options that are not about the bar (a future Wallpaper page, say), copy
-the Launcher or Lock screen page block in `on_activate()`: build an
+For options that are not about the bar, copy the Launcher or Lock screen
+page block in `on_activate()`: build an
 `AdwPreferencesPage`, wrap it in an `AdwToolbarView`, `gtk_stack_add_named()`
 it with a `<name>_page` tag, append a label row to the sidebar list box, and
 extend the `row-selected` handler's index → page mapping. Its config lives in
@@ -157,6 +158,15 @@ in `Config` (see `Config::Launcher` for the smallest example).
 
 `HS_SETTINGS_PAGE=tag ./build/hypr-shell-settings` opens the page straight
 away for testing and screenshots.
+
+The Wallpaper page (`wp_*` in `main.cpp`) is the richest example: besides
+rows it holds a `GtkFlowBox` grid of thumbnail tiles (`wp_make_tile`,
+`wp_rebuild_grid`), decodes thumbnails asynchronously into a PNG cache
+(`wp_load_thumbnail`), watches the wallpaper folder and the shell's state
+file with `GFileMonitor`s, and styles its tiles through a small
+`GtkCssProvider` loaded in `on_activate()` — the only custom CSS in the
+settings binary. Anything a preferences group can hold is fair game; a group
+accepts arbitrary widgets, not just rows.
 
 The `+[](...)` in front of the lambda forces conversion to a plain function
 pointer, which `G_CALLBACK` needs; only capture-less lambdas can do that.

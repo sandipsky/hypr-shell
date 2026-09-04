@@ -87,6 +87,19 @@ launcher).
     "blur": 0.0
   },
 
+  "wallpaper": {
+    "directory": "",
+    "current": "",
+    "fill_mode": "crop",
+    "transitions_enabled": true,
+    "transitions": ["fade", "disc", "stripes", "wipe", "pixelate", "honeycomb"],
+    "transition_duration_ms": 1500,
+    "edge_smoothness": 0.05,
+    "slideshow": false,
+    "slideshow_interval_s": 300,
+    "slideshow_order": "random"
+  },
+
   "osd": {
     "enabled": true,
     "location": "top_right",
@@ -229,6 +242,28 @@ only two lock screen options (Noctalia's `general.lockScreenWallpaper` and
 Not config: the avatar is `~/.face` when it exists (else a person glyph), the
 name is the account's real name (GECOS), the PAM service is auto-detected
 (`login` / `system-auth` / `common-auth`, override with `HS_PAM_SERVICE`).
+
+## `wallpaper` (top level)
+
+Exposed as `Config::get().wallpaper()` (struct `Config::Wallpaper`). The
+desktop wallpaper drawn by the shell itself (Noctalia's
+`Settings.data.wallpaper`, single folder, same image on every monitor).
+The settings app's "Wallpaper" page edits all of it except `edge_smoothness`;
+the image grid there writes `current`. Always on: with no folder or image the
+shell simply maps no wallpaper window.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `directory` | path | `""` | Folder listed in the settings grid and used by the slideshow (`~` expanded; not recursive; hidden files skipped). |
+| `current` | path | `""` | The image picked in the settings app. The shell adopts it when the value *changes*; the image actually on screen (slideshow picks included) is persisted by the shell in `~/.cache/hypr-shell/wallpaper.json`. With neither set, the first scan picks one from the folder. |
+| `fill_mode` | `center` / `crop` / `fit` / `stretch` / `repeat` | `crop` | Noctalia's fill modes: 1:1 centred, cover, contain (black bars), stretched, tiled from the top-left. |
+| `transitions_enabled` | bool | `true` | Animate changes; off = instant swap. |
+| `transitions` | list of `fade` / `disc` / `stripes` / `wipe` / `pixelate` / `honeycomb` | all six | Noctalia's multi-select: one of the listed types is picked at random per change. `pixelate` and `honeycomb` are accepted but not rendered (shader-only in Noctalia); an empty list means instant. |
+| `transition_duration_ms` | 500..10000 | `1500` | Animation length (InOutCubic). |
+| `edge_smoothness` | 0..1 | `0.05` | Feathering of the wipe / disc / stripes edge (Noctalia's quadratic mapping). Config only — no settings row, per user. |
+| `slideshow` | bool | `false` | Change the wallpaper automatically. Turning it on changes it immediately, like Noctalia. |
+| `slideshow_interval_s` | 60..86400 | `300` | Seconds between changes (the settings app edits minutes). A manual pick restarts the timer. |
+| `slideshow_order` | `random` / `alphabetical` | `random` | `random` is a shuffle bag (every image once before repeats, never the same twice in a row), `alphabetical` steps through the sorted folder. |
 
 ## `osd` (top level)
 
