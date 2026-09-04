@@ -41,6 +41,7 @@ constexpr ModuleInfo kModules[] = {
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
     {"vpn",           "VPN",           "VPN profiles pill",            2},
+    {"control_center", "Control center", "Media, audio, brightness and system monitor panel", 2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
     {"notifications", "Notifications", "Notification bell and history", 2},
@@ -143,6 +144,12 @@ struct Settings {
     AdwEntryRow* clock_fmt_v = nullptr;
 
     AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
+
+    // control center subpage: which cards the panel shows
+    AdwSwitchRow* cc_media = nullptr;
+    AdwSwitchRow* cc_audio = nullptr;
+    AdwSwitchRow* cc_brightness = nullptr;
+    AdwSwitchRow* cc_sysmon = nullptr;
 
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
@@ -358,6 +365,11 @@ void populate(Settings* s) {
 
     bool bt_auto = false;
     try {
+        const json cc = s->root.value("bar", json::object()).value("control_center", json::object());
+        adw_switch_row_set_active(s->cc_media, cc.value("show_media", true));
+        adw_switch_row_set_active(s->cc_audio, cc.value("show_audio", true));
+        adw_switch_row_set_active(s->cc_brightness, cc.value("show_brightness", false));
+        adw_switch_row_set_active(s->cc_sysmon, cc.value("show_sysmon", true));
         const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
         bt_auto = bt.value("auto_connect", false);
     } catch (const json::exception&) {
@@ -759,6 +771,24 @@ void on_bt_auto_toggled(GObject*, GParamSpec*, gpointer data) {
 }
 
 // -- App menu subpage: bar.app_menu -------------------------------------------
+
+json& control_center_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["control_center"].is_object())
+        bar["control_center"] = json::object();
+    return bar["control_center"];
+}
+
+void on_cc_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const char* key = static_cast<const char*>(g_object_get_data(row, "config-key"));
+    if (key == nullptr)
+        return;
+    control_center_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
 
 json& app_menu_object(Settings* s) {
     json& bar = bar_object(s);
@@ -2441,6 +2471,36 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(bt_page),
                              ADW_PREFERENCES_GROUP(bt_group));
 
+    // -- Control center subpage: card toggles ----------------------------------
+    GtkWidget* cc_page = adw_preferences_page_new();
+    GtkWidget* cc_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cc_group), "Control center cards");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(cc_group),
+        "Choose which controls appear in the control center panel.");
+    struct CcRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** target;
+    };
+    const CcRow cc_rows[] = {
+        {"show_media", "Media player", "Now playing with cover art, progress and controls.", &s->cc_media},
+        {"show_audio", "Audio sliders", "Output and input volume with mute buttons.", &s->cc_audio},
+        {"show_brightness", "Brightness slider", "Screen brightness (laptop backlight).", &s->cc_brightness},
+        {"show_sysmon", "System monitor", "CPU usage, CPU temperature, memory and disk gauges.", &s->cc_sysmon},
+    };
+    for (const auto& row : cc_rows) {
+        GtkWidget* sw = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sw), row.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(sw), row.subtitle);
+        g_object_set_data(G_OBJECT(sw), "config-key", const_cast<char*>(row.key));
+        *row.target = ADW_SWITCH_ROW(sw);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cc_group), sw);
+        g_signal_connect(sw, "notify::active", G_CALLBACK(on_cc_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(cc_page), ADW_PREFERENCES_GROUP(cc_group));
+
     // -- App menu subpage -------------------------------------------------------
     GtkWidget* am_page = adw_preferences_page_new();
     GtkWidget* am_button_group = adw_preferences_group_new();
@@ -3419,6 +3479,12 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(bt_view, "Bluetooth",
                                                              "bluetooth"));
 
+    GtkWidget* cc_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(cc_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(cc_view), cc_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(cc_view, "Control center", "control_center"));
+
     GtkWidget* bat_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(bat_view), adw_header_bar_new());
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(bat_view), bat_page);
@@ -3480,6 +3546,18 @@ void on_activate(GtkApplication* app, gpointer) {
                      nav);
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("bluetooth")]),
                               bt_cog);
+
+    // cog on the Control center module row
+    GtkWidget* cc_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(cc_cog, "flat");
+    gtk_widget_set_valign(cc_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(cc_cog, "Control center settings");
+    g_signal_connect(cc_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "control_center");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("control_center")]), cc_cog);
 
     // cog on the Battery module row
     GtkWidget* bat_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");

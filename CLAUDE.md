@@ -48,10 +48,11 @@ install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to 
 data/style.css                 default theme entry — @imports data/css/* (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
                                notifications, launcher, app_menu, session, idle,
-                               lock, osd, wallpaper
+                               lock, osd, wallpaper, control_center
                                (GTK resolves the imports inside the resource bundle)
 data/hypr-shell.gresource.xml
 data/hypr-shell-settings.desktop.in   (Exec gets the absolute bindir at build time)
+data/avatar-fallback.svg       default profile picture (GResource) when ~/.face is missing
 data/fonts/                    noctalia-tabler-icons.ttf (installed to
                                ~/.local/share/fonts/hypr-shell, MIT license alongside)
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
@@ -59,7 +60,8 @@ src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, active_window, clock, network, volume,
-                               battery, bluetooth, vpn, notifications, session)
+                               battery, bluetooth, vpn, control_center, notifications,
+                               session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
@@ -74,6 +76,9 @@ src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectM
 src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
 src/services/vpn.{hpp,cpp}              VPN profiles via nmcli (list/up/down/delete/import)
 src/bar/vpn_panel.{hpp,cpp}             VPN click panel (profile toggles, import, delete)
+src/services/mpris.{hpp,cpp}            MPRIS players on the session bus (metadata, position, controls)
+src/services/system_stats.{hpp,cpp}     CPU / temperature / memory / disk sampling while a card is open
+src/bar/control_center_panel.{hpp,cpp}  control center cards: audio, brightness, media, system monitor
 src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + history
 src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
 src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
@@ -101,6 +106,8 @@ src/bar/lock_screen.{hpp,cpp}           session lock (gtk4-session-lock) + LockC
                                         logind Lock signal; one LockSurface per monitor
 src/bar/lock_surface.{hpp,cpp}          per-monitor lock UI (cover/login stages, pills, session menu)
 src/bar/lock_background.{hpp,cpp}       blurred cover-scaled wallpaper widget (GSK blur, cached)
+src/services/user_info.hpp              display name (GECOS, else login) + avatar path (~/.face), shared
+src/bar/avatar.{hpp,cpp}                load_avatar_texture(): square avatar, bundled fallback picture
 src/services/wallpaper.{hpp,cpp}        wallpaper folder scan, current image + slideshow (state in
                                         ~/.cache/hypr-shell/wallpaper.json)
 src/services/wallpaper_files.hpp        image extension list, shared with the settings app
@@ -237,8 +244,9 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       battery panel on battery click (power profile / brightness / refresh
       rate) landed; 2026-09-03: the OSD landed — output volume, microphone,
       brightness and Caps/Num/Scroll Lock, Noctalia's OSD.qml with an
-      "On-screen display" settings page (position + enable); the control
-      center remains)*
+      "On-screen display" settings page (position + enable); 2026-09-04: the
+      control center landed — bar button + panel with Noctalia's audio,
+      brightness, media and system monitor cards, each toggleable)*
 - [ ] **Phase 5 — Lock & idle**: lock screen via ext-session-lock
       (gtk4-layer-shell's session-lock API) + PAM auth; idle service via
       ext-idle-notify-v1 (dim → lock → dpms off) with inhibitor support.
@@ -939,6 +947,71 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   dragging doesn't restart hyprsunset per pixel), a Scheduling heading with
   Sunrise/Sunset combos in 30-minute steps, Force activation. Disabling
   clears `forced`, like Noctalia. Dev: `HS_NIGHT_LIGHT_DRY_RUN=1`.
+- 2026-09-04 — Profile picture + name fallbacks (user request): the lock
+  screen and the control center's profile card share `services/user_info.hpp`
+  (`user_display_name()` = trimmed GECOS real name, else the login name —
+  GLib returns "Unknown" for an empty GECOS; `user_avatar_path()` = ~/.face
+  or the HS_LOCK_AVATAR override) and `bar/avatar.cpp`'s
+  `load_avatar_texture(path, size)`, which centre-crops the picture and,
+  when the path is empty or unreadable, decodes the bundled
+  `data/avatar-fallback.svg` (a silhouette on mSurfaceVariant, GResource,
+  via librsvg's pixbuf loader) so both places show a picture instead of the
+  tabler "user" glyph — the glyph remains only as the last resort if the
+  resource itself fails. Noctalia keeps the glyph fallback (NImageRounded's
+  fallbackIcon "person"); the image is the user's preference.
+- 2026-09-04 — Control center (Noctalia's ControlCenter widget +
+  ControlCenterPanel, scoped by the user to the profile row plus four cards
+  with on/off switches and no close button — the shortcuts / weather rows,
+  the position setting, the right-click menu and the launcher middle click
+  were NOT ported). **Profile card** (64px, always shown, added the same day
+  when the user noticed it missing): 41px avatar ringed 2px mPrimary
+  (`~/.face` / `HS_LOCK_AVATAR`, pre-scaled + centre-cropped like the lock
+  screen's, tabler user glyph fallback), real name (bold 11pt) over
+  "Uptime: 1d 2h 3m" (Noctalia's formatVagueHumanReadableDuration from
+  /proc/uptime, refreshed every 60 s while open), then 33px round Settings
+  (`open_settings()`) and Session menu (GAction "session" — dropdown or
+  fullscreen per `session.mode`) buttons; both close the popover first via
+  the panel's `signal_request_close`. Noctalia's third button (Close) was
+  dropped per user. Module `control_center` (default right section): the noctalia
+  glyph (U+EC33 in the bundled font), click toggles a 440px popover; cards
+  are stacked with Noctalia's 13px margins at its fixed heights — audio 60,
+  brightness 60, media 220, sysmon 84 — so the popover never resizes
+  (popover-resize gotcha; the media card swaps empty/active content inside
+  its fixed box). **Audio card** = Noctalia's AudioCard: output | input
+  columns, 15px transparent mute button (7pt glyph, mError when muted) +
+  device description (9pt) over an NSlider-look GTK scale (16px knob with a
+  3px mPrimary ring, 6px track, gradient fill), wheel steps 5%, half
+  opacity without a device; writes go straight to `Pulse` (optimistic local
+  state already avoids Noctalia's 100ms sync loop). **Brightness card**:
+  icon (sun-off ≤0.1%, low ≤50%, high), "Brightness", "NN%", slider,
+  100ms debounce into `Brightness` (which debounces its logind write too);
+  hidden without a backlight; default OFF like Noctalia. **Media card**:
+  new `Mpris` service (session-bus proxies per org.mpris.MediaPlayer2.*
+  name, Position polled 1s while playing since it has no change signal,
+  active = playing else most recently updated, `set_active` for the picker)
+  — background = `MediaBackground` custom widget: rounded clip, mSurface,
+  cover-scaled art (decoded async at 256px from file:// or http(s) via
+  Gio::File) under `gtk_snapshot_push_blur(8×0.33)` and a 65% mSurface
+  scrim; content = player picker (caret + identity, only with >1 players,
+  a nested popover in the session-dropdown style), disc glyph at 72pt when
+  idle, else title (13pt bold, 2 lines) / artist (10pt mSecondary) / album
+  (11pt), a 20px-knob seek scale (user seeks debounced 75ms via
+  `signal_change_value`, external position updates held 700ms after the
+  last drag) and prev / play-pause / next 33px round buttons hidden when
+  the capability is missing (row re-centres). Noctalia's virtual
+  browser+app player merge, MPRIS blacklist, preferred player and the
+  spectrum visualizer were NOT ported. **System monitor**: new
+  `SystemStats` service (Noctalia's formulas: /proc/stat Δ(total−idle)/Δtotal
+  with iowait counted idle, MemTotal−MemAvailable, statvfs with df's
+  ceil(used/(used+avail)), hwmon coretemp mean of temp*_input / k10temp
+  temp1 / cpu*thermal zones max), polling 1s/5s/30s only while the card's
+  panel is open (register/unregister_consumer), and `CircleStat` = NCircleStat
+  in cairo (57px gauge, 5.7 line, 240° arc from 150°, value bold 9.4pt,
+  icon 10.45pt in the gap, 300ms OutCubic), colours mPrimary / mTertiary
+  ≥80 / mError ≥90, the temperature arc normalised to 100 °C. Settings:
+  "Control center" module row + cog subpage with the four switches. Dev
+  hook: HS_OPEN_CONTROL_CENTER=1 (Chromium's YouTube tab was the MPRIS test
+  player).
 - 2026-09-04 — VPN module (Noctalia's VPN widget + VPNPanel + VPNService,
   1:1). Service `VpnService` (`services/vpn`): everything through nmcli like
   Noctalia — `-t -f NAME,UUID,TYPE,DEVICE connection show` parsed from the

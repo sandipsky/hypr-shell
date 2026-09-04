@@ -200,6 +200,23 @@ These keys are config-only: the settings app has no VPN subpage (per user).
 Click opens the VPN panel (toggle, import `.conf` / `.ovpn`, delete with
 confirmation); there is no right-click menu. Dev hook: `HS_OPEN_VPN=1`.
 
+## `bar.control_center`
+
+The control center bar button (Noctalia's ControlCenter widget: the noctalia
+glyph) opens a 440px panel: Noctalia's profile row (avatar from `~/.face`,
+real name, "Uptime: 1d 2h 3m", Settings and Session menu buttons — no close
+button, per user) always on top, then these four cards, each a switch on the
+module's cog subpage (Noctalia's shortcuts and weather rows were not ported).
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `show_media` | bool | `true` | Media player card (220px): blurred cover art, title / artist / album, seek bar, previous / play-pause / next, player picker when several MPRIS players run. |
+| `show_audio` | bool | `true` | Audio card (60px): output and input columns, mute button + device name over a volume slider; wheel steps 5%. |
+| `show_brightness` | bool | `false` | Brightness card (60px): icon, "Brightness NN%", slider; hidden without a backlight. Noctalia's default is off too. |
+| `show_sysmon` | bool | `true` | System monitor card (84px): CPU usage, CPU temperature, memory and disk gauges (Noctalia's NCircleStat), amber at 80, red at 90. |
+
+Dev hook: `HS_OPEN_CONTROL_CENTER=1`.
+
 ## `bar.notifications` (the bell module)
 
 | Key | Type | Default | Meaning |

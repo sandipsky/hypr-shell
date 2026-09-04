@@ -80,6 +80,17 @@ public:
     };
     const Vpn& vpn() const { return vpn_; }
 
+    // bar.control_center.* — which cards the control center panel shows
+    // (Noctalia's controlCenter.cards, reduced to these four; defaults are
+    // Noctalia's: brightness off)
+    struct ControlCenter {
+        bool show_media = true;
+        bool show_audio = true;
+        bool show_brightness = false;
+        bool show_sysmon = true;
+    };
+    const ControlCenter& control_center() const { return control_center_; }
+
     // bar.bluetooth.auto_connect: reconnect every paired device when the
     // adapter powers on (default off); toggled in hypr-shell-settings.
     bool bluetooth_auto_connect() const { return bt_auto_connect_; }
@@ -285,6 +296,7 @@ private:
     bool workspaces_scroll_wrap_ = true;
     bool bt_auto_connect_ = false;
     Vpn vpn_;
+    ControlCenter control_center_;
     bool notif_show_badge_ = true;
     bool notif_hide_zero_ = false;
     bool notif_hide_zero_unread_ = false;

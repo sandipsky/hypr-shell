@@ -1,0 +1,86 @@
+/* control center — Noctalia's ControlCenterPanel cards (audio / brightness /
+ * media / system monitor) in the shared panel design; colours from the user's
+ * Noctalia colors.json snapshot */
+popover.control-center-popover > contents {
+  background: #131316; /* mSurface */
+  border: 1px solid alpha(#cdd6f4, 0.08);
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.cc-card {
+  background: #201f23; /* mSurfaceVariant (NBox) */
+  border-radius: 16px;
+  padding: 9px;
+}
+.cc-device {
+  font-size: 9pt;
+  color: #c7c5d0; /* mOnSurfaceVariant */
+}
+.cc-btn-icon {
+  font-family: "noctalia-tabler-icons";
+}
+/* NIconButton at baseSize 16.5: 15px, transparent, glyph 7pt */
+button.cc-mute-btn {
+  min-width: 15px; min-height: 15px; padding: 0; margin: 0;
+  border-radius: 999px; background: transparent; border: none; box-shadow: none;
+  color: #e5e1e6;
+}
+button.cc-mute-btn .cc-btn-icon { font-size: 7pt; }
+button.cc-mute-btn .cc-btn-icon.muted { color: #ffb4ab; } /* mError */
+button.cc-mute-btn:hover { background: #e8b9d5; color: #46263b; }
+.cc-brightness-icon {
+  font-family: "noctalia-tabler-icons"; font-size: 7pt; color: #e5e1e6;
+  min-width: 15px;
+}
+/* NSlider heightRatio 0.5: 16px knob, 6px track; progress (0.6): 20 / 8.
+ * GTK scales the knob's margin negatively to overhang the track. */
+scale.cc-slider { padding: 0; }
+scale.cc-slider trough {
+  background: alpha(#131316, 0.5);
+  border: 1px solid alpha(#46464f, 0.5);
+  border-radius: 999px;
+  min-height: 4px; /* + 1px borders = 6 */
+}
+scale.cc-slider highlight {
+  background: linear-gradient(to right, shade(#bfc2ff, 0.83), #bfc2ff);
+  border: none; border-radius: 999px; min-height: 4px; min-width: 4px;
+}
+scale.cc-slider slider {
+  background: #131316; /* mSurface */
+  border: 3px solid #bfc2ff; /* mPrimary */
+  border-radius: 999px; box-shadow: none;
+  min-width: 10px; min-height: 10px; /* + 2×3 border = 16 */
+  margin: -5px;
+}
+scale.cc-slider slider:active { background: #e8b9d5; }
+scale.cc-slider:disabled slider { border-color: #46464f; }
+scale.cc-slider:disabled highlight { background: #46464f; }
+scale.cc-progress trough, scale.cc-progress highlight { min-height: 6px; }
+scale.cc-progress slider { min-width: 14px; min-height: 14px; margin: -6px; }
+/* media card */
+.cc-media { border-radius: 16px; }
+button.cc-player-btn { padding: 2px 6px; border-radius: 16px; background: transparent; border: none; box-shadow: none; }
+button.cc-player-btn:hover { background: alpha(#e5e1e6, 0.08); }
+.cc-caret { font-family: "noctalia-tabler-icons"; font-size: 18pt; color: #c7c5d0; }
+.cc-player-name { font-size: 9pt; color: #c7c5d0; }
+.cc-media-empty { font-family: "noctalia-tabler-icons"; font-size: 72pt; color: #c7c5d0; }
+.cc-title { font-size: 13pt; font-weight: bold; color: #e5e1e6; text-shadow: 0 0 2px black; }
+.cc-artist { font-size: 10pt; color: #c5c4dd; text-shadow: 0 0 2px black; } /* mSecondary */
+.cc-album { font-size: 11pt; color: #c7c5d0; text-shadow: 0 0 2px black; }
+/* NIconButton 33px: mSurfaceVariant bg, mPrimary glyph 15pt, mOutline border */
+button.cc-media-btn {
+  min-width: 31px; min-height: 31px; padding: 0; border-radius: 999px;
+  background: #201f23; border: 1px solid #46464f; box-shadow: none; color: #bfc2ff;
+}
+button.cc-media-btn .cc-btn-icon { font-size: 15pt; }
+button.cc-media-btn:hover { background: #e8b9d5; color: #46263b; }
+/* profile card */
+.cc-avatar-ring {
+  border-radius: 999px; border: 2px solid #bfc2ff; /* mPrimary, NImageRounded border */
+  background: #201f23;
+}
+.cc-avatar { border-radius: 999px; }
+.cc-avatar-fallback { font-family: "noctalia-tabler-icons"; font-size: 17pt; color: #c7c5d0; }
+.cc-name { font-size: 11pt; font-weight: bold; color: #e5e1e6; }
+.cc-uptime { font-size: 10pt; color: #c7c5d0; }

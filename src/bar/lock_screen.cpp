@@ -4,6 +4,7 @@
 #include "bar/lock_surface.hpp"
 #include "services/config.hpp"
 #include "services/session.hpp"
+#include "services/user_info.hpp"
 
 #include <gtk4-session-lock.h>
 
@@ -16,18 +17,12 @@ namespace hyprshell {
 LockScreen::LockScreen() {
     service_ = PamAuth::detect_service();
     user_ = Glib::get_user_name();
-    // Noctalia's HostService.displayName: the GECOS real name, else the login
-    display_name_ = Glib::get_real_name();
-    if (display_name_.empty() || display_name_ == "Unknown")
-        display_name_ = user_;
-    // Noctalia's general.avatarImage — not exposed as a setting here; the
-    // freedesktop convention ~/.face is used when present.
-    // Dev hook: HS_LOCK_AVATAR=<path> overrides it (empty = no avatar).
-    const std::string face = Glib::build_filename(Glib::get_home_dir(), ".face");
-    if (const char* override = g_getenv("HS_LOCK_AVATAR"))
-        avatar_path_ = override;
-    else if (Glib::file_test(face, Glib::FileTest::IS_REGULAR))
-        avatar_path_ = face;
+    // Noctalia's HostService.displayName (GECOS, else the login) and
+    // general.avatarImage (~/.face here; HS_LOCK_AVATAR overrides, an
+    // unreadable path shows the bundled fallback picture) — see
+    // services/user_info.hpp, shared with the control center's profile card
+    display_name_ = user_display_name();
+    avatar_path_ = user_avatar_path();
     g_message("lock screen: PAM service %s, user %s", service_.c_str(), user_.c_str());
 
     pam_.signal_message().connect(sigc::mem_fun(*this, &LockScreen::on_pam_message));

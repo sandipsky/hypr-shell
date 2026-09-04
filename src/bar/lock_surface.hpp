@@ -32,7 +32,6 @@ private:
 
     void build_cover();
     void build_login();
-    Glib::RefPtr<Gdk::Texture> load_avatar(const std::string& path, int size);
     void build_pills();
     void build_bottom_right();
     void build_session_menu();

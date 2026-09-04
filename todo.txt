@@ -11,5 +11,3 @@
 -- Bar 
 
  - taskbar module 
-
- - control center

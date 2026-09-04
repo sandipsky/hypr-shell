@@ -2,6 +2,7 @@
 <gresources>
   <gresource prefix="/dev/hyprshell/Shell">
     <file>style.css</file>
+    <file>avatar-fallback.svg</file>
     <file>css/bar.css</file>
     <file>css/calendar.css</file>
     <file>css/panels.css</file>
@@ -13,5 +14,6 @@
     <file>css/lock.css</file>
     <file>css/osd.css</file>
     <file>css/wallpaper.css</file>
+    <file>css/control_center.css</file>
   </gresource>
 </gresources>

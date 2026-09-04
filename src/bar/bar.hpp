@@ -5,6 +5,7 @@
 #include "bar/modules/battery.hpp"
 #include "bar/modules/bluetooth.hpp"
 #include "bar/modules/vpn.hpp"
+#include "bar/modules/control_center.hpp"
 #include "bar/modules/clock.hpp"
 #include "bar/modules/launcher.hpp"
 #include "bar/modules/network.hpp"
@@ -51,6 +52,7 @@ private:
     Network network_;
     Bluetooth bluetooth_;
     Vpn vpn_;
+    ControlCenter control_center_;
     Volume volume_;
     Battery battery_;
     Notifications notifications_;

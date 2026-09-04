@@ -21,6 +21,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"network", Config::BarSection::Right},
     {"bluetooth", Config::BarSection::Right},
     {"vpn", Config::BarSection::Right},
+    {"control_center", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
     {"notifications", Config::BarSection::Right},
@@ -77,6 +78,7 @@ void Config::load() {
     workspaces_scroll_wrap_ = true;
     bt_auto_connect_ = false;
     vpn_ = Vpn{};
+    control_center_ = ControlCenter{};
     notif_show_badge_ = true;
     notif_hide_zero_ = false;
     notif_hide_zero_unread_ = false;
@@ -172,6 +174,12 @@ void Config::load() {
         }
         if (auto it = bar.find("bluetooth"); it != bar.end() && it->is_object()) {
             bt_auto_connect_ = it->value("auto_connect", false);
+        }
+        if (auto it = bar.find("control_center"); it != bar.end() && it->is_object()) {
+            control_center_.show_media = it->value("show_media", true);
+            control_center_.show_audio = it->value("show_audio", true);
+            control_center_.show_brightness = it->value("show_brightness", false);
+            control_center_.show_sysmon = it->value("show_sysmon", true);
         }
         if (auto it = bar.find("vpn"); it != bar.end() && it->is_object()) {
             const std::string mode = it->value("display_mode", "on_hover");

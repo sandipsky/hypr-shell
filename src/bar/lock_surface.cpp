@@ -1,5 +1,7 @@
 #include "bar/lock_surface.hpp"
 
+#include "bar/avatar.hpp"
+
 #include "bar/lock_screen.hpp"
 #include "services/config.hpp"
 #include "services/power_profiles.hpp"
@@ -229,7 +231,8 @@ void LockSurface::build_login() {
 
     // avatar: 130 ring around a 124 circle — the image pre-scaled and
     // center-cropped to exactly 124px (a Gtk::Picture would grow to the
-    // file's natural size), or Noctalia's "person" glyph fallback
+    // file's natural size); without ~/.face the bundled fallback picture
+    // (per user), the "person" glyph only if even that fails to decode
     avatar_ring_.add_css_class("lock-avatar-ring");
     avatar_ring_.set_size_request(130, 130);
     avatar_ring_.set_halign(Gtk::Align::CENTER);
@@ -246,7 +249,7 @@ void LockSurface::build_login() {
     avatar_fallback_.set_size_request(124, 124);
     avatar_fallback_.set_halign(Gtk::Align::CENTER);
     avatar_fallback_.set_valign(Gtk::Align::CENTER);
-    auto avatar_texture = load_avatar(screen_.avatar_path(), 124);
+    auto avatar_texture = load_avatar_texture(screen_.avatar_path(), 124);
     if (avatar_texture) {
         avatar_.set_paintable(avatar_texture);
         avatar_ring_.append(avatar_);
@@ -323,30 +326,6 @@ void LockSurface::build_login() {
 
 // PreserveAspectCrop at `size` px: scale so the shorter side is `size`, then
 // cut the centered square. Small file, read synchronously at lock time.
-Glib::RefPtr<Gdk::Texture> LockSurface::load_avatar(const std::string& path, int size) {
-    if (path.empty())
-        return {};
-    try {
-        int image_w = 0, image_h = 0;
-        if (gdk_pixbuf_get_file_info(path.c_str(), &image_w, &image_h) == nullptr ||
-            image_w <= 0 || image_h <= 0)
-            return {};
-        auto pixbuf = image_w >= image_h ? Gdk::Pixbuf::create_from_file(path, -1, size, true)
-                                         : Gdk::Pixbuf::create_from_file(path, size, -1, true);
-        if (!pixbuf)
-            return {};
-        const int w = pixbuf->get_width();
-        const int h = pixbuf->get_height();
-        const int side = std::min({w, h, size});
-        auto square = Gdk::Pixbuf::create_subpixbuf(pixbuf, (w - side) / 2, (h - side) / 2,
-                                                    side, side);
-        return Gdk::Texture::create_for_pixbuf(square);
-    } catch (const Glib::Error& e) {
-        g_warning("lock screen: cannot load avatar %s: %s", path.c_str(), e.what());
-        return {};
-    }
-}
-
 void LockSurface::build_pills() {
     auto setup_pill = [this](Gtk::Box& pill, const char* kind) {
         pill.add_css_class("lock-pill");

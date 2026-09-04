@@ -84,13 +84,16 @@ is missing.
 | `battery` | `Gtk::Box` with `Gtk::Overlay` of two labels | UPower + PowerProfiles | Win11 look; CSS classes `charging` / `saver`. Click → `BatteryPanel`. |
 | `notifications` | `Gtk::Box` with `Gtk::Overlay` (icon + badge) | NotificationService | Bell / bell-off (DND), unread dot. Click → `NotificationPanel`; right click toggles DND. `bar.notifications.*` hide rules. |
 | `clock` | `Gtk::Label` | none | strftime formats from config. Click → `Calendar`. |
+| `control_center` | `Gtk::Box` (icon label) | none | Noctalia glyph button; click toggles `ControlCenterPanel`. |
 | `vpn` | `Gtk::Box` (icon label + `Gtk::Revealer` text) | VpnService | Noctalia's BarPill: profile name slides in on hover / always / never (`bar.vpn.display_mode`), icon-only on vertical bars, colour classes from `icon_color` / `text_color`. Click → `VpnPanel`. |
 
 ### Panels and other windows
 
 | File | Opened by | Content |
 |------|-----------|---------|
+| `control_center_panel.{hpp,cpp}` (~560 lines) | control_center | Noctalia's ControlCenterPanel: profile row (avatar, name, uptime every 60 s, settings + session buttons), then the cards: audio (Pulse), brightness (Brightness), media (Mpris; `MediaBackground` draws blurred art with a GSK blur node under a 65% scrim), system monitor (`CircleStat` cairo gauges, 240° arc, 300ms eased). Fixed card heights 60 / 60 / 220 / 84, cards toggled by `bar.control_center.*`. |
 | `vpn_panel.{hpp,cpp}` | vpn | Noctalia's VPNPanel: header (shield, VPN, import button), one card per profile (switch + state text + delete with inline confirm) or the empty state with an import button; `Gtk::FileDialog` for `.conf` / `.ovpn`. Fixed 440x500. |
+| `avatar.{hpp,cpp}` | lock surface, control center | `load_avatar_texture(path, size)`: centre-cropped square texture, bundled `avatar-fallback.svg` when the path is empty/unreadable. |
 | `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
 | `battery_panel.{hpp,cpp}` | battery | Charge card, power-profile slider, brightness slider, refresh-rate buttons; cards hide per backend / `bar.battery`. |
@@ -135,6 +138,9 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `wallpaper` | the wallpaper folder + `~/.cache/hypr-shell/wallpaper.json` | Async folder scan (`Gio::FileEnumerator`, rescans on `Gio::FileMonitor` changes), current image persisted with the random shuffle bag, slideshow timer, config `current` adopted on value-change edges. `signal_current_changed(previous, animate)` drives the windows. |
 | `night_light` | `hyprsunset` (Gio::Subprocess), logind `PrepareForSleep` | Noctalia's NightLightService: runs `hyprsunset -t <K>` during the night phase or when forced, boundary timer to the next configured sunrise/sunset, crash restart, resume re-apply; every start first kills a stale hyprsunset/wlsunset and waits for it to be gone (one CTM manager per compositor). |
 | `vpn` | `nmcli` (Gio::Subprocess) + `NetworkManager::signal_changed` | Noctalia's VPNService: `connection show` parsed from the right for `vpn` / `wireguard` types (active = has a device), `up` / `down` / `delete` / `import type <wireguard|openvpn>` with Noctalia's success-text checks, busy flags per operation, `last_error()` from stderr's first line; refresh 1 s after NM changes + 60 s poll. |
+| `mpris` | `org.mpris.MediaPlayer2.*` on the session bus | One `Gio::DBus::Proxy` pair per player (NameOwnerChanged adds/removes), metadata / status / capabilities from PropertiesChanged, Position polled every second while playing (+ Seeked), `active()` = playing else most recent; PlayPause / Next / Previous / SetPosition / Volume. |
+| `system_stats` | `/proc/stat`, `/proc/meminfo`, hwmon / thermal zones, `statvfs` | Noctalia's SystemStatService subset: CPU usage + temperature every 1 s, memory 5 s, disk 30 s — only while a consumer is registered (the sysmon card while its panel is open). |
+| `user_info.hpp` | GLib user info (header-only) | `user_display_name()` (GECOS, else login) and `user_avatar_path()` (`~/.face`, `HS_LOCK_AVATAR` override). |
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |
 | `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
 
