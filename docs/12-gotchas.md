@@ -132,6 +132,18 @@ when the columns are fixed) and pin `min_content_height` to
 persistent one call `set_overlay_scrolling(false)` on the
 `Gtk::ScrolledWindow` and style `scrollbar slider`.
 
+**`gtk_viewport_scroll_to()` is a no-op on a page shown for the first
+time.** The viewport resolves the target from the descendant's *previous*
+allocation (before laying out its child in the same `size_allocate`), so a
+row that has never been allocated yields no bounds and the request is
+dropped silently. Issue the scroll from a tick callback once
+`gtk_widget_get_height(row) > 0` (see `settings/search.cpp`).
+
+**`GtkSearchBar`'s key-capture widget steals typing from other entries.**
+Set no capture widget; add your own `GTK_PHASE_CAPTURE` key controller that
+bails when the focus sits inside a `GtkEditable` / `GtkText` and forwards
+the key with `gtk_event_controller_key_forward()` otherwise.
+
 ## Hyprland
 
 **Actions are Lua since 0.56.** `dispatch workspace 3` is a syntax error.

@@ -117,6 +117,10 @@ src/services/night_light.{hpp,cpp}      hyprsunset runner: sunrise/sunset schedu
 src/bar/wallpaper_window.{hpp,cpp}      per-monitor background layer window: fill modes + GSK
                                         mask-node transitions (fade/wipe/disc/stripes)
 src/settings/main.cpp                   hypr-shell-settings (libadwaita C API, instant apply)
+src/settings/search.{hpp,cpp}           settings search: sidebar toggle + search bar, widget-tree
+                                        index of every preferences row, navigate/scroll/highlight
+src/settings/about_page.{hpp,cpp}       "About" page: hardware + software facts (sysfs, /proc,
+                                        os-release, hyprctl version), GNOME Settings layout
 docs/                                   long-form developer docs (start at docs/README.md)
 ```
 
@@ -152,6 +156,11 @@ hyprsunset can hold Hyprland's CTM: two night light daemons fight (each
 restarts 2s after being killed), so Noctalia's nightLight.enabled was set to
 false in ~/.config/noctalia/settings.json on 2026-09-04 (backup:
 settings.json.pre-hypr-shell-nightlight).
+Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
+subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
+`HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
+startup (navigates, scrolls to and flashes the row) — screenshots need no
+scripted key presses.
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
 renders the first monitor's frames offscreen (frame-25/50/75.png as the first
 transition passes those marks, frame-final.png after 4s) and
@@ -1118,6 +1127,56 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   and stays inside the panel (centred, it spilled past the panel on the
   first column). Dev hook: HS_OPEN_APP_MENU=3 opens
   it on the first tile.
+- 2026-09-05 — Settings app made GNOME-Settings-like (user request, three
+  items from todo.txt): (1) **sidebar icons** — `kSidebarPages` became a
+  `SidebarPage {name, title, icon}` table (`settings/search.hpp`) and each
+  row is a symbolic icon + label (Adwaita names: focus-top-bar, wallpaper,
+  night-light, system-shutdown, system-lock-screen, alarm,
+  display-brightness, notifications, help-about; the Launcher row uses the
+  app menu's tabler rocket glyph U+EC45 via an `icon = "glyph:…"` entry
+  rendered by `make_page_icon()` as a `.page-glyph` label in the bundled
+  font, since Adwaita has no rocket, per user); rows keep libadwaita's
+  navigation-sidebar padding with 6px vertical / 4px horizontal box margins
+  (an earlier `padding: 4px 0` override left the icons flush with the edge);
+  sidebar 200–260px, window 920x660. (2) **Search** (`settings/search.cpp`): a toggle at the start of
+  the sidebar header + a GtkSearchBar under it (Ctrl+F = `win.search`;
+  type-to-search via our own CAPTURE key controller on the window, which
+  ignores modifiers, non-graphic keys and any focus inside a
+  GtkEditable/GtkText — GtkSearchBar's built-in key capture was NOT used
+  because it would steal keys from entry rows). The index is **not a table**:
+  every query walks the widget tree of each stack child, collecting
+  AdwPreferencesRow titles/subtitles with an AdwNavigationPage › group ›
+  expander breadcrumb, skipping rows hidden by state (visibility checked up
+  to the AdwPreferencesPage only — stack/nav children are legitimately not
+  the visible child) — so new rows are searchable automatically. Scores:
+  title prefix 5 > title substring 4 > all words in title 3 > subtitle 2 >
+  crumb 1; a page-title hit floats above its rows; 40 max. Results replace
+  the page list (GtkStack pages/results/"No Results Found" AdwStatusPage);
+  activating selects the sidebar page, pops the Bar nav to root and pushes
+  the row's subpage tag, expands enclosing AdwExpanderRows, scrolls with
+  `gtk_viewport_scroll_to` and flashes `row.search-hit` for 1.8s. **Gotcha**:
+  GtkViewport computes scroll_to from the descendant's *previous*
+  allocation (it runs before laying out its child), so on a page shown for
+  the first time the request is silently dropped — the scroll is issued
+  from a tick callback once the row has a height. Enter in the entry
+  activates the first hit. The launcher's static settings index
+  (`launcher_window.cpp`) stays as is — the two binaries share no widgets.
+  (3) **About page** (`settings/about_page.cpp`, last sidebar entry like
+  GNOME): property-style rows (`.property`, selectable values) — Device
+  Name (/etc/machine-info PRETTY_HOSTNAME else hostname), Hardware Model
+  (DMI sys_vendor + product_family|product_name, placeholder strings
+  dropped), Memory (MemTotal, IEC), Processor (cpuinfo model name through
+  GNOME's prettify: ®/™, drop CPU/Processor/"@ x GHz", "× N" cores),
+  Graphics [1..n] (every /sys/class/drm/card*/device with PCI class 0x03,
+  deduped by real path, named from hwdata's pci.ids with "X [Y]" reordered
+  to "Y (X)"), Disk Capacity (sum of non-removable /sys/block sizes, SI),
+  Firmware Version (DMI bios_version), OS Name (os-release PRETTY_NAME —
+  **no logo, per user**), OS Type, Kernel, Windowing System (GdkDisplay
+  type name), Hyprland Version (async `hyprctl -j version` → "version",
+  "Not running" without an instance signature), hypr-shell Version
+  (`-DHS_VERSION` from meson's project version). Dev hooks:
+  `HS_SETTINGS_SEARCH=<q>`, `HS_SETTINGS_SEARCH_OPEN=1`,
+  `HS_SETTINGS_PAGE=about_page`.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

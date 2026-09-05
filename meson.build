@@ -143,7 +143,12 @@ executable(
 # Talks to the shell only through config.json, which the shell hot-reloads.
 executable(
   'hypr-shell-settings',
-  files('src/settings/main.cpp'),
+  files(
+    'src/settings/main.cpp',
+    'src/settings/about_page.cpp',
+    'src/settings/search.cpp',
+  ),
+  cpp_args: ['-DHS_VERSION="' + meson.project_version() + '"'],
   dependencies: [
     dependency('libadwaita-1', version: '>= 1.4'),
     dependency('nlohmann_json'),

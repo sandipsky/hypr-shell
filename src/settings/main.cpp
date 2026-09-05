@@ -11,6 +11,8 @@
 #include "services/app_menu_icons.hpp"
 #include "services/session_actions.hpp"
 #include "services/wallpaper_files.hpp"
+#include "settings/about_page.hpp"
+#include "settings/search.hpp"
 
 #include <sys/stat.h>
 
@@ -61,12 +63,20 @@ constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
-// sidebar rows -> GtkStack page names
-// (Bar / Wallpaper / Night light / Launcher / Session menu / Lock screen /
-// Idle / On-screen display / Notifications)
-constexpr const char* kSidebarPages[] = {"bar",          "wallpaper_page", "night_light_page",
-                                         "launcher_page", "session_page",  "lock_page",
-                                         "idle_page",     "osd_page",      "notifications_page"};
+// sidebar rows -> GtkStack page names, labels and symbolic icons (GNOME
+// Settings look; About last, like GNOME)
+constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
+    {"bar", "Bar", "focus-top-bar-symbolic"},
+    {"wallpaper_page", "Wallpaper", "preferences-desktop-wallpaper-symbolic"},
+    {"night_light_page", "Night light", "night-light-symbolic"},
+    {"launcher_page", "Launcher", "glyph:\uEC45"}, // tabler rocket, the app menu's default
+    {"session_page", "Session menu", "system-shutdown-symbolic"},
+    {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
+    {"idle_page", "Idle", "alarm-symbolic"},
+    {"osd_page", "On-screen display", "display-brightness-symbolic"},
+    {"notifications_page", "Notifications", "preferences-system-notifications-symbolic"},
+    {"about_page", "About", "help-about-symbolic"},
+};
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 // wallpaper page (Noctalia's fillModeModel order / transitionsModel minus the
@@ -2254,14 +2264,18 @@ void on_activate(GtkApplication* app, gpointer) {
         "  transition: opacity 150ms ease; }"
         ".wp-tile:hover .wp-thumb, .wp-tile.current .wp-thumb { opacity: 1; }"
         ".wp-tile label { color: @dim_label_color; }"
-        ".wp-tile:hover label, .wp-tile.current label { color: @window_fg_color; }");
+        ".wp-tile:hover label, .wp-tile.current label { color: @window_fg_color; }"
+        // search result target flash (removed again by the search module)
+        "row.search-hit { background-color: alpha(@accent_bg_color, 0.28); }"
+        // tabler glyph standing in for an icon (sidebar + search results)
+        ".page-glyph { font-family: \"noctalia-tabler-icons\"; font-size: 15px; }");
     gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
 
     GtkWidget* win = adw_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(win), "Settings");
-    gtk_window_set_default_size(GTK_WINDOW(win), 860, 640);
+    gtk_window_set_default_size(GTK_WINDOW(win), 920, 660);
     g_object_set_data_full(G_OBJECT(win), "settings-state", s,
                            [](gpointer p) { delete static_cast<Settings*>(p); });
     s->window = win;
@@ -3794,17 +3808,34 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
+    // -- About: hardware + software facts (GNOME Settings' About panel) -----
+    GtkWidget* about_view = adw_toolbar_view_new();
+    GtkWidget* about_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(about_header),
+                                    adw_window_title_new("About", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(about_view), about_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(about_view),
+                                 hyprshell::settings::build_about_page());
+    gtk_stack_add_named(GTK_STACK(stack), about_view, "about_page");
+
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
-    for (const char* title : {"Bar", "Wallpaper", "Night light", "Launcher", "Session menu",
-                              "Lock screen", "Idle", "On-screen display", "Notifications"}) {
-        GtkWidget* label = gtk_label_new(title);
+    for (const auto& page : kSidebarPages) {
+        // GNOME Settings row metrics: 12px icon/label gap, ~40px tall rows
+        GtkWidget* box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+        gtk_widget_set_margin_top(box, 6);
+        gtk_widget_set_margin_bottom(box, 6);
+        gtk_widget_set_margin_start(box, 4);
+        gtk_widget_set_margin_end(box, 4);
+        gtk_box_append(GTK_BOX(box), hyprshell::settings::make_page_icon(page));
+        GtkWidget* label = gtk_label_new(page.title);
         gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
-        gtk_widget_set_margin_top(label, 9);
-        gtk_widget_set_margin_bottom(label, 9);
-        gtk_widget_set_margin_start(label, 6);
-        gtk_list_box_append(GTK_LIST_BOX(sidebar_list), label);
+        gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+        gtk_box_append(GTK_BOX(box), label);
+        GtkWidget* row = gtk_list_box_row_new();
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+        gtk_list_box_append(GTK_LIST_BOX(sidebar_list), row);
     }
     g_signal_connect(sidebar_list, "row-selected",
                      G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer stack_ptr) {
@@ -3812,7 +3843,7 @@ void on_activate(GtkApplication* app, gpointer) {
                              return;
                          const int index = gtk_list_box_row_get_index(row);
                          const char* page = (index >= 0 && index < kSidebarPageCount)
-                                                ? kSidebarPages[index]
+                                                ? kSidebarPages[index].name
                                                 : "bar";
                          gtk_stack_set_visible_child_name(GTK_STACK(stack_ptr), page);
                      }),
@@ -3821,8 +3852,20 @@ void on_activate(GtkApplication* app, gpointer) {
                             gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 0));
 
     GtkWidget* sidebar_view = adw_toolbar_view_new();
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sidebar_view), adw_header_bar_new());
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_list);
+    GtkWidget* sidebar_header = adw_header_bar_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_header);
+    // the search module owns the sidebar content from here on: it wraps the
+    // page list in a stack together with its results (settings/search.cpp)
+    hyprshell::settings::install_search({
+        .window = GTK_WINDOW(win),
+        .sidebar_header = sidebar_header,
+        .sidebar_view = sidebar_view,
+        .sidebar_list = sidebar_list,
+        .stack = stack,
+        .nav = nav,
+        .pages = kSidebarPages,
+        .page_count = kSidebarPageCount,
+    });
 
     GtkWidget* split = adw_navigation_split_view_new();
     adw_navigation_split_view_set_sidebar(
@@ -3830,10 +3873,11 @@ void on_activate(GtkApplication* app, gpointer) {
         adw_navigation_page_new(sidebar_view, "Settings"));
     adw_navigation_split_view_set_content(
         ADW_NAVIGATION_SPLIT_VIEW(split), adw_navigation_page_new(stack, "Settings"));
+    // GNOME Settings' sidebar proportions (icons + labels need the room)
     adw_navigation_split_view_set_min_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
-                                                    160);
-    adw_navigation_split_view_set_max_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
                                                     200);
+    adw_navigation_split_view_set_max_sidebar_width(ADW_NAVIGATION_SPLIT_VIEW(split),
+                                                    260);
 
     // dev hook (also the launcher's settings-search target):
     // HS_SETTINGS_PAGE=<tag> opens a Bar module subpage directly; a
@@ -3841,7 +3885,7 @@ void on_activate(GtkApplication* app, gpointer) {
     if (const char* tag = g_getenv("HS_SETTINGS_PAGE")) {
         int sidebar_row = -1;
         for (int i = 1; i < kSidebarPageCount; ++i)
-            if (g_strcmp0(tag, kSidebarPages[i]) == 0)
+            if (g_strcmp0(tag, kSidebarPages[i].name) == 0)
                 sidebar_row = i;
         if (sidebar_row >= 0)
             gtk_list_box_select_row(

@@ -34,18 +34,58 @@ on_activate()         builds every page, calls populate(), connects signals, wir
 
 ```
 AdwNavigationSplitView
- ├─ sidebar: AdwToolbarView → GtkListBox (.navigation-sidebar): Bar / Launcher / Notifications
+ ├─ sidebar: AdwToolbarView
+ │    ├─ AdwHeaderBar: [search toggle] "Settings"
+ │    ├─ GtkSearchBar (revealed by the toggle, Ctrl+F, or typing)
+ │    └─ GtkStack: "pages" GtkListBox (.navigation-sidebar, icon + label per
+ │       kSidebarPages entry) / "results" GtkListBox / "empty" AdwStatusPage
  └─ content: GtkStack
      ├─ "bar" page: AdwNavigationView
      │    ├─ main Bar page (Bar group, Modules group, Layout groups)
      │    └─ module subpages by tag: workspaces, clock, active_window, battery,
-     │       bluetooth, notifications  (opened by the cog on each module row)
-     ├─ "launcher_page": AdwPreferencesPage for the top-level launcher object
-     └─ "notifications_page": AdwPreferencesPage for the top-level notifications object
+     │       bluetooth, notifications, ...  (opened by the cog on each module row)
+     ├─ "wallpaper_page", "night_light_page", "launcher_page", "session_page",
+     │  "lock_page", "idle_page", "osd_page", "notifications_page":
+     │  one AdwPreferencesPage each for a top-level config object
+     └─ "about_page": build_about_page() — read-only system facts
 ```
 
 Selecting a sidebar row switches the stack child. `HS_SETTINGS_PAGE` accepts
-either a module subpage tag or `launcher_page` / `notifications_page`.
+either a module subpage tag or any `*_page` name from `kSidebarPages`.
+
+### Search (`search.cpp`)
+
+There is no hand-maintained index. `collect()` walks the widget tree under
+every stack child and records each visible `AdwPreferencesRow` (title,
+subtitle) together with a breadcrumb built from the enclosing
+`AdwNavigationPage` (module subpage), `AdwPreferencesGroup` and
+`AdwExpanderRow` titles. Any row you add is searchable immediately; the only
+thing to keep in mind is that titles and group names are what people search
+for, so name them the way a user would.
+
+Activating a result: select the sidebar row → for the Bar page, pop the
+navigation view to its root and push the row's subpage tag → expand
+enclosing expander rows → `gtk_viewport_scroll_to()` → add `search-hit` for
+1.8 s. The scroll is issued from a tick callback once the row has a height,
+because `GtkViewport` computes the scroll target from the row's *previous*
+allocation and drops the request on a page shown for the first time.
+
+Type-to-search is our own `GTK_PHASE_CAPTURE` key controller on the window:
+plain graphic keys open the search and are forwarded to the entry, unless a
+`GtkEditable` / `GtkText` has focus. `GtkSearchBar`'s built-in key capture
+is deliberately not used — it would type into the search while the user is
+editing an entry row.
+
+### About (`about_page.cpp`)
+
+Property rows (`.property` class, selectable subtitle) in two groups, System
+and Software, modelled on GNOME Settings' About panel without the distro
+logo. Sources: `/etc/machine-info` or the hostname, DMI strings under
+`/sys/devices/virtual/dmi/id`, `/proc/meminfo`, `/proc/cpuinfo` (prettified
+like GNOME: ®/™, no "CPU @ 2.50GHz", "× cores"), `/sys/class/drm/card*`
++ hwdata's `pci.ids` for the GPUs, `/sys/block` for the disk total,
+`g_get_os_info()`, `uname`, the `GdkDisplay` type, `hyprctl -j version`
+(async) and `HS_VERSION` (meson's project version, passed as a define).
 
 The `loading` flag is the one subtle part. Setting a switch's state
 programmatically fires the same `notify::active` signal as a user click, so
@@ -151,13 +191,20 @@ adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("key")]), cog);
 For options that are not about the bar, copy the Launcher or Lock screen
 page block in `on_activate()`: build an
 `AdwPreferencesPage`, wrap it in an `AdwToolbarView`, `gtk_stack_add_named()`
-it with a `<name>_page` tag, append a label row to the sidebar list box, and
-extend the `row-selected` handler's index → page mapping. Its config lives in
+it with a `<name>_page` tag, and add a `{name, title, icon}` entry to
+`kSidebarPages` at the same position (the sidebar rows, the `row-selected`
+mapping, `HS_SETTINGS_PAGE` and the search all read that table; keep About
+last). Pick a symbolic icon that exists in the Adwaita icon theme
+(`/usr/share/icons/Adwaita/symbolic/`), or `"glyph:\uXXXX"` for a tabler
+glyph from the bundled icon font when Adwaita has nothing fitting (the
+Launcher row's rocket). Its config lives in
 a new top-level object with a `<name>_object(s)` helper, mirrored by a struct
 in `Config` (see `Config::Launcher` for the smallest example).
 
 `HS_SETTINGS_PAGE=tag ./build/hypr-shell-settings` opens the page straight
-away for testing and screenshots.
+away for testing and screenshots; `HS_SETTINGS_SEARCH=<query>` opens the
+search pre-filled and `HS_SETTINGS_SEARCH_OPEN=1` activates its first result
+1.5 s after startup.
 
 The Wallpaper page (`wp_*` in `main.cpp`) is the richest example: besides
 rows it holds a `GtkFlowBox` grid of thumbnail tiles (`wp_make_tile`,

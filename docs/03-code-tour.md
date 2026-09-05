@@ -147,7 +147,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |
 | `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
 
-## `src/settings/main.cpp` (~2000 lines)
+## `src/settings/` — `main.cpp` (~3900 lines) + `search.cpp` + `about_page.cpp`
 
 The settings app, one file, libadwaita C API.
 
@@ -170,6 +170,14 @@ The settings app, one file, libadwaita C API.
    Clock, Active window, Battery, Bluetooth, Notifications), the Launcher
    page, the Notifications page, connects signals, wires cogs, and
    assembles the `AdwNavigationSplitView` with a `GtkListBox` sidebar
-   driving a `GtkStack`.
+   (icon + label rows from `kSidebarPages`) driving a `GtkStack`, the About
+   page last, and hands the sidebar to `install_search()`.
+
+Two companions sit next to it:
+
+| File | Role |
+|---|---|
+| `search.{hpp,cpp}` | The sidebar search (GNOME-Settings style): toggle button + `GtkSearchBar`, Ctrl+F, type-to-search. `install_search()` takes over the sidebar content and, on every query, walks the widget tree of each stack child collecting `AdwPreferencesRow`s with a page › subpage › group breadcrumb. Activating a hit selects the page, pushes the module subpage, expands enclosing expanders, scrolls to the row (deferred one frame, see gotchas) and flashes it. Also defines `SidebarPage {name, title, icon}`, the table type behind `kSidebarPages`. |
+| `about_page.{hpp,cpp}` | `build_about_page()`: hardware (device name, model, memory, processor, graphics, disk) and software (firmware, OS name/type, kernel, windowing system, Hyprland and hypr-shell versions) as `.property` rows, all read from sysfs, `/proc` and `os-release`; only the Hyprland version is an async `hyprctl -j version`. |
 
 See [the settings app](07-settings-app.md) for how to extend it.

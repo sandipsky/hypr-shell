@@ -412,6 +412,11 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Notification history", "Notifications", "notifications_page"},
         {"Notification sounds", "Notifications", "notifications_page"},
         {"Notification filter rules", "Notifications", "notifications_page"},
+        {"About", "About", "about_page"},
+        {"System information", "About", "about_page"},
+        {"Hardware model", "About", "about_page"},
+        {"Kernel version", "About", "about_page"},
+        {"Hyprland version", "About", "about_page"},
     };
 
     const std::string query_lc = lowercase(query);
