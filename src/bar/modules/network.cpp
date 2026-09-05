@@ -84,6 +84,7 @@ Network::Network() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->refresh();
+                place_bar_popover(popover_);
                 popover_.popup();
             },
             delay);

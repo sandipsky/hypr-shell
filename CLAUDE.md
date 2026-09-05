@@ -168,10 +168,12 @@ hyprsunset can hold Hyprland's CTM: two night light daemons fight (each
 restarts 2s after being killed), so Noctalia's nightLight.enabled was set to
 false in ~/.config/noctalia/settings.json on 2026-09-04 (backup:
 settings.json.pre-hypr-shell-nightlight).
-Panel dev hooks: `HS_OPEN_<PANEL>=1` pops a panel 800ms after startup; for
-`HS_OPEN_NETWORK` / `HS_OPEN_BLUETOOTH` a value above 1 is the delay in ms
-(`=3000`) — the main loop can stall for ~1s during startup and a popup issued
+Panel dev hooks: `HS_OPEN_<PANEL>=1` pops a panel 800ms after startup; a
+value above 1 is the delay in ms (`=3000`) — the main loop can stall for ~1s during startup and a popup issued
 meanwhile is dismissed at once (the HS_OPEN_AUDIO freeze noted in memory).
+`HS_POPOVER_DEBUG=1` logs each module popover's anchor / natural size /
+alignment and its final surface position (see `bar/bar_popover.hpp`), which
+verifies placement even when a screenshot is impossible (locked screen).
 Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
 subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
 `HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
@@ -1002,7 +1004,7 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   with on/off switches and no close button — the shortcuts / weather rows,
   the position setting, the right-click menu and the launcher middle click
   were NOT ported). **Profile card** (64px, always shown, added the same day
-  when the user noticed it missing): 41px avatar ringed 2px mPrimary
+  when the user noticed it missing): 41px avatar ringed 2px mPrimary (45px since 2026-09-05, user request)
   (`~/.face` / `HS_LOCK_AVATAR`, pre-scaled + centre-cropped like the lock
   screen's, tabler user glyph fallback), real name (bold 11pt) over
   "Uptime: 1d 2h 3m" (Noctalia's formatVagueHumanReadableDuration from
@@ -1015,12 +1017,15 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   "adjustments-horizontal" sliders U+EC38 — Noctalia's control-center
   settings icon — since the gear already means hypr-shell-settings inside
   the panel, per user), click toggles a 440px popover; cards
-  are stacked with Noctalia's 13px margins at its fixed heights — audio 60,
-  brightness 60, media 220, sysmon 84 — so the popover never resizes
+  are stacked with Noctalia's 13px margins at its fixed heights — audio 110
+  (was Noctalia's 60 until 2026-09-05, see below), brightness 60, media 220,
+  sysmon 84 — so the popover never resizes
   (popover-resize gotcha; the media card swaps empty/active content inside
   its fixed box). **Audio card** = Noctalia's AudioCard: output | input
-  columns, 15px transparent mute button (7pt glyph, mError when muted) +
-  device description (9pt) over an NSlider-look GTK scale (16px knob with a
+  columns (output ABOVE input since 2026-09-05, user request), 15px
+  transparent mute button (7pt glyph, mError when muted; 20px / 12pt since
+  2026-09-05) + device description (9pt; 12pt since 2026-09-05) over an
+  NSlider-look GTK scale (16px knob with a
   3px mPrimary ring, 6px track, gradient fill), wheel steps 5%, half
   opacity without a device; writes go straight to `Pulse` (optimistic local
   state already avoids Noctalia's 100ms sync loop). **Brightness card**:
@@ -1048,7 +1053,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   temp1 / cpu*thermal zones max), polling 1s/5s/30s only while the card's
   panel is open (register/unregister_consumer), and `CircleStat` = NCircleStat
   in cairo (57px gauge, 5.7 line, 240° arc from 150°, value bold 9.4pt,
-  icon 10.45pt in the gap, 300ms OutCubic), colours mPrimary / mTertiary
+  icon 10.45pt in the gap, 300ms OutCubic; since 2026-09-05 scaled to a 66px
+  gauge filling the card, value bold 12pt, icon 13pt — user request), colours mPrimary / mTertiary
   ≥80 / mError ≥90, the temperature arc normalised to 100 °C. Settings:
   "Control center" module row + cog subpage with the four switches. Dev
   hook: HS_OPEN_CONTROL_CENTER=1 (Chromium's YouTube tab was the MPRIS test
@@ -1099,6 +1105,34 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   `set_offset()` along the bar's normal (+y below a top bar, -y above a
   bottom bar, ±x for vertical bars). `kBarPopoverGap` is a compile-time
   constant, not config — nothing in Noctalia/Waybar exposes it either.
+  **2026-09-05**: two fixes after the user saw the 440px control-center
+  popover cut off at the screen's right edge and no gap on vertical bars.
+  (1) GTK hangs a popover off the *anchor widget's* edge, so the 6px offset
+  was measured from the icon, not the bar: on a 35px bar the icon's far
+  edge is 4px (horizontal) or 9px (vertical) short of the bar's outer edge,
+  and on vertical bars the popover overlapped the bar. `place_bar_popover`
+  now adds the anchor-to-bar-edge distance (anchor bounds via
+  `compute_bounds(window)`) to the gap, so the contents start exactly
+  kBarPopoverGap outside the bar on every side. (2) Along the bar the
+  popover is centred only when that fits inside the bar window (= the
+  monitor); otherwise it is hung off the anchor's near edge through the
+  popover's own halign (horizontal bars) / valign (vertical bars) — GTK
+  maps START/END to the corner gravities (the app-menu context-menu
+  finding) — instead of relying on the compositor's SLIDE constraint, which
+  Hyprland applies from the positioner's *requested* size (a popover that
+  ends up wider than requested — the control center measures 466px, not
+  its 440px request — still hangs over). The fit test measures the
+  popover's *child* + 12px padding per side: a hidden popover itself
+  measures 0x0, and its shadow may legitimately hang off screen. Dev hooks:
+  every `HS_OPEN_*` hook now calls `place_bar_popover()` before `popup()`
+  (they had skipped it, so hook screenshots never exercised the placement);
+  `HS_POPOVER_DEBUG=1` logs the anchor bounds, window size, natural size,
+  chosen alignment and 600ms later the popup surface's final position/size
+  (`gdk_popup_get_position_x/y`) — positions are relative to the bar
+  surface and include the shadow margins (GTK's `box-shadow: 0 8px 24px` →
+  35px left/right, 26 top, 44 bottom). Verified by those numbers only: the
+  session was locked by Noctalia's idle daemon (the user was away) while
+  testing, so screenshots showed the lock screen.
 - 2026-09-04 — Taskbar module (Noctalia's Taskbar widget + TaskbarSettings,
   ported 1:1 except where noted; module key `taskbar`, default left section
   after workspaces, enabled by default like every module). Data: `j/monitors`
@@ -1384,6 +1418,28 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   empty list. Live-tested: Wi-Fi scan spinner + refresh; the Bluetooth
   adapter was off (disabled state verified; discovery refresh untested
   live).
+- 2026-09-05 — Control center type scale (user request: bigger system
+  monitor fonts, bigger icons, matching sizes, output over input): body
+  12pt everywhere (`cc-device`, `cc-uptime`, `cc-player-name` 9→12,
+  `cc-artist` 10→12, `cc-album` 11→12, gauge values 9.4→12 bold), headings
+  14pt bold (`cc-name`, `cc-title` 13→14); mute buttons 20px / 12pt glyph
+  and the brightness icon 12pt (were 15px / 10pt); the system-monitor gauge
+  scaled 66/57 so it fills the card's 66px inner height at the same
+  kCardSysmon 84 (radius 27.5, line 6.6, icon 13pt). The audio card's two
+  columns became two stacked rows (kCardAudio 60→110, `audio_card_`
+  VERTICAL, spacing 8).
+- 2026-09-05 — Panel type scale (user request: slightly larger, cohesive
+  fonts across the battery / audio / network / bluetooth / notification /
+  session popovers): panel title 18px bold, section or card heading 16px
+  bold, body 16px (SSIDs, device names, notification summaries, session
+  labels), secondary 15px (values, notification bodies), caption 14px
+  (security / battery subs, app name, time), pill buttons 15px bold, row
+  icons 18px (connected-card icon 19). Each was 2–3px smaller and the
+  captions ranged 11–12px before (raised in two steps the same day). The scale is written at the top of
+  `data/css/panels.css`; toasts, the calendar and the control center (12pt
+  body / 14pt headings, set the same day) were not touched. Every `HS_OPEN_*`
+  hook now takes a delay in ms (a value above 1), not just the three noted
+  above.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

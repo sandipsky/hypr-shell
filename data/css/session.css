@@ -32,12 +32,12 @@ button.session-item:hover {
 
 .session-glyph {
   font-family: "noctalia-tabler-icons";
-  font-size: 16px;
+  font-size: 18px;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .session-label {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: @mOnSurface;
 }
@@ -54,7 +54,7 @@ button.session-item:hover .session-label {
 }
 
 .session-empty {
-  font-size: 12px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
   padding: 6px 12px;
 }
@@ -87,7 +87,7 @@ button.session-big.selected {
 }
 
 .session-big-label {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
   color: @mOnSurface;
 }

@@ -8,6 +8,9 @@
 
 #include <cmath>
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -55,13 +58,15 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_controller(right_click);
 
     // dev hook: HS_OPEN_AUDIO=1 pops the panel shortly after startup
-    if (g_getenv("HS_OPEN_AUDIO") != nullptr) {
+    if (const char* hook = g_getenv("HS_OPEN_AUDIO")) {
+        const int delay = std::max(800, std::atoi(hook)); // >1 = delay in ms
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->refresh();
+                place_bar_popover(popover_);
                 popover_.popup();
             },
-            800);
+            delay);
     }
 
     Pulse::get().signal_changed().connect(sigc::mem_fun(*this, &Volume::update));

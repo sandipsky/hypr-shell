@@ -23,7 +23,7 @@ popover.notification-popover > contents {
 }
 
 button.notif-clear {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnSurface;
   background: transparent;
@@ -40,7 +40,7 @@ button.notif-clear:hover {
 
 .notif-clear-icon {
   font-family: "noctalia-tabler-icons";
-  font-size: 13px;
+  font-size: 15px;
   color: @mOnSurface;
 }
 
@@ -76,29 +76,29 @@ button.notif-clear:hover {
 }
 
 .notif-app {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: @mSecondary; /* mSecondary */
 }
 
 .notif-time {
-  font-size: 11px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
 .notif-summary {
-  font-size: 14px;
+  font-size: 16px;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .notif-body {
-  font-size: 12px;
+  font-size: 15px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
 /* action buttons sent with the notification: primary pills like Noctalia */
 button.notif-action {
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnPrimary; /* mOnPrimary */
   background: @mPrimary; /* mPrimary */
@@ -130,7 +130,7 @@ button.notif-icon-btn:hover {
 
 .notif-icon-glyph {
   font-family: "noctalia-tabler-icons";
-  font-size: 13px;
+  font-size: 15px;
   color: @mOnSurface;
 }
 

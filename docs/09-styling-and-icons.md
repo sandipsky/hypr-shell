@@ -66,6 +66,7 @@ Popovers (each has `popover.<name>-popover > contents` for the frame):
 | Prefix | Panel |
 |--------|-------|
 | `cal-*` | Calendar (`cal-header`, `cal-day-big`, `cal-month`, `cal-year`, `cal-time`, `cal-body`, `cal-weekday`, `cal-day`, `cal-day.today`, `cal-day.dim`, `button.cal-icon-btn`) |
+| *(panels)* | Shared type scale for the click panels, notification panel and session dropdown: title 18px bold, heading 16px bold, body 16px, secondary 15px, caption 14px, pill buttons 15px bold, row icons 18px (documented at the top of `panels.css`) |
 | `bp-*` | Battery panel, also the shared "card" look (`bp-card`, `bp-title`, `bp-value`, `bp-percent`, `bp-icon`, `scale.bp-slider`, `progressbar.bp-level`, `button.bp-rate-btn`) |
 | `ap-*` | Audio panel (`ap-kind`, `button.ap-mute-btn`) |
 | `np-*` | Network panel, shared with bluetooth (`np-title`, `np-section`, `np-connected*`, `np-net-row`, `np-ssid`, `np-security`, `button.np-connect`, `button.np-disconnect`, `button.np-refresh` + `np-refresh-icon`, `np-spinner` / `np-spinner-on-primary` (the `BusyIndicator` reads its `color`), `np-disabled*`, `.network-panel switch`, `.network-panel entry`) |

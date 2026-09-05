@@ -28,13 +28,13 @@ popover.calendar-popover > contents {
 }
 
 .cal-year {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: alpha(@mOnPrimary, 0.7);
 }
 
 .cal-time {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: @mOnPrimary;
 }
@@ -46,7 +46,7 @@ popover.calendar-popover > contents {
 }
 
 .cal-nav-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnSurface; /* mOnSurface */
 }
@@ -58,7 +58,7 @@ separator.cal-divider {
 
 button.cal-icon-btn {
   font-family: "noctalia-tabler-icons";
-  font-size: 15px;
+  font-size: 16px;
   color: @mOnSurface;
   background: alpha(@mOnSurface, 0.08);
   border: none;
@@ -74,13 +74,13 @@ button.cal-icon-btn:hover {
 }
 
 .cal-weekday {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: @mPrimary; /* mPrimary */
 }
 
 .cal-day {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 500;
   color: @mOnSurface; /* mOnSurface */
   border-radius: 16px;

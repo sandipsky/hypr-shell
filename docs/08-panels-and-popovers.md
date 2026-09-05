@@ -43,7 +43,19 @@ Volume::~Volume() {
 popover: it picks the side facing away from the bar (below a top bar, above a
 bottom bar, right of a left bar, ...) and applies `set_offset()` so the
 popover floats `kBarPopoverGap` (6px) away from the bar instead of touching
-it. Call it right before `popup()` — the bar position can change at runtime.
+it. GTK measures that offset from the *anchor widget's* edge, so the helper
+adds the anchor's distance to the bar's outer edge (via `compute_bounds()`
+against the bar window) — otherwise a 6px gap from a 19px icon in a 35px
+vertical bar ends up *inside* the bar. It also decides the alignment along
+the bar: centred on the anchor when that fits inside the bar window,
+otherwise hung off the anchor's near edge with the popover's `halign`
+(horizontal bars) or `valign` (vertical bars) — GTK maps START/END to the
+corner gravities — so a wide popover on the last module never runs off the
+screen (Hyprland's SLIDE constraint uses the positioner's requested size,
+which can be smaller than what the popover finally measures). The fit test
+measures the popover's child (a hidden popover measures 0x0). Call it right
+before `popup()` — the bar position can change at runtime. `HS_POPOVER_DEBUG=1`
+logs the anchor, natural size, alignment and the final popup position.
 
 The panel itself is a `Gtk::Box` subclass that builds its widgets in the
 constructor, subscribes to services, and exposes `refresh()` for things

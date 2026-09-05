@@ -5,6 +5,9 @@
 #include "services/config.hpp"
 #include "services/notifications.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -59,13 +62,15 @@ Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_controller(right_click);
 
     // dev hook: HS_OPEN_NOTIFICATIONS=1 pops the panel shortly after startup
-    if (g_getenv("HS_OPEN_NOTIFICATIONS") != nullptr) {
+    if (const char* hook = g_getenv("HS_OPEN_NOTIFICATIONS")) {
+        const int delay = std::max(800, std::atoi(hook)); // >1 = delay in ms
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->set_open(true);
+                place_bar_popover(popover_);
                 popover_.popup();
             },
-            800);
+            delay);
     }
 
     NotificationService::get().signal_changed().connect(

@@ -1,6 +1,11 @@
 /* click panels (battery bp-*, audio ap-*, network np-*, bluetooth bt-*):
  * shared design language — bp-* and np-* primitives are reused across
  * panels, plus the NToggle switch port and pill buttons */
+/* Type scale shared by the click panels, the notification panel and the
+ * session dropdown (user request, 2026-09-05: slightly larger + cohesive):
+ * panel title 18px bold · section / card heading 16px bold · body 16px ·
+ * secondary 15px · caption 14px · pill buttons 15px bold · row icons 18px
+ * (raised one more px the same day at the user's request) */
 
 /* battery panel — power profile / brightness / refresh rate cards, same
  * design language (and Noctalia color snapshot) as the calendar popover */
@@ -19,30 +24,30 @@ popover.battery-popover > contents {
 }
 
 .bp-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .bp-value {
-  font-size: 13px;
+  font-size: 15px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
 .bp-percent {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnSurface;
 }
 
 .bp-icon {
   font-family: "noctalia-tabler-icons";
-  font-size: 16px;
+  font-size: 18px;
   color: @mOnSurface;
 }
 
 .bp-profile-icon {
-  font-size: 14px;
+  font-size: 16px;
   color: @mOnSurfaceVariant;
 }
 
@@ -106,7 +111,7 @@ popover.audio-popover > contents {
 }
 
 .ap-kind {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnSurface; /* neutral, not the accent (user request; Noctalia uses mPrimary) */
 }
@@ -135,13 +140,13 @@ popover.network-popover > contents {
 }
 
 .np-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .np-section {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnSurface;
   margin-top: 3px;
@@ -155,23 +160,23 @@ popover.network-popover > contents {
 
 .np-connected-icon {
   font-family: "noctalia-tabler-icons";
-  font-size: 17px;
+  font-size: 19px;
   color: @mOnPrimary; /* mOnPrimary */
 }
 
 .np-connected-ssid {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnPrimary;
 }
 
 .np-connected-sub {
-  font-size: 12px;
+  font-size: 14px;
   color: alpha(@mOnPrimary, 0.7);
 }
 
 button.np-disconnect {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnSurface;
   background: @mSurface; /* mSurface: dark pill on the primary card */
@@ -193,18 +198,18 @@ button.np-disconnect:hover {
 }
 
 .np-ssid {
-  font-size: 14px;
+  font-size: 16px;
   color: @mOnSurface;
 }
 
 .np-security {
-  font-size: 11px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant; leading lock is a tabler glyph */
   font-family: "noctalia-tabler-icons", "Fira Sans";
 }
 
 button.np-connect {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnPrimary; /* mOnPrimary */
   background: @mPrimary; /* mPrimary */
@@ -243,7 +248,7 @@ button.np-refresh:disabled {
 
 .np-refresh-icon {
   font-family: "noctalia-tabler-icons";
-  font-size: 15px;
+  font-size: 17px;
 }
 
 .np-spinner {
@@ -269,7 +274,7 @@ button.np-refresh:disabled {
 }
 
 .np-disabled-title {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   color: @mOnSurface;
 }
@@ -285,7 +290,7 @@ popover.bluetooth-popover > contents {
 }
 
 .bt-sub {
-  font-size: 11px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
@@ -337,7 +342,7 @@ popover.bluetooth-popover > contents {
 
 /* refresh-rate buttons: filled when active, outlined otherwise */
 button.bp-rate-btn {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
   color: @mOnSurface;
   background: transparent;

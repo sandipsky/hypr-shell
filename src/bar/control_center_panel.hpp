@@ -89,7 +89,7 @@ private:
         Gtk::Label device;
         Gtk::Scale scale;
     };
-    Gtk::Box audio_card_{Gtk::Orientation::HORIZONTAL, 9};
+    Gtk::Box audio_card_{Gtk::Orientation::VERTICAL, 8}; // output over input (user request)
     AudioColumn output_, input_;
 
     // brightness card

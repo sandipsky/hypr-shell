@@ -2,6 +2,9 @@
 
 #include "bar/bar_popover.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -31,9 +34,11 @@ ControlCenter::ControlCenter() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     click->signal_released().connect([this](int, double, double) { toggle(); });
     add_controller(click);
 
-    // dev hook: HS_OPEN_CONTROL_CENTER=1 pops the panel shortly after startup
-    if (g_getenv("HS_OPEN_CONTROL_CENTER") != nullptr)
-        Glib::signal_timeout().connect_once([this] { toggle(); }, 800);
+    // dev hook: HS_OPEN_CONTROL_CENTER=1 pops the panel 800ms after startup; a
+    // value above 1 is the delay in ms (see the network module's hook)
+    if (const char* hook = g_getenv("HS_OPEN_CONTROL_CENTER"))
+        Glib::signal_timeout().connect_once([this] { toggle(); },
+                                            std::max(800, std::atoi(hook)));
 }
 
 ControlCenter::~ControlCenter() {

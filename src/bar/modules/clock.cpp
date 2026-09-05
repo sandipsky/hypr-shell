@@ -6,6 +6,9 @@
 
 #include <string>
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 Clock::Clock() {
@@ -32,13 +35,15 @@ Clock::Clock() {
     add_controller(click);
 
     // dev hook: HS_OPEN_CALENDAR=1 pops the calendar shortly after startup
-    if (g_getenv("HS_OPEN_CALENDAR") != nullptr) {
+    if (const char* hook = g_getenv("HS_OPEN_CALENDAR")) {
+        const int delay = std::max(800, std::atoi(hook)); // >1 = delay in ms
         Glib::signal_timeout().connect_once(
             [this] {
                 calendar_->reset_to_today();
+                place_bar_popover(popover_);
                 popover_.popup();
             },
-            800);
+            delay);
     }
 }
 

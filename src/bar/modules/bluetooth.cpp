@@ -52,6 +52,7 @@ Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->set_open(true);
+                place_bar_popover(popover_);
                 popover_.popup();
             },
             delay);

@@ -4,7 +4,7 @@
 
 /* bar module: the glyph uses the shared .icon style; optional text label */
 .app-menu-text {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: @mOnSurface;
 }
@@ -82,7 +82,7 @@ button.am-icon-btn.active .am-btn-glyph {
 }
 
 .am-tile-name {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: normal; /* user request: not bold */
   color: @mOnSurface; /* mOnSurface */
 }
@@ -92,7 +92,7 @@ button.am-icon-btn.active .am-btn-glyph {
 }
 
 .am-empty {
-  font-size: 13px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
@@ -142,12 +142,12 @@ button.am-context-item:hover {
 
 .am-context-glyph {
   font-family: "noctalia-tabler-icons";
-  font-size: 15px;
+  font-size: 16px;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .am-context-label {
-  font-size: 13px;
+  font-size: 14px;
   color: @mOnSurface;
 }
 

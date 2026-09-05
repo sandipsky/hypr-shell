@@ -80,7 +80,8 @@ std::string vague_duration(long total_seconds) {
     return out;
 }
 
-constexpr int kCardAudio = 60, kCardBrightness = 60, kCardMedia = 220, kCardSysmon = 84;
+// audio was Noctalia's 60 with output | input side by side; stacked rows need ~110
+constexpr int kCardAudio = 110, kCardBrightness = 60, kCardMedia = 220, kCardSysmon = 84;
 constexpr double kPi = 3.14159265358979323846;
 
 double ease_out_cubic(double t) { return 1 - std::pow(1 - t, 3); }
@@ -107,8 +108,8 @@ void style_round_button(Gtk::Button& button, Gtk::Label& icon, const char* css) 
 // CircleStat
 
 CircleStat::CircleStat(const char* glyph, const char* suffix) : glyph_(glyph), suffix_(suffix), color_(kPrimary()) {
-    set_content_width(57);
-    set_content_height(47);
+    set_content_width(66);
+    set_content_height(66);
     set_halign(Gtk::Align::CENTER);
     set_valign(Gtk::Align::CENTER);
     set_draw_func(sigc::mem_fun(*this, &CircleStat::draw));
@@ -142,8 +143,10 @@ void CircleStat::set_ratio(double ratio, const Gdk::RGBA& color) {
 }
 
 void CircleStat::draw(const Cairo::RefPtr<Cairo::Context>& cr, int w, int) {
-    // Noctalia's NCircleStat at contentScale 0.95: gauge 57, line 5.7, radius 23.75
-    const double cx = w / 2.0, cy = 57 / 2.0, radius = 23.75, line = 5.7;
+    // Noctalia's NCircleStat, scaled 66/57 from its contentScale-0.95 metrics
+    // (gauge 57, line 5.7, radius 23.75) so the gauge fills the card and the
+    // value can be the panel's 12pt body size (user request: bigger fonts)
+    const double cx = w / 2.0, cy = 66 / 2.0, radius = 27.5, line = 6.6, gap = 4.4;
     const double start = 150.0 * kPi / 180.0, sweep = 240.0 * kPi / 180.0;
     cr->set_line_width(line);
     cr->set_line_cap(Cairo::Context::LineCap::ROUND);
@@ -156,22 +159,22 @@ void CircleStat::draw(const Cairo::RefPtr<Cairo::Context>& cr, int w, int) {
         cr->arc(cx, cy, radius, start, start + sweep * animated_);
         cr->stroke();
     }
-    // value, bold 9.4pt, centered 3.8px above the middle
+    // value, bold 12pt, centered `gap` px above the middle
     auto layout = create_pango_layout(std::to_string(static_cast<int>(std::round(animated_ * 100))) + suffix_);
-    Pango::FontDescription font(Theme::get().font() + " Bold 9.4");
+    Pango::FontDescription font(Theme::get().font() + " Bold 12");
     layout->set_font_description(font);
     int tw = 0, th = 0;
     layout->get_pixel_size(tw, th);
     cr->set_source_rgba(color_.get_red(), color_.get_green(), color_.get_blue(), 1.0);
-    cr->move_to(cx - tw / 2.0, cy - 3.8 - th / 2.0);
+    cr->move_to(cx - tw / 2.0, cy - gap - th / 2.0);
     layout->show_in_cairo_context(cr);
     // icon below the value, in the arc's bottom gap
     auto icon = create_pango_layout(glyph_);
-    Pango::FontDescription icon_font("noctalia-tabler-icons 10.45");
+    Pango::FontDescription icon_font("noctalia-tabler-icons 13");
     icon->set_font_description(icon_font);
     int iw = 0, ih = 0;
     icon->get_pixel_size(iw, ih);
-    cr->move_to(cx - iw / 2.0, cy - 3.8 + th / 2.0 + 3.8);
+    cr->move_to(cx - iw / 2.0, cy - gap + th / 2.0 + gap);
     icon->show_in_cairo_context(cr);
 }
 
@@ -323,23 +326,23 @@ void ControlCenterPanel::set_open(bool open) {
 void ControlCenterPanel::build_profile() {
     profile_card_.add_css_class("cc-card");
     profile_card_.set_size_request(-1, kCardProfile);
-    // 41px avatar ringed in mPrimary
+    // 45px avatar (41 + 4, user request)
     avatar_ring_.add_css_class("cc-avatar-ring");
-    avatar_ring_.set_size_request(41, 41);
+    avatar_ring_.set_size_request(45, 45);
     avatar_ring_.set_valign(Gtk::Align::CENTER);
     avatar_ring_.set_halign(Gtk::Align::CENTER);
-    if (auto texture = load_avatar_texture(user_avatar_path(), 37)) {
+    if (auto texture = load_avatar_texture(user_avatar_path(), 41)) {
         avatar_.set_paintable(texture);
         avatar_.set_content_fit(Gtk::ContentFit::COVER);
         avatar_.set_can_shrink(true);
-        avatar_.set_size_request(37, 37);
+        avatar_.set_size_request(41, 41);
         avatar_.add_css_class("cc-avatar");
         avatar_.set_overflow(Gtk::Overflow::HIDDEN);
         avatar_ring_.append(avatar_);
     } else {
         avatar_fallback_.set_text(kUser);
         avatar_fallback_.add_css_class("cc-avatar-fallback");
-        avatar_fallback_.set_size_request(37, 37);
+        avatar_fallback_.set_size_request(41, 41);
         avatar_ring_.append(avatar_fallback_);
     }
     profile_card_.append(avatar_ring_);
@@ -400,8 +403,9 @@ void ControlCenterPanel::apply_config() {
         set_open(true); // re-evaluates the stats registration
 }
 
-// -- audio card (Noctalia's AudioCard): output | input, each a small mute
-// button + device name over a slider -----------------------------------------
+// -- audio card (Noctalia's AudioCard, but output ABOVE input — user request —
+// instead of side by side): each row a small mute button + device name over a
+// slider ----------------------------------------------------------------------
 
 void ControlCenterPanel::build_audio() {
     audio_card_.add_css_class("cc-card");

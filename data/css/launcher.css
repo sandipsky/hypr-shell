@@ -26,7 +26,7 @@ entry.launcher-search {
   border-radius: 16px;
   min-height: 22px;
   padding: 6px 12px;
-  font-size: 11pt;
+  font-size: 14pt;
   caret-color: @mPrimary; /* mPrimary */
   box-shadow: none;
 }
@@ -55,13 +55,13 @@ entry.launcher-search selection {
 }
 
 .launcher-name {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: @mOnSurface; /* mOnSurface */
 }
 
 .launcher-desc {
-  font-size: 12px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
@@ -102,6 +102,6 @@ separator.launcher-divider {
 }
 
 .launcher-count {
-  font-size: 11px;
+  font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
