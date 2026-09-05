@@ -156,6 +156,8 @@ void walk(GtkWidget* widget, WalkContext ctx, const std::string& query,
 
 void collect(Search* s, const std::string& query) {
     s->hits.clear();
+    if (s->t.prepare != nullptr)
+        s->t.prepare(s->t.prepare_data);
     for (int i = 0; i < s->t.page_count; ++i) {
         const SidebarPage& page = s->t.pages[i];
         // the page itself
@@ -221,6 +223,8 @@ gboolean scroll_when_allocated(GtkWidget* viewport, GdkFrameClock*, gpointer dat
 }
 
 void activate_hit(Search* s, const Hit& hit) {
+    if (s->t.prepare != nullptr)
+        s->t.prepare(s->t.prepare_data);
     const int index = sidebar_index(s, hit.page);
     if (index >= 0)
         gtk_list_box_select_row(GTK_LIST_BOX(s->t.sidebar_list),

@@ -146,6 +146,27 @@ Set no capture widget; add your own `GTK_PHASE_CAPTURE` key controller that
 bails when the focus sits inside a `GtkEditable` / `GtkText` and forwards
 the key with `gtk_event_controller_key_forward()` otherwise.
 
+**`gtk_picture_set_filename()` decodes on the main thread.** Pointing a
+picture at a cached thumbnail PNG looks free but decodes it right there —
+41 wallpaper thumbnails cost ~300 ms before the settings window could
+appear. Decode through `g_file_read_async()` +
+`gdk_pixbuf_new_from_stream_async()` (a few at a time, see `wp_thumb_*` in
+`settings/main.cpp`) and set the paintable when it lands.
+
+**Homogeneous `GtkStack` / `AdwNavigationView` measure every page.** Both
+are homogeneous by default, so each layout pass measures all children —
+every label of every hidden page is shaped and every icon looked up for a
+page nobody is looking at. `set_hhomogeneous(FALSE)` /
+`set_vhomogeneous(FALSE)` limits measuring to the visible page; the window
+keeps its default size either way.
+
+**Startup work is measurable.** `HS_SETTINGS_TIMING=1` prints milliseconds
+since `main()` at each startup phase of the settings app (build, populate,
+present, realize, first frames, each config.json write). The baseline for
+an empty libadwaita window on the test laptop is ~370–640 ms to the first
+frame (GTK init, the theme CSS parse and EGL/Mesa loading), so compare
+against that, not against zero.
+
 ## Hyprland
 
 **Actions are Lua since 0.56.** `dispatch workspace 3` is a syntax error.
@@ -197,6 +218,13 @@ garbage (clock falls back to `%H:%M`).
 toggle (do-not-disturb) is adopted from config only on value-change
 *edges*, so unrelated saves from the settings app don't clobber the runtime
 state.
+
+**Raise the `loading` guard before the first widget write.** `populate()`
+sets `s->loading = true` so the handlers a widget write triggers do not save;
+it once did so ~250 lines in, after the control-center and taskbar rows, and
+those eight writes each rewrote config.json (fsync included) and made the
+shell reload it — on every launch. `HS_SETTINGS_TIMING=1` lists every save,
+so a launch must print none.
 
 **Desktop entry icon**: the settings entry uses `Icon=dev.hyprshell.Settings`,
 GNOME Settings' icon bundled in `data/icons/` and installed under

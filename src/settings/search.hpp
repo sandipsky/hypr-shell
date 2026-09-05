@@ -34,6 +34,10 @@ struct SearchTargets {
     GtkWidget* nav;            // the Bar page's AdwNavigationView (stack child "bar")
     const SidebarPage* pages;
     int page_count;
+    // Called before a query walks the stack and before a hit is activated:
+    // the pages are built lazily, so this makes sure they all exist.
+    void (*prepare)(gpointer data) = nullptr;
+    gpointer prepare_data = nullptr;
 };
 
 void install_search(const SearchTargets& targets);

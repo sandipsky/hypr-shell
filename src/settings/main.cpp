@@ -21,11 +21,31 @@
 
 #include <algorithm>
 #include <array>
+#include <deque>
 #include <memory>
 #include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace {
+// Startup timing (dev hook): HS_SETTINGS_TIMING=1 prints milliseconds since
+// main() at each startup phase to stderr — build/populate/present/realize,
+// the first frames, and every config.json write (none may happen at launch).
+bool hs_timing_enabled() {
+    static const bool on = g_getenv("HS_SETTINGS_TIMING") != nullptr;
+    return on;
+}
+void hs_mark(const char* what) {
+    static gint64 t0 = 0;
+    if (!hs_timing_enabled())
+        return;
+    const gint64 now = g_get_monotonic_time();
+    if (t0 == 0)
+        t0 = now;
+    g_printerr("[timing] %7.1f ms  %s\n", (now - t0) / 1000.0, what);
+}
+} // namespace
 
 using json = nlohmann::json;
 
@@ -324,6 +344,8 @@ struct Settings {
     GFileMonitor* wp_dir_monitor = nullptr;
     GFileMonitor* wp_state_monitor = nullptr;
     guint wp_rescan_source = 0;
+    bool wp_grid_live = false;  // the Wallpaper page has been shown once: build tiles for real
+    bool wp_grid_dirty = false; // a rescan was requested while the grid was still dormant
 
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
@@ -348,6 +370,8 @@ struct Settings {
     // Notifications sidebar page — the daemon + popups (top-level
     // "notifications" object in config.json, Noctalia's notifications tab)
     GtkWidget* window = nullptr; // dialog/file-chooser parent
+    GtkWidget* stack = nullptr;  // content GtkStack (sidebar pages by name)
+    bool secondary_built = false; // every page but Bar exists (build_secondary_pages)
     AdwSwitchRow* nd_enabled = nullptr;
     AdwSwitchRow* nd_dnd = nullptr;
     AdwSwitchRow* nd_battery = nullptr;
@@ -418,6 +442,7 @@ void load(Settings* s) {
 }
 
 void save(Settings* s) {
+    hs_mark("save()");
     gchar* dir = g_path_get_dirname(s->path.c_str());
     g_mkdir_with_parents(dir, 0755);
     g_free(dir);
@@ -448,7 +473,18 @@ json& ui_object(Settings* s) {
     return s->root["ui"];
 }
 
-void populate(Settings* s) {
+// The Bar page is populated before the first frame, the other pages once
+// they exist (build_secondary_pages, right after that frame).
+enum class PopulateStage { Bar, Secondary };
+
+void populate(Settings* s, PopulateStage stage) {
+    hs_mark(stage == PopulateStage::Bar ? "populate bar" : "populate secondary");
+    const bool bar = stage == PopulateStage::Bar;
+    // Every widget write below fires its handler; the guard must be up before
+    // the first one (it used to be raised ~250 lines in, after the control
+    // center and taskbar rows — those eight writes each saved config.json and
+    // made the shell reload it, on every launch).
+    s->loading = true;
     std::string position = "top";
     std::string visibility = "visible";
     bool ws_switch = true, ws_empty = false;
@@ -485,15 +521,18 @@ void populate(Settings* s) {
     bool bt_auto = false;
     try {
         const json cc = s->root.value("bar", json::object()).value("control_center", json::object());
-        adw_switch_row_set_active(s->cc_media, cc.value("show_media", true));
-        adw_switch_row_set_active(s->cc_audio, cc.value("show_audio", true));
-        adw_switch_row_set_active(s->cc_brightness, cc.value("show_brightness", false));
-        adw_switch_row_set_active(s->cc_sysmon, cc.value("show_sysmon", true));
+        if (bar) {
+            adw_switch_row_set_active(s->cc_media, cc.value("show_media", true));
+            adw_switch_row_set_active(s->cc_audio, cc.value("show_audio", true));
+            adw_switch_row_set_active(s->cc_brightness, cc.value("show_brightness", false));
+            adw_switch_row_set_active(s->cc_sysmon, cc.value("show_sysmon", true));
+        }
         const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
         bt_auto = bt.value("auto_connect", false);
     } catch (const json::exception&) {
     }
 
+    if (bar) {
     try {
         const json tb = s->root.value("bar", json::object()).value("taskbar", json::object());
         const std::string tb_hide = tb.value("hide_mode", "hidden");
@@ -506,6 +545,7 @@ void populate(Settings* s) {
                                   tb.value("only_active_workspaces", true));
         adw_switch_row_set_active(s->tb_pinned, tb.value("show_pinned_apps", true));
     } catch (const json::exception&) {
+    }
     }
 
     std::string am_display = "icon", am_icon = "rocket", am_custom, am_text = "Apps";
@@ -705,11 +745,11 @@ void populate(Settings* s) {
     } catch (const json::exception&) {
     }
 
-    s->loading = true;
     guint position_index = 0;
     for (guint i = 0; i < 4; ++i)
         if (position == kPositions[i])
             position_index = i;
+    if (bar) {
     adw_combo_row_set_selected(s->position, position_index);
     for (guint i = 0; i < 3; ++i)
         if (visibility == kVisibilityKeys[i])
@@ -767,6 +807,8 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->aw_empty, i);
     adw_switch_row_set_active(s->aw_icon, aw_icon);
     update_aw_row_visibility(s);
+    }
+    if (!bar) {
     {
         bool cb_enabled = false, cb_images = true, cb_paste = false;
         std::string cb_position = "center";
@@ -876,6 +918,7 @@ void populate(Settings* s) {
     gtk_editable_set_text(GTK_EDITABLE(s->nd_snd_excluded), snd_excluded.c_str());
     update_nd_rows(s);
     rebuild_rule_rows(s);
+    }
     s->loading = false;
 }
 
@@ -1615,7 +1658,44 @@ struct WpThumbJob {
     GtkPicture* picture; // ref held while decoding
     std::string path;
     std::string cache_path;
+    bool cached = false; // decode the finished thumbnail, no crop / no re-save
 };
+
+// Thumbnails decode off the main thread, a few at a time, so tiles fill in
+// top to bottom while the page stays responsive (a synchronous
+// gtk_picture_set_filename() per cached PNG once cost ~300 ms at startup).
+constexpr unsigned kWpThumbParallel = 4;
+std::deque<WpThumbJob*> wp_thumb_queue;
+unsigned wp_thumb_in_flight = 0;
+void wp_thumb_start(WpThumbJob* job);
+
+void wp_thumb_done() {
+    if (wp_thumb_in_flight > 0)
+        --wp_thumb_in_flight;
+    while (wp_thumb_in_flight < kWpThumbParallel && !wp_thumb_queue.empty()) {
+        WpThumbJob* next = wp_thumb_queue.front();
+        wp_thumb_queue.pop_front();
+        wp_thumb_start(next);
+    }
+}
+
+void wp_thumb_cached_decoded(GObject*, GAsyncResult* result, gpointer data) {
+    std::unique_ptr<WpThumbJob> job(static_cast<WpThumbJob*>(data));
+    GError* error = nullptr;
+    GdkPixbuf* pixbuf = gdk_pixbuf_new_from_stream_finish(result, &error);
+    if (pixbuf != nullptr) {
+        GdkTexture* texture = gdk_texture_new_for_pixbuf(pixbuf);
+        gtk_picture_set_paintable(job->picture, GDK_PAINTABLE(texture));
+        g_object_unref(texture);
+        g_object_unref(pixbuf);
+    } else {
+        g_message("wallpaper thumbnail: %s: %s", job->cache_path.c_str(),
+                  error ? error->message : "?");
+        g_clear_error(&error);
+    }
+    g_object_unref(job->picture);
+    wp_thumb_done();
+}
 
 // decode → center-crop to a 384px square → cache as PNG → show
 void wp_thumb_decoded(GObject*, GAsyncResult* result, gpointer data) {
@@ -1626,6 +1706,7 @@ void wp_thumb_decoded(GObject*, GAsyncResult* result, gpointer data) {
         g_message("wallpaper thumbnail: %s: %s", job->path.c_str(), error ? error->message : "?");
         g_clear_error(&error);
         g_object_unref(job->picture);
+        wp_thumb_done();
         return;
     }
     GdkPixbuf* oriented = gdk_pixbuf_apply_embedded_orientation(pixbuf);
@@ -1647,6 +1728,7 @@ void wp_thumb_decoded(GObject*, GAsyncResult* result, gpointer data) {
     g_object_unref(texture);
     g_object_unref(square);
     g_object_unref(job->picture);
+    wp_thumb_done();
 }
 
 void wp_thumb_opened(GObject* source, GAsyncResult* result, gpointer data) {
@@ -1659,6 +1741,13 @@ void wp_thumb_opened(GObject* source, GAsyncResult* result, gpointer data) {
         g_clear_error(&error);
         g_object_unref(job->picture);
         delete job;
+        wp_thumb_done();
+        return;
+    }
+    if (job->cached) {
+        gdk_pixbuf_new_from_stream_async(G_INPUT_STREAM(stream), nullptr, wp_thumb_cached_decoded,
+                                         job);
+        g_object_unref(stream);
         return;
     }
     // cover-scale the shorter side to 384 (header read is cheap), crop after
@@ -1676,16 +1765,30 @@ void wp_thumb_opened(GObject* source, GAsyncResult* result, gpointer data) {
     g_object_unref(stream);
 }
 
-void wp_load_thumbnail(GtkPicture* picture, const std::string& path) {
-    const std::string cache = wp_thumb_cache_path(path);
-    if (g_file_test(cache.c_str(), G_FILE_TEST_IS_REGULAR)) {
-        gtk_picture_set_filename(picture, cache.c_str());
-        return;
-    }
-    auto* job = new WpThumbJob{GTK_PICTURE(g_object_ref(picture)), path, cache};
-    GFile* file = g_file_new_for_path(path.c_str());
+void wp_thumb_start(WpThumbJob* job) {
+    ++wp_thumb_in_flight;
+    GFile* file = g_file_new_for_path((job->cached ? job->cache_path : job->path).c_str());
     g_file_read_async(file, G_PRIORITY_LOW, nullptr, wp_thumb_opened, job);
     g_object_unref(file);
+}
+
+void wp_load_thumbnail(GtkPicture* picture, const std::string& path) {
+    const std::string cache = wp_thumb_cache_path(path);
+    auto* job = new WpThumbJob{GTK_PICTURE(g_object_ref(picture)), path, cache,
+                               g_file_test(cache.c_str(), G_FILE_TEST_IS_REGULAR) != FALSE};
+    if (wp_thumb_in_flight < kWpThumbParallel)
+        wp_thumb_start(job);
+    else
+        wp_thumb_queue.push_back(job);
+}
+
+// tiles being rebuilt: pending decodes would land on unparented pictures
+void wp_thumb_cancel_queued() {
+    for (WpThumbJob* job : wp_thumb_queue) {
+        g_object_unref(job->picture);
+        delete job;
+    }
+    wp_thumb_queue.clear();
 }
 
 // The wallpaper on screen: the shell persists slideshow picks in
@@ -1770,6 +1873,7 @@ GtkWidget* wp_make_tile(Settings* s, const std::string& path) {
 }
 
 void wp_rebuild_grid(Settings* s) {
+    wp_thumb_cancel_queued();
     while (GtkWidget* child = gtk_widget_get_first_child(s->wp_grid))
         gtk_flow_box_remove(GTK_FLOW_BOX(s->wp_grid), child);
     for (const auto& path : s->wp_images)
@@ -1797,6 +1901,11 @@ void wp_rebuild_grid(Settings* s) {
 // List the folder (local, small: synchronous like the shell's config read),
 // sorted case-insensitively by name; hidden files skipped like Noctalia.
 void wp_rescan(Settings* s) {
+    if (!s->wp_grid_live) {
+        s->wp_grid_dirty = true;
+        return;
+    }
+    s->wp_grid_dirty = false;
     s->wp_images.clear();
     if (!s->wp_scanned_dir.empty()) {
         GFile* dir = g_file_new_for_path(s->wp_scanned_dir.c_str());
@@ -2601,10 +2710,1070 @@ void on_module_toggled(GObject* row, GParamSpec*, gpointer data) {
     save(s);
 }
 
+// Every sidebar page except Bar: constructed, populated and added to the
+// content stack in one go. Called from an idle after the first frame, or
+// earlier by whatever needs those pages first (sidebar click, search,
+// HS_SETTINGS_PAGE). Building them before the first frame cost ~40% of the
+// startup time for pages most launches never open.
+void build_secondary_pages(Settings* s) {
+    if (s->secondary_built)
+        return;
+    s->secondary_built = true;
+    hs_mark("secondary pages: build");
+    GtkWidget* win = s->window;
+    GtkWidget* stack = s->stack;
+
+    // -- Launcher sidebar page (top-level "launcher" object) ------------------
+    GtkWidget* lp_page = adw_preferences_page_new();
+
+    GtkWidget* lp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lp_group), "Launcher");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(lp_group),
+        "Application search and the calculator are always available. Toggle it "
+        "from the bar's search button or bind a key in hyprland.conf:\n"
+        "bind = SUPER, SPACE, exec, hypr-shell --launcher");
+
+    struct LauncherRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } launcher_rows[] = {
+        {"enable_settings_search", "Settings search",
+         "Include hypr-shell settings entries in the results.",
+         &s->lp_settings_search},
+        {"enable_session_search", "Session search",
+         "Include lock, suspend, reboot, logout and shutdown commands.",
+         &s->lp_session_search},
+        {"enable_web_search", "Web search",
+         "Offer searching the web in your default browser.", &s->lp_web_search},
+        {"show_result_count", "Show result count",
+         "Show the number of results under the list.", &s->lp_result_count},
+        {"show_all_apps", "Show all applications by default",
+         "List every application while the search field is empty.",
+         &s->lp_show_all},
+    };
+    for (const auto& info : launcher_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "launcher-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(lp_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_launcher_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lp_page),
+                             ADW_PREFERENCES_GROUP(lp_group));
+
+    // -- Clipboard sidebar page (top-level "clipboard" object) ----------------
+    GtkWidget* cb_page = adw_preferences_page_new();
+    GtkWidget* cb_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cb_group), "Clipboard history");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(cb_group),
+        "Everything you copy is recorded by cliphist and listed in a searchable window. "
+        "Open it from the bar's clipboard button or bind a key in hyprland.conf:\n"
+        "bind = SUPER, V, exec, hypr-shell --clipboard");
+    {
+        char* cliphist = g_find_program_in_path("cliphist");
+        char* wl_paste = g_find_program_in_path("wl-paste");
+        char* wtype = g_find_program_in_path("wtype");
+        const bool have_cliphist = cliphist != nullptr && wl_paste != nullptr;
+        // the shell pastes through Hyprland's own send_shortcut dispatcher;
+        // wtype is only the fallback outside Hyprland
+        const bool have_wtype = wtype != nullptr || g_getenv("HYPRLAND_INSTANCE_SIGNATURE") != nullptr;
+        g_free(cliphist);
+        g_free(wl_paste);
+        g_free(wtype);
+
+        GtkWidget* enabled_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(enabled_row), "Enable clipboard history");
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(enabled_row),
+            have_cliphist ? "Record copied text and images and show the clipboard button in the bar."
+                          : "Install the cliphist and wl-clipboard packages to record clipboard history.");
+        gtk_widget_set_sensitive(enabled_row, have_cliphist);
+        g_object_set_data(G_OBJECT(enabled_row), "clipboard-key", const_cast<char*>("enabled"));
+        s->cb_enabled = ADW_SWITCH_ROW(enabled_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), enabled_row);
+        g_signal_connect(enabled_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* images_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(images_row), "Show images");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(images_row),
+                                    "List copied images with a thumbnail. Off hides them from the list.");
+        g_object_set_data(G_OBJECT(images_row), "clipboard-key", const_cast<char*>("show_images"));
+        s->cb_show_images = ADW_SWITCH_ROW(images_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), images_row);
+        g_signal_connect(images_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* paste_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(paste_row), "Paste on click");
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(paste_row),
+            have_wtype ? "Paste the chosen entry into the focused window right away instead of "
+                         "only copying it."
+                       : "Needs Hyprland (or the wtype package) to paste entries automatically.");
+        gtk_widget_set_sensitive(paste_row, have_wtype);
+        g_object_set_data(G_OBJECT(paste_row), "clipboard-key", const_cast<char*>("paste_on_click"));
+        s->cb_paste = ADW_SWITCH_ROW(paste_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), paste_row);
+        g_signal_connect(paste_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* position_row = adw_combo_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(position_row), "Position");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(position_row),
+                                    "Where the clipboard window appears on the screen.");
+        const char* position_options[] = {"Center",      "Top left",     "Top center",
+                                          "Top right",   "Bottom left",  "Bottom center",
+                                          "Bottom right", nullptr};
+        GtkStringList* position_model = gtk_string_list_new(position_options);
+        adw_combo_row_set_model(ADW_COMBO_ROW(position_row), G_LIST_MODEL(position_model));
+        g_object_unref(position_model);
+        s->cb_position = ADW_COMBO_ROW(position_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), position_row);
+        g_signal_connect(position_row, "notify::selected",
+                         G_CALLBACK(on_clipboard_position_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(cb_page), ADW_PREFERENCES_GROUP(cb_group));
+
+    // -- Session menu sidebar page (top-level "session" object) ---------------
+    GtkWidget* sm_page = adw_preferences_page_new();
+
+    GtkWidget* sm_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_group), "Session menu");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(sm_group),
+        "Opened by the bar's Session button and the app menu's power button, or "
+        "from a Hyprland keybind:\n"
+        "bind = SUPER SHIFT, E, exec, hypr-shell --session");
+
+    GtkWidget* sm_mode_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_mode_row), "Style");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_mode_row),
+                                "Dropdown lists the actions under the button; Fullscreen "
+                                "covers the screen with large buttons.");
+    const char* sm_mode_options[] = {"Dropdown", "Fullscreen", nullptr};
+    GtkStringList* sm_mode_model = gtk_string_list_new(sm_mode_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(sm_mode_row), G_LIST_MODEL(sm_mode_model));
+    g_object_unref(sm_mode_model);
+    s->sm_mode = ADW_COMBO_ROW(sm_mode_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_mode_row);
+
+    GtkWidget* sm_layout_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_layout_row), "Fullscreen layout");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_layout_row),
+                                "Large buttons in one row, or wrapped into a grid.");
+    const char* sm_layout_options[] = {"Single row", "Grid", nullptr};
+    GtkStringList* sm_layout_model = gtk_string_list_new(sm_layout_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(sm_layout_row), G_LIST_MODEL(sm_layout_model));
+    g_object_unref(sm_layout_model);
+    s->sm_layout = ADW_COMBO_ROW(sm_layout_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_layout_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page), ADW_PREFERENCES_GROUP(sm_group));
+
+    GtkWidget* sm_items_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_items_group), "Actions");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(sm_items_group),
+        "Which entries the session menus (and the launcher's session search) show.");
+    for (gsize i = 0; i < kSessionActionCount; ++i) {
+        const auto& action = hyprshell::kSessionActions[i];
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), action.label);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), action.description);
+        g_object_set_data(G_OBJECT(row), "sm-key", const_cast<char*>(action.key));
+        s->sm_items[i] = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_items_group), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_sm_item_toggled), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page),
+                             ADW_PREFERENCES_GROUP(sm_items_group));
+    g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
+    g_signal_connect(sm_layout_row, "notify::selected", G_CALLBACK(on_sm_layout_changed), s);
+
+    // -- Idle sidebar page (top-level "idle" object) --------------------------
+    GtkWidget* idle_page = adw_preferences_page_new();
+    GtkWidget* idle_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(idle_group), "Idle");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(idle_group),
+        "Timeouts in seconds; 0 disables a step. The screen fades to black for a "
+        "few seconds before each action and any mouse or keyboard activity cancels "
+        "it.");
+
+    struct IdleRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSpinRow** row;
+    } idle_rows[] = {
+        {"screen_off_timeout", "Turn off screen",
+         "Seconds of inactivity before monitors are turned off.", &s->idle_screen_off},
+        {"lock_timeout", "Lock screen",
+         "Seconds of inactivity before the lock screen activates.", &s->idle_lock},
+        {"suspend_timeout", "Suspend", "Seconds of inactivity before the system suspends.",
+         &s->idle_suspend},
+    };
+    for (const auto& info : idle_rows) {
+        GtkWidget* row = adw_spin_row_new_with_range(0, 86400, 10);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "idle-key", const_cast<char*>(info.key));
+        *info.row = ADW_SPIN_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(idle_group), row);
+        g_signal_connect(row, "notify::value", G_CALLBACK(on_idle_timeout_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(idle_page),
+                             ADW_PREFERENCES_GROUP(idle_group));
+
+    // -- Lock screen sidebar page (top-level "lock_screen" object) -------------
+    GtkWidget* lock_page = adw_preferences_page_new();
+    GtkWidget* lock_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lock_group), "Lock screen");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(lock_group),
+        "Lock from the session menu, with `loginctl lock-session`, or with a Hyprland "
+        "keybind:  bind = SUPER, L, exec, hypr-shell --lock  — the idle daemon locks "
+        "after its timeout. Leave the background empty for a plain dark background.");
+
+    GtkWidget* lock_bg_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_bg_row), "Background image");
+    GtkWidget* lock_browse = gtk_button_new_from_icon_name("image-x-generic-symbolic");
+    gtk_widget_add_css_class(lock_browse, "flat");
+    gtk_widget_set_valign(lock_browse, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(lock_browse, "Select an image");
+    g_object_set_data(G_OBJECT(lock_browse), "target-entry", lock_bg_row);
+    g_signal_connect(lock_browse, "clicked", G_CALLBACK(on_lock_browse_clicked), nullptr);
+    adw_entry_row_add_suffix(ADW_ENTRY_ROW(lock_bg_row), lock_browse);
+    s->lock_background = ADW_ENTRY_ROW(lock_bg_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_bg_row);
+    g_signal_connect(lock_bg_row, "changed", G_CALLBACK(on_lock_background_changed), s);
+
+    GtkWidget* lock_blur_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_blur_row), "Blur strength");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(lock_blur_row),
+                                "Applies a blur effect to the lock screen wallpaper.");
+    s->lock_blur = gtk_adjustment_new(0, 0, 100, 1, 10, 0);
+    GtkWidget* lock_blur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->lock_blur);
+    gtk_scale_set_draw_value(GTK_SCALE(lock_blur_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(lock_blur_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(lock_blur_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(lock_blur_scale, 200, -1);
+    gtk_widget_set_valign(lock_blur_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(lock_blur_row), lock_blur_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_blur_row);
+    g_signal_connect(s->lock_blur, "value-changed", G_CALLBACK(on_lock_blur_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
+                             ADW_PREFERENCES_GROUP(lock_group));
+
+    // -- User interface sidebar page (top-level "ui" object) -------------------
+    // GNOME Settings' Appearance panel: Style tiles, an accent swatch row, the font
+    GtkWidget* ui_page = adw_preferences_page_new();
+    GtkWidget* ui_style_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_style_group), "Style");
+    GtkWidget* ui_style_list = gtk_list_box_new();
+    gtk_widget_add_css_class(ui_style_list, "boxed-list");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_style_list), GTK_SELECTION_NONE);
+    GtkWidget* ui_style_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 24);
+    gtk_widget_set_halign(ui_style_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(ui_style_box, 18);
+    gtk_widget_set_margin_bottom(ui_style_box, 18);
+    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Default", false));
+    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Dark", true));
+    GtkWidget* ui_style_row = gtk_list_box_row_new();
+    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_style_row), FALSE);
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_style_row), ui_style_box);
+    gtk_list_box_append(GTK_LIST_BOX(ui_style_list), ui_style_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_style_group), ui_style_list);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_style_group));
+
+    GtkWidget* ui_accent_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_accent_group), "Accent Color");
+    GtkWidget* ui_accent_list = gtk_list_box_new();
+    gtk_widget_add_css_class(ui_accent_list, "boxed-list");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_accent_list), GTK_SELECTION_NONE);
+    GtkWidget* ui_accent_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_halign(ui_accent_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(ui_accent_box, 14);
+    gtk_widget_set_margin_bottom(ui_accent_box, 14);
+    GtkCheckButton* swatch_group = nullptr;
+    for (gsize i = 0; i < kAccentCount; ++i) {
+        GtkWidget* swatch = gtk_check_button_new();
+        gtk_widget_add_css_class(swatch, "accent-swatch");
+        gchar* swatch_class = g_strdup_printf("accent-swatch-%zu", i);
+        gtk_widget_add_css_class(swatch, swatch_class);
+        g_free(swatch_class);
+        gtk_widget_set_tooltip_text(swatch, kAccents[i].name);
+        g_object_set_data(G_OBJECT(swatch), "hex", const_cast<char*>(kAccents[i].hex));
+        if (swatch_group != nullptr)
+            gtk_check_button_set_group(GTK_CHECK_BUTTON(swatch), swatch_group);
+        else
+            swatch_group = GTK_CHECK_BUTTON(swatch);
+        g_signal_connect(swatch, "toggled", G_CALLBACK(on_ui_swatch_toggled), s);
+        gtk_box_append(GTK_BOX(ui_accent_box), swatch);
+        s->ui_swatches[i] = swatch;
+    }
+    GtkWidget* ui_accent_row = gtk_list_box_row_new();
+    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_accent_row), FALSE);
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_accent_row), ui_accent_box);
+    gtk_list_box_append(GTK_LIST_BOX(ui_accent_list), ui_accent_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_accent_group), ui_accent_list);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page),
+                             ADW_PREFERENCES_GROUP(ui_accent_group));
+
+    GtkWidget* ui_font_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_font_group), "Font");
+    GtkWidget* ui_font_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_row), "Font");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_row),
+                                "Text font of the bar, panels and lock screen");
+    GtkFontDialog* font_dialog = gtk_font_dialog_new();
+    gtk_font_dialog_set_title(font_dialog, "Shell font");
+    s->ui_font_button = gtk_font_dialog_button_new(font_dialog);
+    gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(s->ui_font_button),
+                                     GTK_FONT_LEVEL_FAMILY);
+    gtk_font_dialog_button_set_use_font(GTK_FONT_DIALOG_BUTTON(s->ui_font_button), TRUE);
+    gtk_widget_set_valign(s->ui_font_button, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(ui_font_row), s->ui_font_button);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_font_group));
+
+    // -- Night light sidebar page (top-level "night_light" object) -------------
+    GtkWidget* nl_page = adw_preferences_page_new();
+    GtkWidget* nl_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_group), "Night light");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nl_group),
+        "Reduce blue light emission to help you sleep better and reduce eye strain.");
+    gchar* hyprsunset_path = g_find_program_in_path("hyprsunset");
+    s->nl_available = hyprsunset_path != nullptr;
+    g_free(hyprsunset_path);
+    GtkWidget* nl_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_enabled_row), "Enable Night Light");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_enabled_row),
+                                s->nl_available
+                                    ? "Apply a warm color filter to reduce blue light emission."
+                                    : "hyprsunset is not installed — Night Light is unavailable "
+                                      "(pacman -S hyprsunset).");
+    gtk_widget_set_sensitive(nl_enabled_row, s->nl_available);
+    s->nl_enabled = ADW_SWITCH_ROW(nl_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_group), nl_enabled_row);
+    g_signal_connect(nl_enabled_row, "notify::active", G_CALLBACK(on_nl_enabled_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_group));
+
+    GtkWidget* nl_temp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_temp_group), "Color temperature");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(nl_temp_group),
+                                          "Set the color warmth for nighttime.");
+    s->nl_temp_group = nl_temp_group;
+    GtkWidget* nl_temp_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_temp_row), "Night");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_temp_row), "Controls the temperature during nighttime.");
+    s->nl_temp = gtk_adjustment_new(4000, kNlTempMin, kNlTempMax, 1, 100, 0);
+    GtkWidget* nl_temp_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nl_temp);
+    gtk_scale_set_draw_value(GTK_SCALE(nl_temp_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(nl_temp_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(nl_temp_scale),
+        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%dK", (int)std::round(value)); },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(nl_temp_scale, 260, -1);
+    gtk_widget_set_valign(nl_temp_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(nl_temp_row), nl_temp_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_temp_group), nl_temp_row);
+    g_signal_connect(s->nl_temp, "value-changed", G_CALLBACK(on_nl_temp_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_temp_group));
+
+    GtkWidget* nl_sched = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_sched), "Schedule");
+    s->nl_schedule_group = nl_sched;
+    GtkWidget* nl_manual_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_manual_row), "Scheduling");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_manual_row),
+                                "The filter is on from sunset to sunrise.");
+    gtk_widget_set_sensitive(nl_manual_row, FALSE); // a heading row, like Noctalia's NLabel
+    s->nl_manual_label = nl_manual_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_manual_row);
+
+    GtkStringList* nl_times = gtk_string_list_new(nullptr);
+    for (guint i = 0; i < kNlTimeOptions; ++i)
+        gtk_string_list_append(nl_times, nl_time_option(i).c_str());
+    GtkWidget* nl_sunrise_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunrise_row), "Sunrise time");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunrise_row), "Night light turns off.");
+    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunrise_row), G_LIST_MODEL(nl_times));
+    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunrise_row), 13); // 06:30
+    s->nl_sunrise = ADW_COMBO_ROW(nl_sunrise_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunrise_row);
+    g_signal_connect(nl_sunrise_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
+    GtkWidget* nl_sunset_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunset_row), "Sunset time");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunset_row), "Night light turns on.");
+    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunset_row), G_LIST_MODEL(nl_times));
+    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunset_row), 37); // 18:30
+    g_object_unref(nl_times);
+    s->nl_sunset = ADW_COMBO_ROW(nl_sunset_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunset_row);
+    g_signal_connect(nl_sunset_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
+
+    GtkWidget* nl_forced_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_forced_row), "Force activation");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_forced_row),
+                                "Ignores the schedule and applies the night filter immediately.");
+    s->nl_forced = ADW_SWITCH_ROW(nl_forced_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_forced_row);
+    g_signal_connect(nl_forced_row, "notify::active", G_CALLBACK(on_nl_forced_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_sched));
+
+    // -- Wallpaper sidebar page (top-level "wallpaper" object) -----------------
+    GtkWidget* wp_page = adw_preferences_page_new();
+    GtkWidget* wp_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_group), "Wallpaper");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(wp_group),
+        "The shell draws the wallpaper itself on every monitor. Pick the folder holding "
+        "your images; the grid at the bottom lists them.");
+    GtkWidget* wp_dir_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dir_row), "Wallpaper folder");
+    GtkWidget* wp_browse = gtk_button_new_from_icon_name("folder-open-symbolic");
+    gtk_widget_add_css_class(wp_browse, "flat");
+    gtk_widget_set_valign(wp_browse, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(wp_browse, "Select a folder");
+    g_object_set_data(G_OBJECT(wp_browse), "target-entry", wp_dir_row);
+    g_signal_connect(wp_browse, "clicked", G_CALLBACK(on_wp_browse_clicked), nullptr);
+    adw_entry_row_add_suffix(ADW_ENTRY_ROW(wp_dir_row), wp_browse);
+    s->wp_directory = ADW_ENTRY_ROW(wp_dir_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_group), wp_dir_row);
+    g_signal_connect(wp_dir_row, "changed", G_CALLBACK(on_wp_directory_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_group));
+
+    GtkWidget* wp_look = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_look), "Look");
+    s->wp_look_group = wp_look;
+    GtkWidget* wp_fill_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_fill_row), "Fill mode");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_fill_row),
+                                "How the image scales to the monitor's resolution.");
+    const char* wp_fill_labels[] = {"Center", "Crop (Fill)", "Fit (Contain)", "Stretch",
+                                    "Repeat (Tile)", nullptr};
+    GtkStringList* wp_fill_model = gtk_string_list_new(wp_fill_labels);
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_fill_row), G_LIST_MODEL(wp_fill_model));
+    g_object_unref(wp_fill_model);
+    s->wp_fill = ADW_COMBO_ROW(wp_fill_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_fill_row);
+    g_signal_connect(wp_fill_row, "notify::selected", G_CALLBACK(on_wp_fill_changed), s);
+
+    GtkWidget* wp_tr_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_tr_row), "Transitions");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_tr_row),
+                                "Animate the change from one wallpaper to the next.");
+    s->wp_transitions = ADW_SWITCH_ROW(wp_tr_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_tr_row);
+    g_signal_connect(wp_tr_row, "notify::active", G_CALLBACK(on_wp_transitions_toggled), s);
+
+    GtkWidget* wp_types_row = adw_expander_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_types_row), "Transition type");
+    adw_expander_row_set_subtitle(ADW_EXPANDER_ROW(wp_types_row),
+                                  "One of the selected animations is picked at random for each change.");
+    for (gsize i = 0; i < kWpTransitionCount; ++i) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), kWpTransitions[i].label);
+        s->wp_transition[i] = ADW_SWITCH_ROW(row);
+        adw_expander_row_add_row(ADW_EXPANDER_ROW(wp_types_row), row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_wp_transition_type_toggled), s);
+    }
+    s->wp_transition_types = wp_types_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_types_row);
+
+    GtkWidget* wp_dur_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dur_row), "Transition duration");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_dur_row), "Length of the animation.");
+    s->wp_duration = gtk_adjustment_new(1500, 500, 10000, 100, 500, 0);
+    GtkWidget* wp_dur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->wp_duration);
+    gtk_scale_set_draw_value(GTK_SCALE(wp_dur_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(wp_dur_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(wp_dur_scale),
+        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%.1fs", value / 1000.0); },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(wp_dur_scale, 200, -1);
+    gtk_widget_set_valign(wp_dur_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(wp_dur_row), wp_dur_scale);
+    s->wp_duration_row = wp_dur_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_dur_row);
+    g_signal_connect(s->wp_duration, "value-changed", G_CALLBACK(on_wp_duration_changed), s);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_look));
+
+    GtkWidget* wp_auto = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_auto), "Slideshow");
+    s->wp_slideshow_group = wp_auto;
+    GtkWidget* wp_ss_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_ss_row), "Slideshow");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_ss_row),
+                                "Automatically change the wallpaper at regular intervals.");
+    s->wp_slideshow = ADW_SWITCH_ROW(wp_ss_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_ss_row);
+    g_signal_connect(wp_ss_row, "notify::active", G_CALLBACK(on_wp_slideshow_toggled), s);
+
+    GtkWidget* wp_order_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_order_row), "Change order");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_order_row),
+                                "Random shows every image once before repeating.");
+    const char* wp_order_labels[] = {"Random", "Alphabetical", nullptr};
+    GtkStringList* wp_order_model = gtk_string_list_new(wp_order_labels);
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_order_row), G_LIST_MODEL(wp_order_model));
+    g_object_unref(wp_order_model);
+    s->wp_order = ADW_COMBO_ROW(wp_order_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_order_row);
+    g_signal_connect(wp_order_row, "notify::selected", G_CALLBACK(on_wp_order_changed), s);
+
+    GtkWidget* wp_int_row = adw_spin_row_new_with_range(1, 1440, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_int_row), "Time until next wallpaper");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_int_row), "Minutes between changes.");
+    s->wp_interval = ADW_SPIN_ROW(wp_int_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_int_row);
+    g_signal_connect(wp_int_row, "notify::value", G_CALLBACK(on_wp_interval_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_auto));
+
+    // the grid: Noctalia's wallpaper panel as a preferences group
+    GtkWidget* wp_grid_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_grid_group), "Wallpapers");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(wp_grid_group),
+                                          "Click an image to set it as the wallpaper.");
+    s->wp_grid_group = wp_grid_group;
+    GtkWidget* wp_grid_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    s->wp_grid_status = gtk_label_new("");
+    gtk_widget_add_css_class(s->wp_grid_status, "dim-label");
+    gtk_label_set_xalign(GTK_LABEL(s->wp_grid_status), 0.0f);
+    gtk_widget_set_margin_top(s->wp_grid_status, 6);
+    gtk_box_append(GTK_BOX(wp_grid_box), s->wp_grid_status);
+    s->wp_grid = gtk_flow_box_new();
+    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(s->wp_grid), GTK_SELECTION_NONE);
+    gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(s->wp_grid), TRUE);
+    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4); // Noctalia's 4 columns
+    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4);
+    gtk_widget_set_halign(s->wp_grid, GTK_ALIGN_CENTER);
+    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
+    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
+    gtk_widget_add_css_class(s->wp_grid, "wp-grid");
+    gtk_widget_set_valign(s->wp_grid, GTK_ALIGN_START);
+    // grows with its content up to a cap, then scrolls (user request)
+    GtkWidget* wp_scroller = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(wp_scroller), GTK_POLICY_NEVER,
+                                   GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(wp_scroller), TRUE);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(wp_scroller), kWpGridMaxHeight);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(wp_scroller), s->wp_grid);
+    s->wp_grid_scroller = wp_scroller;
+    gtk_box_append(GTK_BOX(wp_grid_box), wp_scroller);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_grid_group), wp_grid_box);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_grid_group));
+    // The grid (folder listing + one thumbnail per image) is built the first
+    // time the page is shown, not at startup: it is the most expensive thing
+    // in the window and most launches never visit it.
+    g_signal_connect(wp_page, "map", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         auto* s = static_cast<Settings*>(data);
+                         s->wp_grid_live = true;
+                         if (s->wp_grid_dirty)
+                             wp_rescan(s);
+                     }),
+                     s);
+
+    wp_watch_state(s);
+
+    // -- On-screen display sidebar page (top-level "osd" object) --------------
+    GtkWidget* osd_page = adw_preferences_page_new();
+    GtkWidget* osd_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(osd_group), "On-screen display");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(osd_group),
+        "A small overlay shown for two seconds whenever the output volume, microphone "
+        "volume, screen brightness or Caps/Num/Scroll Lock changes.");
+
+    GtkWidget* osd_location_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_location_row), "Position");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_location_row),
+                                "Where on-screen displays appear.");
+    const char* osd_location_options[] = {"Top center",    "Top left",    "Top right",
+                                          "Bottom center", "Bottom left", "Bottom right",
+                                          "Center left",   "Center right", nullptr};
+    GtkStringList* osd_location_model = gtk_string_list_new(osd_location_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(osd_location_row),
+                            G_LIST_MODEL(osd_location_model));
+    g_object_unref(osd_location_model);
+    s->osd_location = ADW_COMBO_ROW(osd_location_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_location_row);
+    g_signal_connect(osd_location_row, "notify::selected",
+                     G_CALLBACK(on_osd_location_changed), s);
+
+    GtkWidget* osd_orientation_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_orientation_row), "Orientation");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(osd_orientation_row),
+        "Landscape is a horizontal bar, portrait a vertical column. Automatic follows "
+        "the position: portrait at the sides, landscape at the top or bottom.");
+    const char* osd_orientation_options[] = {"Automatic", "Landscape", "Portrait", nullptr};
+    GtkStringList* osd_orientation_model = gtk_string_list_new(osd_orientation_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(osd_orientation_row),
+                            G_LIST_MODEL(osd_orientation_model));
+    g_object_unref(osd_orientation_model);
+    s->osd_orientation = ADW_COMBO_ROW(osd_orientation_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_orientation_row);
+    g_signal_connect(osd_orientation_row, "notify::selected",
+                     G_CALLBACK(on_osd_orientation_changed), s);
+
+    GtkWidget* osd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_enabled_row),
+                                  "Enable on-screen display");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_enabled_row),
+                                "Show volume and brightness changes in real-time.");
+    s->osd_enabled = ADW_SWITCH_ROW(osd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_enabled_row);
+    g_signal_connect(osd_enabled_row, "notify::active", G_CALLBACK(on_osd_toggled), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(osd_page),
+                             ADW_PREFERENCES_GROUP(osd_group));
+
+    // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
+    GtkWidget* nd_page = adw_preferences_page_new();
+
+    GtkWidget* nd_general = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_general), "Notifications");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_general),
+        "hypr-shell is the notification daemon and must be the only one "
+        "(disable mako/dunst or Noctalia's). Popup duration, history, sounds "
+        "and filter rules are config-only (notifications.* in config.json).");
+
+    GtkWidget* nd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_enabled_row),
+                                  "Enable notifications");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_enabled_row),
+                                "Enable or disable the notification daemon.");
+    g_object_set_data(G_OBJECT(nd_enabled_row), "nd-key", const_cast<char*>("enabled"));
+    s->nd_enabled = ADW_SWITCH_ROW(nd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_enabled_row);
+    g_signal_connect(nd_enabled_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+    // the daemon is on by default and the user wants only DND / always on top /
+    // position on this page (2026-09-05): the other rows and groups stay built
+    // (their config still loads) but hidden
+    gtk_widget_set_visible(nd_enabled_row, FALSE);
+
+    GtkWidget* nd_density_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_density_row), "Density");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_density_row),
+                                "Choose the notification card density.");
+    const char* density_options[] = {"Default", "Compact", nullptr};
+    GtkStringList* density_model = gtk_string_list_new(density_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(nd_density_row), G_LIST_MODEL(density_model));
+    g_object_unref(density_model);
+    s->nd_density = ADW_COMBO_ROW(nd_density_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_density_row);
+    g_signal_connect(nd_density_row, "notify::selected",
+                     G_CALLBACK(on_nd_density_changed), s);
+    gtk_widget_set_visible(nd_density_row, FALSE);
+
+    GtkWidget* nd_dnd_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_dnd_row), "Do not disturb");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(nd_dnd_row),
+        "Disable all notification popups when enabled. Right-clicking the bell "
+        "toggles this temporarily without changing the setting.");
+    g_object_set_data(G_OBJECT(nd_dnd_row), "nd-key",
+                      const_cast<char*>("do_not_disturb"));
+    s->nd_dnd = ADW_SWITCH_ROW(nd_dnd_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_dnd_row);
+    g_signal_connect(nd_dnd_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_battery_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_battery_row), "Battery warnings");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_battery_row),
+                                "Notify when the battery drops to 20% and again at 5%.");
+    g_object_set_data(G_OBJECT(nd_battery_row), "nd-key", const_cast<char*>("battery_alerts"));
+    s->nd_battery = ADW_SWITCH_ROW(nd_battery_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_battery_row);
+    g_signal_connect(nd_battery_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_overlay_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(nd_overlay_row),
+        "Display notifications above fullscreen windows and other layers.");
+    g_object_set_data(G_OBJECT(nd_overlay_row), "nd-key",
+                      const_cast<char*>("overlay_layer"));
+    s->nd_overlay = ADW_SWITCH_ROW(nd_overlay_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_overlay_row);
+    g_signal_connect(nd_overlay_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_location_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_location_row), "Position");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_location_row),
+                                "Where notifications appear on screen.");
+    const char* location_options[] = {"Top center",    "Top left",    "Top right",
+                                      "Bottom center", "Bottom left", "Bottom right",
+                                      nullptr};
+    GtkStringList* location_model = gtk_string_list_new(location_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(nd_location_row),
+                            G_LIST_MODEL(location_model));
+    g_object_unref(location_model);
+    s->nd_location = ADW_COMBO_ROW(nd_location_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_location_row);
+    g_signal_connect(nd_location_row, "notify::selected",
+                     G_CALLBACK(on_nd_location_changed), s);
+
+    GtkWidget* nd_opacity_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_opacity_row),
+                                  "Background opacity");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_opacity_row),
+                                "Adjust the opacity of notification backgrounds.");
+    s->nd_opacity = gtk_adjustment_new(100, 0, 100, 1, 10, 0);
+    GtkWidget* nd_opacity_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_opacity);
+    gtk_scale_set_draw_value(GTK_SCALE(nd_opacity_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(nd_opacity_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(nd_opacity_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(nd_opacity_scale, 200, -1);
+    gtk_widget_set_valign(nd_opacity_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(nd_opacity_row), nd_opacity_scale);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_opacity_row);
+    g_signal_connect(s->nd_opacity, "value-changed", G_CALLBACK(on_nd_opacity_changed),
+                     s);
+    gtk_widget_set_visible(nd_opacity_row, FALSE);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_general));
+
+    GtkWidget* nd_duration = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_duration),
+                                    "Notification duration");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_duration),
+        "Configure how long notifications stay visible based on their urgency level.");
+    s->nd_dependent_groups.push_back(nd_duration);
+
+    GtkWidget* nd_respect_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_respect_row),
+                                  "Respect expire timeout");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_respect_row),
+                                "Use the expire timeout set in the notification.");
+    g_object_set_data(G_OBJECT(nd_respect_row), "nd-key",
+                      const_cast<char*>("respect_expire_timeout"));
+    s->nd_respect_expire = ADW_SWITCH_ROW(nd_respect_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), nd_respect_row);
+    g_signal_connect(nd_respect_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    struct DurationRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSpinRow** row;
+    } duration_rows[] = {
+        {"low_urgency_duration", "Low urgency",
+         "How long low priority notifications stay visible (seconds).", &s->nd_dur_low},
+        {"normal_urgency_duration", "Normal urgency",
+         "How long normal priority notifications stay visible (seconds).",
+         &s->nd_dur_normal},
+        {"critical_urgency_duration", "Critical urgency",
+         "How long critical priority notifications stay visible (seconds).",
+         &s->nd_dur_critical},
+    };
+    for (const auto& info : duration_rows) {
+        GtkWidget* row = adw_spin_row_new_with_range(1, 30, 1);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
+        *info.row = ADW_SPIN_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), row);
+        g_signal_connect(row, "notify::value", G_CALLBACK(on_nd_duration_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_duration));
+    gtk_widget_set_visible(nd_duration, FALSE);
+
+    GtkWidget* nd_history = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_history), "History");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_history),
+        "Control which notifications are saved to history based on their "
+        "urgency level.");
+    s->nd_dependent_groups.push_back(nd_history);
+
+    struct HistRow {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+        bool history_object;
+    } hist_rows[] = {
+        {"clear_dismissed", "Clear on dismissed",
+         "Clear notification from history when dismissed.", &s->nd_clear_dismissed,
+         false},
+        {"low", "Save low urgency to history",
+         "Save low priority notifications to history.", &s->nd_save_low, true},
+        {"normal", "Save normal urgency to history",
+         "Save normal priority notifications to history.", &s->nd_save_normal, true},
+        {"critical", "Save critical urgency to history",
+         "Save critical priority notifications to history.", &s->nd_save_critical,
+         true},
+    };
+    for (const auto& info : hist_rows) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_history), row);
+        g_signal_connect(row, "notify::active",
+                         info.history_object ? G_CALLBACK(on_nd_hist_toggled)
+                                             : G_CALLBACK(on_nd_toggled),
+                         s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_history));
+    gtk_widget_set_visible(nd_history, FALSE);
+
+    GtkWidget* nd_sound = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_sound), "Sound");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(nd_sound),
+        "Configure notification sound effects and volume (played via paplay).");
+    s->nd_dependent_groups.push_back(nd_sound);
+
+    GtkWidget* snd_enabled_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_enabled_row),
+                                  "Enable notification sounds");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_enabled_row),
+                                "Enable sound effects for incoming notifications.");
+    g_object_set_data(G_OBJECT(snd_enabled_row), "nd-key", const_cast<char*>("enabled"));
+    s->nd_snd_enabled = ADW_SWITCH_ROW(snd_enabled_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_enabled_row);
+    g_signal_connect(snd_enabled_row, "notify::active", G_CALLBACK(on_nd_sound_toggled),
+                     s);
+
+    GtkWidget* snd_volume_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_volume_row), "Sound volume");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_volume_row),
+                                "Adjust the volume level for notification sounds.");
+    s->nd_snd_volume = gtk_adjustment_new(50, 0, 100, 1, 10, 0);
+    GtkWidget* snd_volume_scale =
+        gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_snd_volume);
+    gtk_scale_set_draw_value(GTK_SCALE(snd_volume_scale), TRUE);
+    gtk_scale_set_value_pos(GTK_SCALE(snd_volume_scale), GTK_POS_RIGHT);
+    gtk_scale_set_format_value_func(
+        GTK_SCALE(snd_volume_scale),
+        [](GtkScale*, double value, gpointer) {
+            return g_strdup_printf("%d%%", (int)std::round(value));
+        },
+        nullptr, nullptr);
+    gtk_widget_set_size_request(snd_volume_scale, 200, -1);
+    gtk_widget_set_valign(snd_volume_scale, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(snd_volume_row), snd_volume_scale);
+    s->nd_snd_volume_row = snd_volume_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_volume_row);
+    g_signal_connect(s->nd_snd_volume, "value-changed",
+                     G_CALLBACK(on_nd_sound_volume_changed), s);
+
+    GtkWidget* snd_separate_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_separate_row),
+                                  "Use different sounds per priority");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_separate_row),
+                                "Use different sound files for low, normal, and "
+                                "critical priority notifications.");
+    g_object_set_data(G_OBJECT(snd_separate_row), "nd-key",
+                      const_cast<char*>("separate_sounds"));
+    s->nd_snd_separate = ADW_SWITCH_ROW(snd_separate_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_separate_row);
+    g_signal_connect(snd_separate_row, "notify::active",
+                     G_CALLBACK(on_nd_sound_toggled), s);
+
+    auto make_sound_entry = [s, nd_sound](const char* title, const char* key,
+                                          AdwEntryRow** target) {
+        GtkWidget* row = adw_entry_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
+        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(key));
+        GtkWidget* browse = gtk_button_new_from_icon_name("folder-open-symbolic");
+        gtk_widget_add_css_class(browse, "flat");
+        gtk_widget_set_valign(browse, GTK_ALIGN_CENTER);
+        gtk_widget_set_tooltip_text(browse, "Select sound file");
+        g_object_set_data(G_OBJECT(browse), "target-entry", row);
+        g_signal_connect(browse, "clicked", G_CALLBACK(on_nd_browse_clicked), nullptr);
+        adw_entry_row_add_suffix(ADW_ENTRY_ROW(row), browse);
+        *target = ADW_ENTRY_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), row);
+        g_signal_connect(row, "changed", G_CALLBACK(on_nd_sound_entry_changed), s);
+    };
+    make_sound_entry("Notification sound (empty = default)", "normal_sound_file",
+                     &s->nd_snd_unified);
+    make_sound_entry("Low urgency sound", "low_sound_file", &s->nd_snd_low);
+    make_sound_entry("Normal urgency sound", "normal_sound_file", &s->nd_snd_normal);
+    make_sound_entry("Critical urgency sound", "critical_sound_file",
+                     &s->nd_snd_critical);
+
+    GtkWidget* snd_excluded_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_excluded_row),
+                                  "Excluded applications (comma separated)");
+    g_object_set_data(G_OBJECT(snd_excluded_row), "nd-key",
+                      const_cast<char*>("excluded_apps"));
+    s->nd_snd_excluded = ADW_ENTRY_ROW(snd_excluded_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_excluded_row);
+    g_signal_connect(snd_excluded_row, "changed", G_CALLBACK(on_nd_sound_entry_changed),
+                     s);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(nd_sound));
+    gtk_widget_set_visible(nd_sound, FALSE);
+
+    GtkWidget* rules_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(rules_group), "Filter rules");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(rules_group),
+        "Match app name or content — plain text, *globs* or /regex/. Rules are "
+        "checked in order, and the first match is applied.");
+    GtkWidget* add_rule = gtk_button_new_from_icon_name("list-add-symbolic");
+    gtk_widget_add_css_class(add_rule, "flat");
+    gtk_widget_set_tooltip_text(add_rule, "Add rule");
+    g_signal_connect(add_rule, "clicked", G_CALLBACK(on_rule_add_clicked), s);
+    adw_preferences_group_set_header_suffix(ADW_PREFERENCES_GROUP(rules_group),
+                                            add_rule);
+    s->rules_group = rules_group;
+    s->nd_dependent_groups.push_back(rules_group);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
+                             ADW_PREFERENCES_GROUP(rules_group));
+    gtk_widget_set_visible(rules_group, FALSE);
+
+    populate(s, PopulateStage::Secondary);
+
+    GtkWidget* wp_view = adw_toolbar_view_new();
+    GtkWidget* wp_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(wp_header),
+                                    adw_window_title_new("Wallpaper", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(wp_view), wp_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(wp_view), wp_page);
+    GtkWidget* nl_view = adw_toolbar_view_new();
+    GtkWidget* nl_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nl_header),
+                                    adw_window_title_new("Night light", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nl_view), nl_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nl_view), nl_page);
+    GtkWidget* lp_view = adw_toolbar_view_new();
+    GtkWidget* lp_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lp_header),
+                                    adw_window_title_new("Launcher", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lp_view), lp_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lp_view), lp_page);
+
+    GtkWidget* cb_view = adw_toolbar_view_new();
+    GtkWidget* cb_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(cb_header),
+                                    adw_window_title_new("Clipboard", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(cb_view), cb_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(cb_view), cb_page);
+
+    GtkWidget* sm_view = adw_toolbar_view_new();
+    GtkWidget* sm_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(sm_header),
+                                    adw_window_title_new("Session menu", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
+
+    GtkWidget* lock_view = adw_toolbar_view_new();
+    GtkWidget* lock_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lock_header),
+                                    adw_window_title_new("Lock screen", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lock_view), lock_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lock_view), lock_page);
+
+    GtkWidget* idle_view = adw_toolbar_view_new();
+    GtkWidget* idle_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(idle_header),
+                                    adw_window_title_new("Idle", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(idle_view), idle_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(idle_view), idle_page);
+
+    GtkWidget* osd_view = adw_toolbar_view_new();
+    GtkWidget* osd_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(osd_header),
+                                    adw_window_title_new("On-screen display", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(osd_view), osd_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(osd_view), osd_page);
+
+    GtkWidget* nd_view = adw_toolbar_view_new();
+    GtkWidget* nd_header = adw_header_bar_new();
+    // inside a plain GtkStack there is no per-page AdwNavigationPage title —
+    // set this header's title directly
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nd_header),
+                                    adw_window_title_new("Notifications", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nd_view), nd_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nd_view), nd_page);
+
+    GtkWidget* ui_view = adw_toolbar_view_new();
+    GtkWidget* ui_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(ui_header),
+                                    adw_window_title_new("User interface", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(ui_view), ui_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(ui_view), ui_page);
+    gtk_stack_add_named(GTK_STACK(stack), ui_view, "ui_page");
+    g_signal_connect(s->ui_font_button, "notify::font-desc", G_CALLBACK(on_ui_font_changed), s);
+    gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
+    gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
+    gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
+    gtk_stack_add_named(GTK_STACK(stack), cb_view, "clipboard_page");
+    gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
+    gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
+    gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
+    gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
+    gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
+
+    // -- Hotspot: NetworkManager AP mode (state lives in NM, not config.json) --
+    GtkWidget* hs_view = adw_toolbar_view_new();
+    GtkWidget* hs_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(hs_header),
+                                    adw_window_title_new("Hotspot", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(hs_view), hs_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(hs_view),
+                                 hyprshell::settings::build_hotspot_page(GTK_WINDOW(win)));
+    gtk_stack_add_named(GTK_STACK(stack), hs_view, "hotspot_page");
+
+    // -- VPN: NetworkManager profiles (was the bar's vpn module + panel) ------
+    GtkWidget* vpn_view = adw_toolbar_view_new();
+    GtkWidget* vpn_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(vpn_header),
+                                    adw_window_title_new("VPN", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(vpn_view), vpn_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(vpn_view),
+                                 hyprshell::settings::build_vpn_page(GTK_WINDOW(win)));
+    gtk_stack_add_named(GTK_STACK(stack), vpn_view, "vpn_page");
+
+    // -- About: hardware + software facts (GNOME Settings' About panel) -----
+    GtkWidget* about_view = adw_toolbar_view_new();
+    GtkWidget* about_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(about_header),
+                                    adw_window_title_new("About", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(about_view), about_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(about_view),
+                                 hyprshell::settings::build_about_page());
+    gtk_stack_add_named(GTK_STACK(stack), about_view, "about_page");
+
+    hs_mark("secondary pages: done");
+}
+
 void on_activate(GtkApplication* app, gpointer) {
+    hs_mark("activate");
     auto* s = new Settings();
     s->path = std::string(g_get_user_config_dir()) + "/hypr-shell/config.json";
     load(s);
+    hs_mark("config loaded");
 
     // wallpaper grid tiles (Noctalia's panel look: rounded cover thumbnails,
     // accent border on the current one, others veiled until hovered)
@@ -2667,6 +3836,7 @@ void on_activate(GtkApplication* app, gpointer) {
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
 
+    hs_mark("css loaded");
     GtkWidget* win = adw_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(win), "Settings");
     gtk_window_set_default_size(GTK_WINDOW(win), 920, 660);
@@ -3252,926 +4422,7 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(notif_page),
                              ADW_PREFERENCES_GROUP(notif_group));
 
-    // -- Launcher sidebar page (top-level "launcher" object) ------------------
-    GtkWidget* lp_page = adw_preferences_page_new();
-
-    GtkWidget* lp_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lp_group), "Launcher");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(lp_group),
-        "Application search and the calculator are always available. Toggle it "
-        "from the bar's search button or bind a key in hyprland.conf:\n"
-        "bind = SUPER, SPACE, exec, hypr-shell --launcher");
-
-    struct LauncherRow {
-        const char* key;
-        const char* title;
-        const char* subtitle;
-        AdwSwitchRow** row;
-    } launcher_rows[] = {
-        {"enable_settings_search", "Settings search",
-         "Include hypr-shell settings entries in the results.",
-         &s->lp_settings_search},
-        {"enable_session_search", "Session search",
-         "Include lock, suspend, reboot, logout and shutdown commands.",
-         &s->lp_session_search},
-        {"enable_web_search", "Web search",
-         "Offer searching the web in your default browser.", &s->lp_web_search},
-        {"show_result_count", "Show result count",
-         "Show the number of results under the list.", &s->lp_result_count},
-        {"show_all_apps", "Show all applications by default",
-         "List every application while the search field is empty.",
-         &s->lp_show_all},
-    };
-    for (const auto& info : launcher_rows) {
-        GtkWidget* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
-        g_object_set_data(G_OBJECT(row), "launcher-key", const_cast<char*>(info.key));
-        *info.row = ADW_SWITCH_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(lp_group), row);
-        g_signal_connect(row, "notify::active", G_CALLBACK(on_launcher_toggled), s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lp_page),
-                             ADW_PREFERENCES_GROUP(lp_group));
-
-    // -- Clipboard sidebar page (top-level "clipboard" object) ----------------
-    GtkWidget* cb_page = adw_preferences_page_new();
-    GtkWidget* cb_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cb_group), "Clipboard history");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(cb_group),
-        "Everything you copy is recorded by cliphist and listed in a searchable window. "
-        "Open it from the bar's clipboard button or bind a key in hyprland.conf:\n"
-        "bind = SUPER, V, exec, hypr-shell --clipboard");
-    {
-        char* cliphist = g_find_program_in_path("cliphist");
-        char* wl_paste = g_find_program_in_path("wl-paste");
-        char* wtype = g_find_program_in_path("wtype");
-        const bool have_cliphist = cliphist != nullptr && wl_paste != nullptr;
-        // the shell pastes through Hyprland's own send_shortcut dispatcher;
-        // wtype is only the fallback outside Hyprland
-        const bool have_wtype = wtype != nullptr || g_getenv("HYPRLAND_INSTANCE_SIGNATURE") != nullptr;
-        g_free(cliphist);
-        g_free(wl_paste);
-        g_free(wtype);
-
-        GtkWidget* enabled_row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(enabled_row), "Enable clipboard history");
-        adw_action_row_set_subtitle(
-            ADW_ACTION_ROW(enabled_row),
-            have_cliphist ? "Record copied text and images and show the clipboard button in the bar."
-                          : "Install the cliphist and wl-clipboard packages to record clipboard history.");
-        gtk_widget_set_sensitive(enabled_row, have_cliphist);
-        g_object_set_data(G_OBJECT(enabled_row), "clipboard-key", const_cast<char*>("enabled"));
-        s->cb_enabled = ADW_SWITCH_ROW(enabled_row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), enabled_row);
-        g_signal_connect(enabled_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
-
-        GtkWidget* images_row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(images_row), "Show images");
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(images_row),
-                                    "List copied images with a thumbnail. Off hides them from the list.");
-        g_object_set_data(G_OBJECT(images_row), "clipboard-key", const_cast<char*>("show_images"));
-        s->cb_show_images = ADW_SWITCH_ROW(images_row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), images_row);
-        g_signal_connect(images_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
-
-        GtkWidget* paste_row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(paste_row), "Paste on click");
-        adw_action_row_set_subtitle(
-            ADW_ACTION_ROW(paste_row),
-            have_wtype ? "Paste the chosen entry into the focused window right away instead of "
-                         "only copying it."
-                       : "Needs Hyprland (or the wtype package) to paste entries automatically.");
-        gtk_widget_set_sensitive(paste_row, have_wtype);
-        g_object_set_data(G_OBJECT(paste_row), "clipboard-key", const_cast<char*>("paste_on_click"));
-        s->cb_paste = ADW_SWITCH_ROW(paste_row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), paste_row);
-        g_signal_connect(paste_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
-
-        GtkWidget* position_row = adw_combo_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(position_row), "Position");
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(position_row),
-                                    "Where the clipboard window appears on the screen.");
-        const char* position_options[] = {"Center",      "Top left",     "Top center",
-                                          "Top right",   "Bottom left",  "Bottom center",
-                                          "Bottom right", nullptr};
-        GtkStringList* position_model = gtk_string_list_new(position_options);
-        adw_combo_row_set_model(ADW_COMBO_ROW(position_row), G_LIST_MODEL(position_model));
-        g_object_unref(position_model);
-        s->cb_position = ADW_COMBO_ROW(position_row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), position_row);
-        g_signal_connect(position_row, "notify::selected",
-                         G_CALLBACK(on_clipboard_position_changed), s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(cb_page), ADW_PREFERENCES_GROUP(cb_group));
-
-    // -- Session menu sidebar page (top-level "session" object) ---------------
-    GtkWidget* sm_page = adw_preferences_page_new();
-
-    GtkWidget* sm_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_group), "Session menu");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(sm_group),
-        "Opened by the bar's Session button and the app menu's power button, or "
-        "from a Hyprland keybind:\n"
-        "bind = SUPER SHIFT, E, exec, hypr-shell --session");
-
-    GtkWidget* sm_mode_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_mode_row), "Style");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_mode_row),
-                                "Dropdown lists the actions under the button; Fullscreen "
-                                "covers the screen with large buttons.");
-    const char* sm_mode_options[] = {"Dropdown", "Fullscreen", nullptr};
-    GtkStringList* sm_mode_model = gtk_string_list_new(sm_mode_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(sm_mode_row), G_LIST_MODEL(sm_mode_model));
-    g_object_unref(sm_mode_model);
-    s->sm_mode = ADW_COMBO_ROW(sm_mode_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_mode_row);
-
-    GtkWidget* sm_layout_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sm_layout_row), "Fullscreen layout");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(sm_layout_row),
-                                "Large buttons in one row, or wrapped into a grid.");
-    const char* sm_layout_options[] = {"Single row", "Grid", nullptr};
-    GtkStringList* sm_layout_model = gtk_string_list_new(sm_layout_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(sm_layout_row), G_LIST_MODEL(sm_layout_model));
-    g_object_unref(sm_layout_model);
-    s->sm_layout = ADW_COMBO_ROW(sm_layout_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_group), sm_layout_row);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page), ADW_PREFERENCES_GROUP(sm_group));
-
-    GtkWidget* sm_items_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(sm_items_group), "Actions");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(sm_items_group),
-        "Which entries the session menus (and the launcher's session search) show.");
-    for (gsize i = 0; i < kSessionActionCount; ++i) {
-        const auto& action = hyprshell::kSessionActions[i];
-        GtkWidget* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), action.label);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), action.description);
-        g_object_set_data(G_OBJECT(row), "sm-key", const_cast<char*>(action.key));
-        s->sm_items[i] = ADW_SWITCH_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_items_group), row);
-        g_signal_connect(row, "notify::active", G_CALLBACK(on_sm_item_toggled), s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page),
-                             ADW_PREFERENCES_GROUP(sm_items_group));
-    g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
-    g_signal_connect(sm_layout_row, "notify::selected", G_CALLBACK(on_sm_layout_changed), s);
-
-    // -- Idle sidebar page (top-level "idle" object) --------------------------
-    GtkWidget* idle_page = adw_preferences_page_new();
-    GtkWidget* idle_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(idle_group), "Idle");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(idle_group),
-        "Timeouts in seconds; 0 disables a step. The screen fades to black for a "
-        "few seconds before each action and any mouse or keyboard activity cancels "
-        "it.");
-
-    struct IdleRow {
-        const char* key;
-        const char* title;
-        const char* subtitle;
-        AdwSpinRow** row;
-    } idle_rows[] = {
-        {"screen_off_timeout", "Turn off screen",
-         "Seconds of inactivity before monitors are turned off.", &s->idle_screen_off},
-        {"lock_timeout", "Lock screen",
-         "Seconds of inactivity before the lock screen activates.", &s->idle_lock},
-        {"suspend_timeout", "Suspend", "Seconds of inactivity before the system suspends.",
-         &s->idle_suspend},
-    };
-    for (const auto& info : idle_rows) {
-        GtkWidget* row = adw_spin_row_new_with_range(0, 86400, 10);
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
-        g_object_set_data(G_OBJECT(row), "idle-key", const_cast<char*>(info.key));
-        *info.row = ADW_SPIN_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(idle_group), row);
-        g_signal_connect(row, "notify::value", G_CALLBACK(on_idle_timeout_changed), s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(idle_page),
-                             ADW_PREFERENCES_GROUP(idle_group));
-
-    // -- Lock screen sidebar page (top-level "lock_screen" object) -------------
-    GtkWidget* lock_page = adw_preferences_page_new();
-    GtkWidget* lock_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lock_group), "Lock screen");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(lock_group),
-        "Lock from the session menu, with `loginctl lock-session`, or with a Hyprland "
-        "keybind:  bind = SUPER, L, exec, hypr-shell --lock  — the idle daemon locks "
-        "after its timeout. Leave the background empty for a plain dark background.");
-
-    GtkWidget* lock_bg_row = adw_entry_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_bg_row), "Background image");
-    GtkWidget* lock_browse = gtk_button_new_from_icon_name("image-x-generic-symbolic");
-    gtk_widget_add_css_class(lock_browse, "flat");
-    gtk_widget_set_valign(lock_browse, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(lock_browse, "Select an image");
-    g_object_set_data(G_OBJECT(lock_browse), "target-entry", lock_bg_row);
-    g_signal_connect(lock_browse, "clicked", G_CALLBACK(on_lock_browse_clicked), nullptr);
-    adw_entry_row_add_suffix(ADW_ENTRY_ROW(lock_bg_row), lock_browse);
-    s->lock_background = ADW_ENTRY_ROW(lock_bg_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_bg_row);
-    g_signal_connect(lock_bg_row, "changed", G_CALLBACK(on_lock_background_changed), s);
-
-    GtkWidget* lock_blur_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lock_blur_row), "Blur strength");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(lock_blur_row),
-                                "Applies a blur effect to the lock screen wallpaper.");
-    s->lock_blur = gtk_adjustment_new(0, 0, 100, 1, 10, 0);
-    GtkWidget* lock_blur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->lock_blur);
-    gtk_scale_set_draw_value(GTK_SCALE(lock_blur_scale), TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(lock_blur_scale), GTK_POS_RIGHT);
-    gtk_scale_set_format_value_func(
-        GTK_SCALE(lock_blur_scale),
-        [](GtkScale*, double value, gpointer) {
-            return g_strdup_printf("%d%%", (int)std::round(value));
-        },
-        nullptr, nullptr);
-    gtk_widget_set_size_request(lock_blur_scale, 200, -1);
-    gtk_widget_set_valign(lock_blur_scale, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(lock_blur_row), lock_blur_scale);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(lock_group), lock_blur_row);
-    g_signal_connect(s->lock_blur, "value-changed", G_CALLBACK(on_lock_blur_changed), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
-                             ADW_PREFERENCES_GROUP(lock_group));
-
-    // -- User interface sidebar page (top-level "ui" object) -------------------
-    // GNOME Settings' Appearance panel: Style tiles, an accent swatch row, the font
-    GtkWidget* ui_page = adw_preferences_page_new();
-    GtkWidget* ui_style_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_style_group), "Style");
-    GtkWidget* ui_style_list = gtk_list_box_new();
-    gtk_widget_add_css_class(ui_style_list, "boxed-list");
-    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_style_list), GTK_SELECTION_NONE);
-    GtkWidget* ui_style_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 24);
-    gtk_widget_set_halign(ui_style_box, GTK_ALIGN_CENTER);
-    gtk_widget_set_margin_top(ui_style_box, 18);
-    gtk_widget_set_margin_bottom(ui_style_box, 18);
-    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Default", false));
-    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Dark", true));
-    GtkWidget* ui_style_row = gtk_list_box_row_new();
-    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_style_row), FALSE);
-    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_style_row), ui_style_box);
-    gtk_list_box_append(GTK_LIST_BOX(ui_style_list), ui_style_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_style_group), ui_style_list);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_style_group));
-
-    GtkWidget* ui_accent_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_accent_group), "Accent Color");
-    GtkWidget* ui_accent_list = gtk_list_box_new();
-    gtk_widget_add_css_class(ui_accent_list, "boxed-list");
-    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_accent_list), GTK_SELECTION_NONE);
-    GtkWidget* ui_accent_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_widget_set_halign(ui_accent_box, GTK_ALIGN_CENTER);
-    gtk_widget_set_margin_top(ui_accent_box, 14);
-    gtk_widget_set_margin_bottom(ui_accent_box, 14);
-    GtkCheckButton* swatch_group = nullptr;
-    for (gsize i = 0; i < kAccentCount; ++i) {
-        GtkWidget* swatch = gtk_check_button_new();
-        gtk_widget_add_css_class(swatch, "accent-swatch");
-        gchar* swatch_class = g_strdup_printf("accent-swatch-%zu", i);
-        gtk_widget_add_css_class(swatch, swatch_class);
-        g_free(swatch_class);
-        gtk_widget_set_tooltip_text(swatch, kAccents[i].name);
-        g_object_set_data(G_OBJECT(swatch), "hex", const_cast<char*>(kAccents[i].hex));
-        if (swatch_group != nullptr)
-            gtk_check_button_set_group(GTK_CHECK_BUTTON(swatch), swatch_group);
-        else
-            swatch_group = GTK_CHECK_BUTTON(swatch);
-        g_signal_connect(swatch, "toggled", G_CALLBACK(on_ui_swatch_toggled), s);
-        gtk_box_append(GTK_BOX(ui_accent_box), swatch);
-        s->ui_swatches[i] = swatch;
-    }
-    GtkWidget* ui_accent_row = gtk_list_box_row_new();
-    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_accent_row), FALSE);
-    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_accent_row), ui_accent_box);
-    gtk_list_box_append(GTK_LIST_BOX(ui_accent_list), ui_accent_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_accent_group), ui_accent_list);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page),
-                             ADW_PREFERENCES_GROUP(ui_accent_group));
-
-    GtkWidget* ui_font_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_font_group), "Font");
-    GtkWidget* ui_font_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_row), "Font");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_row),
-                                "Text font of the bar, panels and lock screen");
-    GtkFontDialog* font_dialog = gtk_font_dialog_new();
-    gtk_font_dialog_set_title(font_dialog, "Shell font");
-    s->ui_font_button = gtk_font_dialog_button_new(font_dialog);
-    gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(s->ui_font_button),
-                                     GTK_FONT_LEVEL_FAMILY);
-    gtk_font_dialog_button_set_use_font(GTK_FONT_DIALOG_BUTTON(s->ui_font_button), TRUE);
-    gtk_widget_set_valign(s->ui_font_button, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(ui_font_row), s->ui_font_button);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_row);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_font_group));
-
-    // -- Night light sidebar page (top-level "night_light" object) -------------
-    GtkWidget* nl_page = adw_preferences_page_new();
-    GtkWidget* nl_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_group), "Night light");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(nl_group),
-        "Reduce blue light emission to help you sleep better and reduce eye strain.");
-    gchar* hyprsunset_path = g_find_program_in_path("hyprsunset");
-    s->nl_available = hyprsunset_path != nullptr;
-    g_free(hyprsunset_path);
-    GtkWidget* nl_enabled_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_enabled_row), "Enable Night Light");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_enabled_row),
-                                s->nl_available
-                                    ? "Apply a warm color filter to reduce blue light emission."
-                                    : "hyprsunset is not installed — Night Light is unavailable "
-                                      "(pacman -S hyprsunset).");
-    gtk_widget_set_sensitive(nl_enabled_row, s->nl_available);
-    s->nl_enabled = ADW_SWITCH_ROW(nl_enabled_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_group), nl_enabled_row);
-    g_signal_connect(nl_enabled_row, "notify::active", G_CALLBACK(on_nl_enabled_toggled), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_group));
-
-    GtkWidget* nl_temp_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_temp_group), "Color temperature");
-    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(nl_temp_group),
-                                          "Set the color warmth for nighttime.");
-    s->nl_temp_group = nl_temp_group;
-    GtkWidget* nl_temp_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_temp_row), "Night");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_temp_row), "Controls the temperature during nighttime.");
-    s->nl_temp = gtk_adjustment_new(4000, kNlTempMin, kNlTempMax, 1, 100, 0);
-    GtkWidget* nl_temp_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nl_temp);
-    gtk_scale_set_draw_value(GTK_SCALE(nl_temp_scale), TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(nl_temp_scale), GTK_POS_RIGHT);
-    gtk_scale_set_format_value_func(
-        GTK_SCALE(nl_temp_scale),
-        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%dK", (int)std::round(value)); },
-        nullptr, nullptr);
-    gtk_widget_set_size_request(nl_temp_scale, 260, -1);
-    gtk_widget_set_valign(nl_temp_scale, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(nl_temp_row), nl_temp_scale);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_temp_group), nl_temp_row);
-    g_signal_connect(s->nl_temp, "value-changed", G_CALLBACK(on_nl_temp_changed), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_temp_group));
-
-    GtkWidget* nl_sched = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nl_sched), "Schedule");
-    s->nl_schedule_group = nl_sched;
-    GtkWidget* nl_manual_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_manual_row), "Scheduling");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_manual_row),
-                                "The filter is on from sunset to sunrise.");
-    gtk_widget_set_sensitive(nl_manual_row, FALSE); // a heading row, like Noctalia's NLabel
-    s->nl_manual_label = nl_manual_row;
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_manual_row);
-
-    GtkStringList* nl_times = gtk_string_list_new(nullptr);
-    for (guint i = 0; i < kNlTimeOptions; ++i)
-        gtk_string_list_append(nl_times, nl_time_option(i).c_str());
-    GtkWidget* nl_sunrise_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunrise_row), "Sunrise time");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunrise_row), "Night light turns off.");
-    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunrise_row), G_LIST_MODEL(nl_times));
-    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunrise_row), 13); // 06:30
-    s->nl_sunrise = ADW_COMBO_ROW(nl_sunrise_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunrise_row);
-    g_signal_connect(nl_sunrise_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
-    GtkWidget* nl_sunset_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_sunset_row), "Sunset time");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunset_row), "Night light turns on.");
-    adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunset_row), G_LIST_MODEL(nl_times));
-    adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunset_row), 37); // 18:30
-    g_object_unref(nl_times);
-    s->nl_sunset = ADW_COMBO_ROW(nl_sunset_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunset_row);
-    g_signal_connect(nl_sunset_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
-
-    GtkWidget* nl_forced_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nl_forced_row), "Force activation");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_forced_row),
-                                "Ignores the schedule and applies the night filter immediately.");
-    s->nl_forced = ADW_SWITCH_ROW(nl_forced_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_forced_row);
-    g_signal_connect(nl_forced_row, "notify::active", G_CALLBACK(on_nl_forced_toggled), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nl_page), ADW_PREFERENCES_GROUP(nl_sched));
-
-    // -- Wallpaper sidebar page (top-level "wallpaper" object) -----------------
-    GtkWidget* wp_page = adw_preferences_page_new();
-    GtkWidget* wp_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_group), "Wallpaper");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(wp_group),
-        "The shell draws the wallpaper itself on every monitor. Pick the folder holding "
-        "your images; the grid at the bottom lists them.");
-    GtkWidget* wp_dir_row = adw_entry_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dir_row), "Wallpaper folder");
-    GtkWidget* wp_browse = gtk_button_new_from_icon_name("folder-open-symbolic");
-    gtk_widget_add_css_class(wp_browse, "flat");
-    gtk_widget_set_valign(wp_browse, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(wp_browse, "Select a folder");
-    g_object_set_data(G_OBJECT(wp_browse), "target-entry", wp_dir_row);
-    g_signal_connect(wp_browse, "clicked", G_CALLBACK(on_wp_browse_clicked), nullptr);
-    adw_entry_row_add_suffix(ADW_ENTRY_ROW(wp_dir_row), wp_browse);
-    s->wp_directory = ADW_ENTRY_ROW(wp_dir_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_group), wp_dir_row);
-    g_signal_connect(wp_dir_row, "changed", G_CALLBACK(on_wp_directory_changed), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_group));
-
-    GtkWidget* wp_look = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_look), "Look");
-    s->wp_look_group = wp_look;
-    GtkWidget* wp_fill_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_fill_row), "Fill mode");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_fill_row),
-                                "How the image scales to the monitor's resolution.");
-    const char* wp_fill_labels[] = {"Center", "Crop (Fill)", "Fit (Contain)", "Stretch",
-                                    "Repeat (Tile)", nullptr};
-    GtkStringList* wp_fill_model = gtk_string_list_new(wp_fill_labels);
-    adw_combo_row_set_model(ADW_COMBO_ROW(wp_fill_row), G_LIST_MODEL(wp_fill_model));
-    g_object_unref(wp_fill_model);
-    s->wp_fill = ADW_COMBO_ROW(wp_fill_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_fill_row);
-    g_signal_connect(wp_fill_row, "notify::selected", G_CALLBACK(on_wp_fill_changed), s);
-
-    GtkWidget* wp_tr_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_tr_row), "Transitions");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_tr_row),
-                                "Animate the change from one wallpaper to the next.");
-    s->wp_transitions = ADW_SWITCH_ROW(wp_tr_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_tr_row);
-    g_signal_connect(wp_tr_row, "notify::active", G_CALLBACK(on_wp_transitions_toggled), s);
-
-    GtkWidget* wp_types_row = adw_expander_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_types_row), "Transition type");
-    adw_expander_row_set_subtitle(ADW_EXPANDER_ROW(wp_types_row),
-                                  "One of the selected animations is picked at random for each change.");
-    for (gsize i = 0; i < kWpTransitionCount; ++i) {
-        GtkWidget* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), kWpTransitions[i].label);
-        s->wp_transition[i] = ADW_SWITCH_ROW(row);
-        adw_expander_row_add_row(ADW_EXPANDER_ROW(wp_types_row), row);
-        g_signal_connect(row, "notify::active", G_CALLBACK(on_wp_transition_type_toggled), s);
-    }
-    s->wp_transition_types = wp_types_row;
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_types_row);
-
-    GtkWidget* wp_dur_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_dur_row), "Transition duration");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_dur_row), "Length of the animation.");
-    s->wp_duration = gtk_adjustment_new(1500, 500, 10000, 100, 500, 0);
-    GtkWidget* wp_dur_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->wp_duration);
-    gtk_scale_set_draw_value(GTK_SCALE(wp_dur_scale), TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(wp_dur_scale), GTK_POS_RIGHT);
-    gtk_scale_set_format_value_func(
-        GTK_SCALE(wp_dur_scale),
-        [](GtkScale*, double value, gpointer) { return g_strdup_printf("%.1fs", value / 1000.0); },
-        nullptr, nullptr);
-    gtk_widget_set_size_request(wp_dur_scale, 200, -1);
-    gtk_widget_set_valign(wp_dur_scale, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(wp_dur_row), wp_dur_scale);
-    s->wp_duration_row = wp_dur_row;
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_dur_row);
-    g_signal_connect(s->wp_duration, "value-changed", G_CALLBACK(on_wp_duration_changed), s);
-
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_look));
-
-    GtkWidget* wp_auto = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_auto), "Slideshow");
-    s->wp_slideshow_group = wp_auto;
-    GtkWidget* wp_ss_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_ss_row), "Slideshow");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_ss_row),
-                                "Automatically change the wallpaper at regular intervals.");
-    s->wp_slideshow = ADW_SWITCH_ROW(wp_ss_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_ss_row);
-    g_signal_connect(wp_ss_row, "notify::active", G_CALLBACK(on_wp_slideshow_toggled), s);
-
-    GtkWidget* wp_order_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_order_row), "Change order");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_order_row),
-                                "Random shows every image once before repeating.");
-    const char* wp_order_labels[] = {"Random", "Alphabetical", nullptr};
-    GtkStringList* wp_order_model = gtk_string_list_new(wp_order_labels);
-    adw_combo_row_set_model(ADW_COMBO_ROW(wp_order_row), G_LIST_MODEL(wp_order_model));
-    g_object_unref(wp_order_model);
-    s->wp_order = ADW_COMBO_ROW(wp_order_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_order_row);
-    g_signal_connect(wp_order_row, "notify::selected", G_CALLBACK(on_wp_order_changed), s);
-
-    GtkWidget* wp_int_row = adw_spin_row_new_with_range(1, 1440, 1);
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(wp_int_row), "Time until next wallpaper");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_int_row), "Minutes between changes.");
-    s->wp_interval = ADW_SPIN_ROW(wp_int_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_int_row);
-    g_signal_connect(wp_int_row, "notify::value", G_CALLBACK(on_wp_interval_changed), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_auto));
-
-    // the grid: Noctalia's wallpaper panel as a preferences group
-    GtkWidget* wp_grid_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(wp_grid_group), "Wallpapers");
-    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(wp_grid_group),
-                                          "Click an image to set it as the wallpaper.");
-    s->wp_grid_group = wp_grid_group;
-    GtkWidget* wp_grid_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
-    s->wp_grid_status = gtk_label_new("");
-    gtk_widget_add_css_class(s->wp_grid_status, "dim-label");
-    gtk_label_set_xalign(GTK_LABEL(s->wp_grid_status), 0.0f);
-    gtk_widget_set_margin_top(s->wp_grid_status, 6);
-    gtk_box_append(GTK_BOX(wp_grid_box), s->wp_grid_status);
-    s->wp_grid = gtk_flow_box_new();
-    gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(s->wp_grid), GTK_SELECTION_NONE);
-    gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(s->wp_grid), TRUE);
-    gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4); // Noctalia's 4 columns
-    gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(s->wp_grid), 4);
-    gtk_widget_set_halign(s->wp_grid, GTK_ALIGN_CENTER);
-    gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
-    gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(s->wp_grid), 6);
-    gtk_widget_add_css_class(s->wp_grid, "wp-grid");
-    gtk_widget_set_valign(s->wp_grid, GTK_ALIGN_START);
-    // grows with its content up to a cap, then scrolls (user request)
-    GtkWidget* wp_scroller = gtk_scrolled_window_new();
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(wp_scroller), GTK_POLICY_NEVER,
-                                   GTK_POLICY_AUTOMATIC);
-    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(wp_scroller), TRUE);
-    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(wp_scroller), kWpGridMaxHeight);
-    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(wp_scroller), s->wp_grid);
-    s->wp_grid_scroller = wp_scroller;
-    gtk_box_append(GTK_BOX(wp_grid_box), wp_scroller);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_grid_group), wp_grid_box);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(wp_page), ADW_PREFERENCES_GROUP(wp_grid_group));
-
-    wp_watch_state(s);
-
-    // -- On-screen display sidebar page (top-level "osd" object) --------------
-    GtkWidget* osd_page = adw_preferences_page_new();
-    GtkWidget* osd_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(osd_group), "On-screen display");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(osd_group),
-        "A small overlay shown for two seconds whenever the output volume, microphone "
-        "volume, screen brightness or Caps/Num/Scroll Lock changes.");
-
-    GtkWidget* osd_location_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_location_row), "Position");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_location_row),
-                                "Where on-screen displays appear.");
-    const char* osd_location_options[] = {"Top center",    "Top left",    "Top right",
-                                          "Bottom center", "Bottom left", "Bottom right",
-                                          "Center left",   "Center right", nullptr};
-    GtkStringList* osd_location_model = gtk_string_list_new(osd_location_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(osd_location_row),
-                            G_LIST_MODEL(osd_location_model));
-    g_object_unref(osd_location_model);
-    s->osd_location = ADW_COMBO_ROW(osd_location_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_location_row);
-    g_signal_connect(osd_location_row, "notify::selected",
-                     G_CALLBACK(on_osd_location_changed), s);
-
-    GtkWidget* osd_orientation_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_orientation_row), "Orientation");
-    adw_action_row_set_subtitle(
-        ADW_ACTION_ROW(osd_orientation_row),
-        "Landscape is a horizontal bar, portrait a vertical column. Automatic follows "
-        "the position: portrait at the sides, landscape at the top or bottom.");
-    const char* osd_orientation_options[] = {"Automatic", "Landscape", "Portrait", nullptr};
-    GtkStringList* osd_orientation_model = gtk_string_list_new(osd_orientation_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(osd_orientation_row),
-                            G_LIST_MODEL(osd_orientation_model));
-    g_object_unref(osd_orientation_model);
-    s->osd_orientation = ADW_COMBO_ROW(osd_orientation_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_orientation_row);
-    g_signal_connect(osd_orientation_row, "notify::selected",
-                     G_CALLBACK(on_osd_orientation_changed), s);
-
-    GtkWidget* osd_enabled_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(osd_enabled_row),
-                                  "Enable on-screen display");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(osd_enabled_row),
-                                "Show volume and brightness changes in real-time.");
-    s->osd_enabled = ADW_SWITCH_ROW(osd_enabled_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(osd_group), osd_enabled_row);
-    g_signal_connect(osd_enabled_row, "notify::active", G_CALLBACK(on_osd_toggled), s);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(osd_page),
-                             ADW_PREFERENCES_GROUP(osd_group));
-
-    // -- Notifications sidebar page (the daemon + popups, Noctalia's tab) -----
-    GtkWidget* nd_page = adw_preferences_page_new();
-
-    GtkWidget* nd_general = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_general), "Notifications");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(nd_general),
-        "hypr-shell is the notification daemon and must be the only one "
-        "(disable mako/dunst or Noctalia's). Popup duration, history, sounds "
-        "and filter rules are config-only (notifications.* in config.json).");
-
-    GtkWidget* nd_enabled_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_enabled_row),
-                                  "Enable notifications");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_enabled_row),
-                                "Enable or disable the notification daemon.");
-    g_object_set_data(G_OBJECT(nd_enabled_row), "nd-key", const_cast<char*>("enabled"));
-    s->nd_enabled = ADW_SWITCH_ROW(nd_enabled_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_enabled_row);
-    g_signal_connect(nd_enabled_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
-    // the daemon is on by default and the user wants only DND / always on top /
-    // position on this page (2026-09-05): the other rows and groups stay built
-    // (their config still loads) but hidden
-    gtk_widget_set_visible(nd_enabled_row, FALSE);
-
-    GtkWidget* nd_density_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_density_row), "Density");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_density_row),
-                                "Choose the notification card density.");
-    const char* density_options[] = {"Default", "Compact", nullptr};
-    GtkStringList* density_model = gtk_string_list_new(density_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(nd_density_row), G_LIST_MODEL(density_model));
-    g_object_unref(density_model);
-    s->nd_density = ADW_COMBO_ROW(nd_density_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_density_row);
-    g_signal_connect(nd_density_row, "notify::selected",
-                     G_CALLBACK(on_nd_density_changed), s);
-    gtk_widget_set_visible(nd_density_row, FALSE);
-
-    GtkWidget* nd_dnd_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_dnd_row), "Do not disturb");
-    adw_action_row_set_subtitle(
-        ADW_ACTION_ROW(nd_dnd_row),
-        "Disable all notification popups when enabled. Right-clicking the bell "
-        "toggles this temporarily without changing the setting.");
-    g_object_set_data(G_OBJECT(nd_dnd_row), "nd-key",
-                      const_cast<char*>("do_not_disturb"));
-    s->nd_dnd = ADW_SWITCH_ROW(nd_dnd_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_dnd_row);
-    g_signal_connect(nd_dnd_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
-
-    GtkWidget* nd_battery_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_battery_row), "Battery warnings");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_battery_row),
-                                "Notify when the battery drops to 20% and again at 5%.");
-    g_object_set_data(G_OBJECT(nd_battery_row), "nd-key", const_cast<char*>("battery_alerts"));
-    s->nd_battery = ADW_SWITCH_ROW(nd_battery_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_battery_row);
-    g_signal_connect(nd_battery_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
-
-    GtkWidget* nd_overlay_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");
-    adw_action_row_set_subtitle(
-        ADW_ACTION_ROW(nd_overlay_row),
-        "Display notifications above fullscreen windows and other layers.");
-    g_object_set_data(G_OBJECT(nd_overlay_row), "nd-key",
-                      const_cast<char*>("overlay_layer"));
-    s->nd_overlay = ADW_SWITCH_ROW(nd_overlay_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_overlay_row);
-    g_signal_connect(nd_overlay_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
-
-    GtkWidget* nd_location_row = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_location_row), "Position");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_location_row),
-                                "Where notifications appear on screen.");
-    const char* location_options[] = {"Top center",    "Top left",    "Top right",
-                                      "Bottom center", "Bottom left", "Bottom right",
-                                      nullptr};
-    GtkStringList* location_model = gtk_string_list_new(location_options);
-    adw_combo_row_set_model(ADW_COMBO_ROW(nd_location_row),
-                            G_LIST_MODEL(location_model));
-    g_object_unref(location_model);
-    s->nd_location = ADW_COMBO_ROW(nd_location_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_location_row);
-    g_signal_connect(nd_location_row, "notify::selected",
-                     G_CALLBACK(on_nd_location_changed), s);
-
-    GtkWidget* nd_opacity_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_opacity_row),
-                                  "Background opacity");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_opacity_row),
-                                "Adjust the opacity of notification backgrounds.");
-    s->nd_opacity = gtk_adjustment_new(100, 0, 100, 1, 10, 0);
-    GtkWidget* nd_opacity_scale = gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_opacity);
-    gtk_scale_set_draw_value(GTK_SCALE(nd_opacity_scale), TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(nd_opacity_scale), GTK_POS_RIGHT);
-    gtk_scale_set_format_value_func(
-        GTK_SCALE(nd_opacity_scale),
-        [](GtkScale*, double value, gpointer) {
-            return g_strdup_printf("%d%%", (int)std::round(value));
-        },
-        nullptr, nullptr);
-    gtk_widget_set_size_request(nd_opacity_scale, 200, -1);
-    gtk_widget_set_valign(nd_opacity_scale, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(nd_opacity_row), nd_opacity_scale);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_opacity_row);
-    g_signal_connect(s->nd_opacity, "value-changed", G_CALLBACK(on_nd_opacity_changed),
-                     s);
-    gtk_widget_set_visible(nd_opacity_row, FALSE);
-
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
-                             ADW_PREFERENCES_GROUP(nd_general));
-
-    GtkWidget* nd_duration = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_duration),
-                                    "Notification duration");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(nd_duration),
-        "Configure how long notifications stay visible based on their urgency level.");
-    s->nd_dependent_groups.push_back(nd_duration);
-
-    GtkWidget* nd_respect_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_respect_row),
-                                  "Respect expire timeout");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_respect_row),
-                                "Use the expire timeout set in the notification.");
-    g_object_set_data(G_OBJECT(nd_respect_row), "nd-key",
-                      const_cast<char*>("respect_expire_timeout"));
-    s->nd_respect_expire = ADW_SWITCH_ROW(nd_respect_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), nd_respect_row);
-    g_signal_connect(nd_respect_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
-
-    struct DurationRow {
-        const char* key;
-        const char* title;
-        const char* subtitle;
-        AdwSpinRow** row;
-    } duration_rows[] = {
-        {"low_urgency_duration", "Low urgency",
-         "How long low priority notifications stay visible (seconds).", &s->nd_dur_low},
-        {"normal_urgency_duration", "Normal urgency",
-         "How long normal priority notifications stay visible (seconds).",
-         &s->nd_dur_normal},
-        {"critical_urgency_duration", "Critical urgency",
-         "How long critical priority notifications stay visible (seconds).",
-         &s->nd_dur_critical},
-    };
-    for (const auto& info : duration_rows) {
-        GtkWidget* row = adw_spin_row_new_with_range(1, 30, 1);
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
-        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
-        *info.row = ADW_SPIN_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_duration), row);
-        g_signal_connect(row, "notify::value", G_CALLBACK(on_nd_duration_changed), s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
-                             ADW_PREFERENCES_GROUP(nd_duration));
-    gtk_widget_set_visible(nd_duration, FALSE);
-
-    GtkWidget* nd_history = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_history), "History");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(nd_history),
-        "Control which notifications are saved to history based on their "
-        "urgency level.");
-    s->nd_dependent_groups.push_back(nd_history);
-
-    struct HistRow {
-        const char* key;
-        const char* title;
-        const char* subtitle;
-        AdwSwitchRow** row;
-        bool history_object;
-    } hist_rows[] = {
-        {"clear_dismissed", "Clear on dismissed",
-         "Clear notification from history when dismissed.", &s->nd_clear_dismissed,
-         false},
-        {"low", "Save low urgency to history",
-         "Save low priority notifications to history.", &s->nd_save_low, true},
-        {"normal", "Save normal urgency to history",
-         "Save normal priority notifications to history.", &s->nd_save_normal, true},
-        {"critical", "Save critical urgency to history",
-         "Save critical priority notifications to history.", &s->nd_save_critical,
-         true},
-    };
-    for (const auto& info : hist_rows) {
-        GtkWidget* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
-        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(info.key));
-        *info.row = ADW_SWITCH_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_history), row);
-        g_signal_connect(row, "notify::active",
-                         info.history_object ? G_CALLBACK(on_nd_hist_toggled)
-                                             : G_CALLBACK(on_nd_toggled),
-                         s);
-    }
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
-                             ADW_PREFERENCES_GROUP(nd_history));
-    gtk_widget_set_visible(nd_history, FALSE);
-
-    GtkWidget* nd_sound = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_sound), "Sound");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(nd_sound),
-        "Configure notification sound effects and volume (played via paplay).");
-    s->nd_dependent_groups.push_back(nd_sound);
-
-    GtkWidget* snd_enabled_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_enabled_row),
-                                  "Enable notification sounds");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_enabled_row),
-                                "Enable sound effects for incoming notifications.");
-    g_object_set_data(G_OBJECT(snd_enabled_row), "nd-key", const_cast<char*>("enabled"));
-    s->nd_snd_enabled = ADW_SWITCH_ROW(snd_enabled_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_enabled_row);
-    g_signal_connect(snd_enabled_row, "notify::active", G_CALLBACK(on_nd_sound_toggled),
-                     s);
-
-    GtkWidget* snd_volume_row = adw_action_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_volume_row), "Sound volume");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_volume_row),
-                                "Adjust the volume level for notification sounds.");
-    s->nd_snd_volume = gtk_adjustment_new(50, 0, 100, 1, 10, 0);
-    GtkWidget* snd_volume_scale =
-        gtk_scale_new(GTK_ORIENTATION_HORIZONTAL, s->nd_snd_volume);
-    gtk_scale_set_draw_value(GTK_SCALE(snd_volume_scale), TRUE);
-    gtk_scale_set_value_pos(GTK_SCALE(snd_volume_scale), GTK_POS_RIGHT);
-    gtk_scale_set_format_value_func(
-        GTK_SCALE(snd_volume_scale),
-        [](GtkScale*, double value, gpointer) {
-            return g_strdup_printf("%d%%", (int)std::round(value));
-        },
-        nullptr, nullptr);
-    gtk_widget_set_size_request(snd_volume_scale, 200, -1);
-    gtk_widget_set_valign(snd_volume_scale, GTK_ALIGN_CENTER);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(snd_volume_row), snd_volume_scale);
-    s->nd_snd_volume_row = snd_volume_row;
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_volume_row);
-    g_signal_connect(s->nd_snd_volume, "value-changed",
-                     G_CALLBACK(on_nd_sound_volume_changed), s);
-
-    GtkWidget* snd_separate_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_separate_row),
-                                  "Use different sounds per priority");
-    adw_action_row_set_subtitle(ADW_ACTION_ROW(snd_separate_row),
-                                "Use different sound files for low, normal, and "
-                                "critical priority notifications.");
-    g_object_set_data(G_OBJECT(snd_separate_row), "nd-key",
-                      const_cast<char*>("separate_sounds"));
-    s->nd_snd_separate = ADW_SWITCH_ROW(snd_separate_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_separate_row);
-    g_signal_connect(snd_separate_row, "notify::active",
-                     G_CALLBACK(on_nd_sound_toggled), s);
-
-    auto make_sound_entry = [s, nd_sound](const char* title, const char* key,
-                                          AdwEntryRow** target) {
-        GtkWidget* row = adw_entry_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
-        g_object_set_data(G_OBJECT(row), "nd-key", const_cast<char*>(key));
-        GtkWidget* browse = gtk_button_new_from_icon_name("folder-open-symbolic");
-        gtk_widget_add_css_class(browse, "flat");
-        gtk_widget_set_valign(browse, GTK_ALIGN_CENTER);
-        gtk_widget_set_tooltip_text(browse, "Select sound file");
-        g_object_set_data(G_OBJECT(browse), "target-entry", row);
-        g_signal_connect(browse, "clicked", G_CALLBACK(on_nd_browse_clicked), nullptr);
-        adw_entry_row_add_suffix(ADW_ENTRY_ROW(row), browse);
-        *target = ADW_ENTRY_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), row);
-        g_signal_connect(row, "changed", G_CALLBACK(on_nd_sound_entry_changed), s);
-    };
-    make_sound_entry("Notification sound (empty = default)", "normal_sound_file",
-                     &s->nd_snd_unified);
-    make_sound_entry("Low urgency sound", "low_sound_file", &s->nd_snd_low);
-    make_sound_entry("Normal urgency sound", "normal_sound_file", &s->nd_snd_normal);
-    make_sound_entry("Critical urgency sound", "critical_sound_file",
-                     &s->nd_snd_critical);
-
-    GtkWidget* snd_excluded_row = adw_entry_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(snd_excluded_row),
-                                  "Excluded applications (comma separated)");
-    g_object_set_data(G_OBJECT(snd_excluded_row), "nd-key",
-                      const_cast<char*>("excluded_apps"));
-    s->nd_snd_excluded = ADW_ENTRY_ROW(snd_excluded_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_sound), snd_excluded_row);
-    g_signal_connect(snd_excluded_row, "changed", G_CALLBACK(on_nd_sound_entry_changed),
-                     s);
-
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
-                             ADW_PREFERENCES_GROUP(nd_sound));
-    gtk_widget_set_visible(nd_sound, FALSE);
-
-    GtkWidget* rules_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(rules_group), "Filter rules");
-    adw_preferences_group_set_description(
-        ADW_PREFERENCES_GROUP(rules_group),
-        "Match app name or content — plain text, *globs* or /regex/. Rules are "
-        "checked in order, and the first match is applied.");
-    GtkWidget* add_rule = gtk_button_new_from_icon_name("list-add-symbolic");
-    gtk_widget_add_css_class(add_rule, "flat");
-    gtk_widget_set_tooltip_text(add_rule, "Add rule");
-    g_signal_connect(add_rule, "clicked", G_CALLBACK(on_rule_add_clicked), s);
-    adw_preferences_group_set_header_suffix(ADW_PREFERENCES_GROUP(rules_group),
-                                            add_rule);
-    s->rules_group = rules_group;
-    s->nd_dependent_groups.push_back(rules_group);
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
-                             ADW_PREFERENCES_GROUP(rules_group));
-    gtk_widget_set_visible(rules_group, FALSE);
-
-    populate(s);
+    populate(s, PopulateStage::Bar);
     g_signal_connect(pos_row, "notify::selected", G_CALLBACK(on_position_changed), s);
     g_signal_connect(vis_row, "notify::selected", G_CALLBACK(on_visibility_changed), s);
     g_signal_connect(ws_switch_row, "notify::active",
@@ -4198,8 +4449,11 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(am_custom_row, "changed", G_CALLBACK(on_am_entry_changed), s);
     g_signal_connect(am_columns_row, "notify::value", G_CALLBACK(on_am_columns_changed), s);
 
+    hs_mark("pages built");
     // -- Navigation: main page + module subpages -----------------------------
     GtkWidget* nav = adw_navigation_view_new();
+    adw_navigation_view_set_hhomogeneous(ADW_NAVIGATION_VIEW(nav), FALSE);
+    adw_navigation_view_set_vhomogeneous(ADW_NAVIGATION_VIEW(nav), FALSE);
 
     GtkWidget* view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), adw_header_bar_new());
@@ -4387,120 +4641,15 @@ void on_activate(GtkApplication* app, gpointer) {
                               ws_cog);
 
     // -- GNOME-Settings-style sidebar: Bar, Launcher, Notifications ----------
-    GtkWidget* wp_view = adw_toolbar_view_new();
-    GtkWidget* wp_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(wp_header),
-                                    adw_window_title_new("Wallpaper", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(wp_view), wp_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(wp_view), wp_page);
-    GtkWidget* nl_view = adw_toolbar_view_new();
-    GtkWidget* nl_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nl_header),
-                                    adw_window_title_new("Night light", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nl_view), nl_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nl_view), nl_page);
-    GtkWidget* lp_view = adw_toolbar_view_new();
-    GtkWidget* lp_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lp_header),
-                                    adw_window_title_new("Launcher", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lp_view), lp_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lp_view), lp_page);
-
-    GtkWidget* cb_view = adw_toolbar_view_new();
-    GtkWidget* cb_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(cb_header),
-                                    adw_window_title_new("Clipboard", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(cb_view), cb_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(cb_view), cb_page);
-
-    GtkWidget* sm_view = adw_toolbar_view_new();
-    GtkWidget* sm_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(sm_header),
-                                    adw_window_title_new("Session menu", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
-
-    GtkWidget* lock_view = adw_toolbar_view_new();
-    GtkWidget* lock_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(lock_header),
-                                    adw_window_title_new("Lock screen", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lock_view), lock_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lock_view), lock_page);
-
-    GtkWidget* idle_view = adw_toolbar_view_new();
-    GtkWidget* idle_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(idle_header),
-                                    adw_window_title_new("Idle", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(idle_view), idle_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(idle_view), idle_page);
-
-    GtkWidget* osd_view = adw_toolbar_view_new();
-    GtkWidget* osd_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(osd_header),
-                                    adw_window_title_new("On-screen display", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(osd_view), osd_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(osd_view), osd_page);
-
-    GtkWidget* nd_view = adw_toolbar_view_new();
-    GtkWidget* nd_header = adw_header_bar_new();
-    // inside a plain GtkStack there is no per-page AdwNavigationPage title —
-    // set this header's title directly
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(nd_header),
-                                    adw_window_title_new("Notifications", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(nd_view), nd_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(nd_view), nd_page);
-
     GtkWidget* stack = gtk_stack_new();
+    // Non-homogeneous: a homogeneous stack measures every page on each layout
+    // pass, which shapes every label and looks up every icon of all fourteen
+    // pages for the first frame. Only the visible page needs measuring.
+    gtk_stack_set_hhomogeneous(GTK_STACK(stack), FALSE);
+    gtk_stack_set_vhomogeneous(GTK_STACK(stack), FALSE);
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
-    GtkWidget* ui_view = adw_toolbar_view_new();
-    GtkWidget* ui_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(ui_header),
-                                    adw_window_title_new("User interface", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(ui_view), ui_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(ui_view), ui_page);
-    gtk_stack_add_named(GTK_STACK(stack), ui_view, "ui_page");
-    g_signal_connect(s->ui_font_button, "notify::font-desc", G_CALLBACK(on_ui_font_changed), s);
+    s->stack = stack;
     apply_settings_theme(s);
-    gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
-    gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
-    gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
-    gtk_stack_add_named(GTK_STACK(stack), cb_view, "clipboard_page");
-    gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
-    gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
-    gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
-    gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
-    gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
-
-    // -- Hotspot: NetworkManager AP mode (state lives in NM, not config.json) --
-    GtkWidget* hs_view = adw_toolbar_view_new();
-    GtkWidget* hs_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(hs_header),
-                                    adw_window_title_new("Hotspot", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(hs_view), hs_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(hs_view),
-                                 hyprshell::settings::build_hotspot_page(GTK_WINDOW(win)));
-    gtk_stack_add_named(GTK_STACK(stack), hs_view, "hotspot_page");
-
-    // -- VPN: NetworkManager profiles (was the bar's vpn module + panel) ------
-    GtkWidget* vpn_view = adw_toolbar_view_new();
-    GtkWidget* vpn_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(vpn_header),
-                                    adw_window_title_new("VPN", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(vpn_view), vpn_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(vpn_view),
-                                 hyprshell::settings::build_vpn_page(GTK_WINDOW(win)));
-    gtk_stack_add_named(GTK_STACK(stack), vpn_view, "vpn_page");
-
-    // -- About: hardware + software facts (GNOME Settings' About panel) -----
-    GtkWidget* about_view = adw_toolbar_view_new();
-    GtkWidget* about_header = adw_header_bar_new();
-    adw_header_bar_set_title_widget(ADW_HEADER_BAR(about_header),
-                                    adw_window_title_new("About", nullptr));
-    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(about_view), about_header);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(about_view),
-                                 hyprshell::settings::build_about_page());
-    gtk_stack_add_named(GTK_STACK(stack), about_view, "about_page");
-
     GtkWidget* sidebar_list = gtk_list_box_new();
     gtk_widget_add_css_class(sidebar_list, "navigation-sidebar");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(sidebar_list), GTK_SELECTION_BROWSE);
@@ -4521,16 +4670,19 @@ void on_activate(GtkApplication* app, gpointer) {
         gtk_list_box_append(GTK_LIST_BOX(sidebar_list), row);
     }
     g_signal_connect(sidebar_list, "row-selected",
-                     G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer stack_ptr) {
+                     G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer data) {
+                         auto* s = static_cast<Settings*>(data);
                          if (row == nullptr)
                              return;
                          const int index = gtk_list_box_row_get_index(row);
                          const char* page = (index >= 0 && index < kSidebarPageCount)
                                                 ? kSidebarPages[index].name
                                                 : "bar";
-                         gtk_stack_set_visible_child_name(GTK_STACK(stack_ptr), page);
+                         if (g_strcmp0(page, "bar") != 0)
+                             build_secondary_pages(s);
+                         gtk_stack_set_visible_child_name(GTK_STACK(s->stack), page);
                      }),
-                     stack);
+                     s);
     gtk_list_box_select_row(GTK_LIST_BOX(sidebar_list),
                             gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), 0));
 
@@ -4548,6 +4700,8 @@ void on_activate(GtkApplication* app, gpointer) {
         .nav = nav,
         .pages = kSidebarPages,
         .page_count = kSidebarPageCount,
+        .prepare = [](gpointer data) { build_secondary_pages(static_cast<Settings*>(data)); },
+        .prepare_data = s,
     });
 
     GtkWidget* split = adw_navigation_split_view_new();
@@ -4580,12 +4734,48 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(win), split);
 
+    hs_mark("before present");
+    if (hs_timing_enabled()) {
+        g_signal_connect(win, "realize", G_CALLBACK(+[](GtkWidget* w, gpointer) {
+                             hs_mark("window realized");
+                             GdkFrameClock* clock =
+                                 gdk_surface_get_frame_clock(gtk_native_get_surface(GTK_NATIVE(w)));
+                             g_signal_connect(clock, "after-paint",
+                                              G_CALLBACK(+[](GdkFrameClock*, gpointer) {
+                                                  static int frames = 0;
+                                                  if (frames++ < 3)
+                                                      hs_mark("frame painted");
+                                              }),
+                                              nullptr);
+                         }),
+                         nullptr);
+        g_signal_connect(win, "map",
+                         G_CALLBACK(+[](GtkWidget*, gpointer) { hs_mark("window mapped"); }), nullptr);
+        g_idle_add_full(
+            G_PRIORITY_LOW,
+            [](gpointer) -> gboolean {
+                hs_mark("main loop idle");
+                return G_SOURCE_REMOVE;
+            },
+            nullptr, nullptr);
+    }
     gtk_window_present(GTK_WINDOW(win));
+    // The other thirteen pages are built once the first frame is on screen
+    // (GDK paints at a higher priority than this idle); a click, a search or
+    // HS_SETTINGS_PAGE arriving earlier builds them on the spot.
+    g_idle_add_full(
+        G_PRIORITY_DEFAULT_IDLE,
+        [](gpointer data) -> gboolean {
+            build_secondary_pages(static_cast<Settings*>(data));
+            return G_SOURCE_REMOVE;
+        },
+        s, nullptr);
 }
 
 } // namespace
 
 int main(int argc, char* argv[]) {
+    hs_mark("main");
     AdwApplication* app =
         adw_application_new("dev.hyprshell.Settings", G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), nullptr);

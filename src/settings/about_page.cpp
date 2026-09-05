@@ -378,11 +378,7 @@ void fetch_hyprland_version(GtkWidget* row) {
         g_object_ref(row));
 }
 
-} // namespace
-
-GtkWidget* build_about_page() {
-    GtkWidget* page = adw_preferences_page_new();
-
+void fill_about_page(GtkWidget* page) {
     GtkWidget* hardware = adw_preferences_group_new();
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(hardware), "System");
     property_row(hardware, "Device Name", device_name());
@@ -414,7 +410,22 @@ GtkWidget* build_about_page() {
     fetch_hyprland_version(hypr_row);
     property_row(software, "hypr-shell Version", HS_VERSION);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(software));
+}
 
+} // namespace
+
+GtkWidget* build_about_page() {
+    GtkWidget* page = adw_preferences_page_new();
+    // The facts are gathered after the first frame (pci.ids alone is a 1.4 MB
+    // scan, ~40 ms): the page is rarely the one a launch is for, and the rows
+    // exist long before anyone can type a search.
+    g_idle_add_full(
+        G_PRIORITY_LOW,
+        +[](gpointer data) -> gboolean {
+            fill_about_page(static_cast<GtkWidget*>(data));
+            return G_SOURCE_REMOVE;
+        },
+        g_object_ref(page), g_object_unref);
     return page;
 }
 

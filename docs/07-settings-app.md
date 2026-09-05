@@ -56,6 +56,17 @@ AdwNavigationSplitView
 Selecting a sidebar row switches the stack child. `HS_SETTINGS_PAGE` accepts
 either a module subpage tag or any `*_page` name from `kSidebarPages`.
 
+Only the Bar page (with its module subpages) is built before the window is
+presented. Everything else — `build_secondary_pages()` in `main.cpp` — is
+constructed, populated (`populate(s, PopulateStage::Secondary)`) and added
+to the stack from an idle that runs right after the first frame; a sidebar
+click, a search (`SearchTargets::prepare`) or `HS_SETTINGS_PAGE` arriving
+earlier calls it on the spot. The split halved the time to the first frame.
+Widgets of those pages are null until then, so a Bar-page handler must never
+touch a `cb_*` / `wp_*` / `nd_*` … field. The Wallpaper grid goes one step
+further and lists the folder only when its page is first shown (`map`
+signal), with thumbnails decoded asynchronously a few at a time.
+
 ### Search (`search.cpp`)
 
 There is no hand-maintained index. `collect()` walks the widget tree under
@@ -219,7 +230,8 @@ adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("key")]), cog);
 ## Adding a sidebar page
 
 For options that are not about the bar, copy the Launcher or Lock screen
-page block in `on_activate()`: build an
+page block in `build_secondary_pages()` (not `on_activate()`, which builds
+only the Bar page before the first frame): build an
 `AdwPreferencesPage`, wrap it in an `AdwToolbarView`, `gtk_stack_add_named()`
 it with a `<name>_page` tag, and add a `{name, title, icon}` entry to
 `kSidebarPages` at the same position (the sidebar rows, the `row-selected`
@@ -234,7 +246,9 @@ in `Config` (see `Config::Launcher` for the smallest example).
 `HS_SETTINGS_PAGE=tag ./build/hypr-shell-settings` opens the page straight
 away for testing and screenshots; `HS_SETTINGS_SEARCH=<query>` opens the
 search pre-filled and `HS_SETTINGS_SEARCH_OPEN=1` activates its first result
-1.5 s after startup.
+1.5 s after startup. `HS_SETTINGS_TIMING=1` prints the startup phases in
+milliseconds (and every config.json write — a launch must show none); see
+the gotchas page for the numbers to expect.
 
 The Wallpaper page (`wp_*` in `main.cpp`) is the richest example: besides
 rows it holds a `GtkFlowBox` grid of thumbnail tiles (`wp_make_tile`,

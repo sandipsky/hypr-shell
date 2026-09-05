@@ -190,7 +190,10 @@ Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
 subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
 `HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
 startup (navigates, scrolls to and flashes the row) — screenshots need no
-scripted key presses. `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
+scripted key presses. `HS_SETTINGS_TIMING=1` prints milliseconds since
+main() at each startup phase (build / populate / present / realize / first
+frames) and at every config.json write — a launch must print no write.
+`HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
 settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
@@ -1680,3 +1683,26 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   notify protocol. Dev hook: `HS_IDLE_SIMULATE_GAMEPAD=<ms>`. Untested
   with a physical controller (none was connected); the evdev path relies on
   the documented uaccess rule.
+- 2026-09-05 — Settings app startup halved (todo.txt: "hypr settings take
+  longer time to open"). Measured with a new `HS_SETTINGS_TIMING=1` hook
+  (phase marks to stderr) and a throwaway SIGPROF sampler: first frame went
+  from ~1.2–1.4 s to ~0.7–0.8 s after main(), against a ~0.4–0.6 s floor for
+  an empty libadwaita window on this laptop (GTK init, theme CSS parse,
+  EGL/Mesa/LLVM loading — shared by every GTK4 app). Four causes: (1) every
+  cached wallpaper thumbnail was decoded synchronously by
+  `gtk_picture_set_filename()` while building the grid (41 PNGs, ~300 ms) —
+  the grid is now built on the Wallpaper page's first `map` and thumbnails
+  decode async, four at a time; (2) `populate()` raised its `loading` guard
+  ~250 lines in, so the control-center / taskbar writes fired their handlers
+  and **saved config.json eight times per launch** (fsync each, the shell
+  reloading every time) — the guard now comes first; (3) all fourteen
+  sidebar pages were built before the first frame — only the Bar page is
+  now; `build_secondary_pages()` builds, populates
+  (`PopulateStage::Secondary`) and stacks the rest from an idle after the
+  first frame, or earlier from a sidebar click / search
+  (`SearchTargets::prepare`) / `HS_SETTINGS_PAGE`; (4) the content
+  `GtkStack` and the Bar `AdwNavigationView` were homogeneous, measuring
+  every hidden page each layout pass — both non-homogeneous now. The About
+  page gathers its facts (pci.ids scan) from a low-priority idle. The
+  remaining first-frame cost is the Bar page itself (fourteen module rows +
+  fourteen layout rows with GtkDropDowns) plus GTK's fixed init.

@@ -8,7 +8,9 @@
 
 namespace hyprshell::settings {
 
-// Returns a ready AdwPreferencesPage.
+// Returns an AdwPreferencesPage whose rows are filled from a low-priority
+// idle callback (after the first frame), so gathering the facts never delays
+// the window.
 GtkWidget* build_about_page();
 
 } // namespace hyprshell::settings

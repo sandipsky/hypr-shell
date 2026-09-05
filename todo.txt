@@ -1,2 +1,45 @@
+hyprsettings not opening from settings icon of app menu and control center
+
+make settings icon and power button icon little bit larger in both app menu and control center and remove border but keep hover effect 
+
+add hover effect to bar items in bar 
+
+if app menu is on leftmost or rightmost side on horizontal bar and topmost or bottomost in vertical bar then clicking the corner where app menu is to open app menu
+
+on launcher settings search for subitems its not opening settings item with its page fix that bug
+for example when i type osd and i get result osd position and i click it it should open hypr settings with osd page 
+
+for taskbar hypr module 
+instead of show pinned apps toggle 
+make it dropdown with options
+show only pinned apps 
+show only opened apps
+both 
+
+also a toggle to show secondary dot on opened app but not focused ( focused app with get accent color dot which is current behaviour but opened apps will get gray shade dot)
+
+allow reodering of session menu items
+
+In app menu settings add 
+toggle to show search
+toggle to show settings icon 
+toggle to show power icon 
+
+In control center add 
+toggle to show settings icon 
+toggle to show power icon 
+
+in control center 
+in ram tooltip also add ram usage 
+like 4.0 GB / 16GB
 
 
+In app menu settings add 
+dropdown for grid or list view ( default grid )
+if list view selected also show toggle for show app description
+toggle categorize apps by letter (just like windows 11 start menu)
+
+
+After and if gdm fork (gdm lite is installed ) in current system 
+show additional settings in hyprsettings to customize gdm 
+like font and its size 
