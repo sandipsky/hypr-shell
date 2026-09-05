@@ -421,6 +421,8 @@ void ControlCenterPanel::apply_config() {
     brightness_card_.set_visible(cfg.show_brightness && Brightness::get().available());
     media_card_.set_visible(cfg.show_media);
     sysmon_card_.set_visible(cfg.show_sysmon);
+    settings_button_.set_visible(cfg.show_settings_button);
+    power_button_.set_visible(cfg.show_session_button);
     if (open_)
         set_open(true); // re-evaluates the service registrations
 }
@@ -760,7 +762,8 @@ void ControlCenterPanel::update_sysmon() {
     temp_stat_->set_ratio(s.cpu_temp() / 100.0, stat_color(s.cpu_temp(), 80, 90));
     temp_stat_->set_tooltip_text("CPU temp: " + std::to_string(s.cpu_temp()) + "°C");
     mem_stat_->set_ratio(s.mem_percent() / 100.0, stat_color(s.mem_percent(), 80, 90));
-    mem_stat_->set_tooltip_text("Memory: " + std::to_string(s.mem_percent()) + "%");
+    mem_stat_->set_tooltip_text(Glib::ustring::sprintf("Memory: %.1f GB / %.1f GB (%d%%)", s.mem_used_gb(),
+                                                       s.mem_total_gb(), s.mem_percent()));
     disk_stat_->set_ratio(s.disk_percent() / 100.0, stat_color(s.disk_percent(), 80, 90));
     disk_stat_->set_tooltip_text("Disk: " + std::to_string(s.disk_percent()) + "%\n" + s.disk_path());
 }

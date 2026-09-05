@@ -16,7 +16,7 @@ namespace hyprshell {
 // through request_lock(); the lock screen (bar/lock_screen) answers it and
 // reports its state back, so services never depend on UI code.
 
-// The actions session.items (config) currently enables, in menu order.
+// The actions session.items (config) currently enables, in session.order.
 // Pointers into kSessionActions — valid for the process lifetime.
 std::vector<const SessionAction*> enabled_session_actions();
 void run_session_action(const SessionAction& action);

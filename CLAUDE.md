@@ -1760,4 +1760,21 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   opened-but-unfocused items get a `running` class and a grey dot
   (`alpha(@mOnSurface, 0.4)`), the focused one keeps the accent dot. Subpage
   order: Hiding mode, Apps to show, the two filters, Running indicator.
+- 2026-09-05 — Session menu items can be reordered (user request):
+  `session.order` (array of action keys) is resolved by the shared
+  `session_actions_in_order()` in `services/session_actions.hpp` — listed
+  keys first, unknown ones dropped, unlisted actions appended in table order —
+  so the shell (`enabled_session_actions()`, hence the dropdown, fullscreen
+  window, app menu button and launcher search) and the settings page agree.
+  The Session menu page's action rows carry up/down prefix buttons; a move
+  writes the full order and re-adds the rows from an idle (the clicked button
+  lives in a row being re-parented — the pin-crash lesson). The lock screen's
+  own power menu keeps its fixed subset.
+- 2026-09-05 — Control center profile-row buttons became optional (user
+  request): `bar.control_center.show_settings_button` / `show_session_button`
+  (default on) with "Settings button" / "Power button" switches on the
+  Control center subpage; the memory gauge tooltip now reads
+  "Memory: 4.0 GB / 15.5 GB (26%)" (`SystemStats::mem_total_gb()`). The app
+  menu's equivalents (`show_search`, `show_settings_button`,
+  `show_session_button`) already existed on its subpage since 2026-09-03.
 

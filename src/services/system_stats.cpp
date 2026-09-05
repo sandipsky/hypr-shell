@@ -126,6 +126,7 @@ void SystemStats::sample_memory() {
         return;
     const unsigned long long used = total > available ? total - available : 0;
     mem_used_gb_ = std::round(used / 1048576.0 * 10.0) / 10.0;
+    mem_total_gb_ = std::round(total / 1048576.0 * 10.0) / 10.0;
     mem_percent_ = static_cast<int>(std::round(used * 100.0 / total));
     changed_.emit();
 }

@@ -10,9 +10,9 @@ namespace hyprshell {
 std::vector<const SessionAction*> enabled_session_actions() {
     std::vector<const SessionAction*> out;
     const auto& cfg = Config::get().session();
-    for (const auto& action : kSessionActions)
-        if (cfg.item_enabled(action.key, action.default_on))
-            out.push_back(&action);
+    for (const auto* action : session_actions_in_order(cfg.order))
+        if (cfg.item_enabled(action->key, action->default_on))
+            out.push_back(action);
     return out;
 }
 

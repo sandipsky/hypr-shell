@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstring>
+#include <string>
+#include <vector>
+
 namespace hyprshell {
 
 // Session actions — Noctalia's SessionMenu set, in its menu order. Shared
@@ -37,5 +41,28 @@ constexpr SessionAction kSessionActions[] = {
     {"soft_reboot", "Userspace reboot", "Restart userspace only (systemctl soft-reboot).",
      "\uEB16", "soft reboot userspace restart", "systemctl soft-reboot", false, false},
 };
+
+// The table in the user's order: `order` (session.order in config) first,
+// unknown keys dropped and duplicates ignored, then every action it does not
+// name in table order — so a partial or stale list still shows everything.
+// Shared with the settings app so both sides resolve an order identically.
+inline std::vector<const SessionAction*> session_actions_in_order(
+    const std::vector<std::string>& order) {
+    std::vector<const SessionAction*> out;
+    auto listed = [&](const SessionAction* action) {
+        for (const auto* a : out)
+            if (a == action)
+                return true;
+        return false;
+    };
+    for (const auto& key : order)
+        for (const auto& action : kSessionActions)
+            if (key == action.key && !listed(&action))
+                out.push_back(&action);
+    for (const auto& action : kSessionActions)
+        if (!listed(&action))
+            out.push_back(&action);
+    return out;
+}
 
 } // namespace hyprshell

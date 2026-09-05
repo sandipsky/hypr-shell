@@ -1,24 +1,4 @@
 
-allow reodering of session menu items
-
-In app menu settings add 
-toggle to show search
-toggle to show settings icon 
-toggle to show power icon 
-
-In control center add 
-toggle to show settings icon 
-toggle to show power icon 
-
-in control center 
-in ram tooltip also add ram usage 
-like 4.0 GB / 16GB
-
-
-In app menu settings add 
-dropdown for grid or list view ( default grid )
-if list view selected also show toggle for show app description
-toggle categorize apps by letter (just like windows 11 start menu)
 
 
 After and if gdm fork (gdm lite is installed ) in current system 

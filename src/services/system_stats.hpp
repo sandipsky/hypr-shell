@@ -26,7 +26,8 @@ public:
     double cpu_usage() const { return cpu_usage_; }     // percent, -1 until two samples exist
     int cpu_temp() const { return cpu_temp_; }          // °C, 0 = unavailable
     int mem_percent() const { return mem_percent_; }    // used = MemTotal - MemAvailable
-    double mem_used_gb() const { return mem_used_gb_; } // GiB
+    double mem_used_gb() const { return mem_used_gb_; }   // GiB
+    double mem_total_gb() const { return mem_total_gb_; } // GiB
     int disk_percent() const { return disk_percent_; }  // df-style, for disk_path()
     const std::string& disk_path() const { return disk_path_; }
 
@@ -52,6 +53,7 @@ private:
     int cpu_temp_ = 0;
     int mem_percent_ = 0;
     double mem_used_gb_ = 0;
+    double mem_total_gb_ = 0;
     int disk_percent_ = 0;
     std::string disk_path_ = "/";
 

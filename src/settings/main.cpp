@@ -222,6 +222,7 @@ struct Settings;
 void update_aw_row_visibility(Settings* s);
 void update_am_rows(Settings* s);
 void update_sm_rows(Settings* s);
+void rebuild_sm_rows(Settings* s);
 void update_bar_visibility_rows(Settings* s);
 void update_nd_rows(Settings* s);
 void rebuild_rule_rows(Settings* s);
@@ -266,6 +267,8 @@ struct Settings {
     AdwSwitchRow* cc_audio = nullptr;
     AdwSwitchRow* cc_brightness = nullptr;
     AdwSwitchRow* cc_sysmon = nullptr;
+    AdwSwitchRow* cc_settings_btn = nullptr;
+    AdwSwitchRow* cc_session_btn = nullptr;
 
     // taskbar subpage (bar.taskbar): the four exposed options
     AdwComboRow* tb_hide = nullptr; // Always visible / Hide when empty / Transparent when empty
@@ -288,6 +291,8 @@ struct Settings {
     AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
     AdwComboRow* sm_layout = nullptr; // Single row / Grid (fullscreen only)
     AdwSwitchRow* sm_items[kSessionActionCount] = {};
+    GtkWidget* sm_items_group = nullptr;        // rows re-added in sm_order
+    std::vector<std::string> sm_order;          // every action key, menu order
 
     // Idle sidebar page (top-level "idle" object): the three stage timeouts
     AdwSpinRow* idle_screen_off = nullptr;
@@ -528,6 +533,8 @@ void populate(Settings* s, PopulateStage stage) {
             adw_switch_row_set_active(s->cc_audio, cc.value("show_audio", true));
             adw_switch_row_set_active(s->cc_brightness, cc.value("show_brightness", false));
             adw_switch_row_set_active(s->cc_sysmon, cc.value("show_sysmon", true));
+            adw_switch_row_set_active(s->cc_settings_btn, cc.value("show_settings_button", true));
+            adw_switch_row_set_active(s->cc_session_btn, cc.value("show_session_button", true));
         }
         const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
         bt_auto = bt.value("auto_connect", false);
@@ -647,6 +654,7 @@ void populate(Settings* s, PopulateStage stage) {
 
     // Session menu page (top-level "session" object)
     std::string sm_mode = "dropdown", sm_layout = "single_row";
+    std::vector<std::string> sm_order;
     bool sm_items[kSessionActionCount];
     for (gsize i = 0; i < kSessionActionCount; ++i)
         sm_items[i] = hyprshell::kSessionActions[i].default_on;
@@ -657,6 +665,10 @@ void populate(Settings* s, PopulateStage stage) {
         const json items = sm.value("items", json::object());
         for (gsize i = 0; i < kSessionActionCount; ++i)
             sm_items[i] = items.value(hyprshell::kSessionActions[i].key, sm_items[i]);
+        sm_order.clear();
+        for (const auto& v : sm.value("order", json::array()))
+            if (v.is_string())
+                sm_order.push_back(v.get<std::string>());
     } catch (const json::exception&) {
     }
 
@@ -844,6 +856,8 @@ void populate(Settings* s, PopulateStage stage) {
     adw_combo_row_set_selected(s->sm_layout, sm_layout == "grid" ? 1 : 0);
     for (gsize i = 0; i < kSessionActionCount; ++i)
         adw_switch_row_set_active(s->sm_items[i], sm_items[i]);
+    s->sm_order = sm_order;
+    rebuild_sm_rows(s);
     update_sm_rows(s);
     gtk_editable_set_text(GTK_EDITABLE(s->lock_background), lock_background.c_str());
     gtk_adjustment_set_value(s->lock_blur, std::round(lock_blur * 100.0));
@@ -1238,6 +1252,46 @@ void on_sm_layout_changed(GObject*, GParamSpec*, gpointer data) {
 }
 
 // switches with an "sm-key" (one per session action)
+// Re-add the action rows in sm_order; the up/down buttons hang off each row
+// and are rebuilt with it (sensitivity follows the position).
+void rebuild_sm_rows(Settings* s) {
+    for (gsize i = 0; i < kSessionActionCount; ++i)
+        if (gtk_widget_get_parent(GTK_WIDGET(s->sm_items[i])) != nullptr)
+            adw_preferences_group_remove(ADW_PREFERENCES_GROUP(s->sm_items_group),
+                                         GTK_WIDGET(s->sm_items[i]));
+    const auto ordered = hyprshell::session_actions_in_order(s->sm_order);
+    s->sm_order.clear();
+    for (const auto* action : ordered)
+        s->sm_order.push_back(action->key);
+    for (gsize pos = 0; pos < ordered.size(); ++pos) {
+        const gsize index = static_cast<gsize>(ordered[pos] - hyprshell::kSessionActions);
+        GtkWidget* row = GTK_WIDGET(s->sm_items[index]);
+        auto* up = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "sm-up"));
+        auto* down = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "sm-down"));
+        gtk_widget_set_sensitive(up, pos > 0);
+        gtk_widget_set_sensitive(down, pos + 1 < ordered.size());
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->sm_items_group), row);
+    }
+}
+
+void on_sm_move_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const auto* key = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "sm-key"));
+    const int dir = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "move-dir"));
+    const auto it = std::find(s->sm_order.begin(), s->sm_order.end(), key);
+    if (it == s->sm_order.end())
+        return;
+    const int index = static_cast<int>(it - s->sm_order.begin());
+    const int target = index + dir;
+    if (target < 0 || target >= static_cast<int>(s->sm_order.size()))
+        return;
+    std::swap(s->sm_order[static_cast<gsize>(index)], s->sm_order[static_cast<gsize>(target)]);
+    session_object(s)["order"] = s->sm_order;
+    save(s);
+    // the clicked button sits in a row about to be re-parented — defer
+    g_idle_add_once([](gpointer p) { rebuild_sm_rows(static_cast<Settings*>(p)); }, s);
+}
+
 void on_sm_item_toggled(GObject* row, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     if (s->loading)
@@ -2897,16 +2951,33 @@ void build_secondary_pages(Settings* s) {
     adw_preferences_group_set_description(
         ADW_PREFERENCES_GROUP(sm_items_group),
         "Which entries the session menus (and the launcher's session search) show.");
+    s->sm_items_group = sm_items_group;
     for (gsize i = 0; i < kSessionActionCount; ++i) {
         const auto& action = hyprshell::kSessionActions[i];
         GtkWidget* row = adw_switch_row_new();
         adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), action.label);
         adw_action_row_set_subtitle(ADW_ACTION_ROW(row), action.description);
         g_object_set_data(G_OBJECT(row), "sm-key", const_cast<char*>(action.key));
+        // up / down reorder the menu (session.order); rows are re-added by
+        // rebuild_sm_rows, so the row itself holds a ref while unparented
+        g_object_ref_sink(row);
+        GtkWidget* up = gtk_button_new_from_icon_name("go-up-symbolic");
+        GtkWidget* down = gtk_button_new_from_icon_name("go-down-symbolic");
+        for (GtkWidget* b : {down, up}) { // add_prefix packs from the start: up ends up first
+            gtk_widget_add_css_class(b, "flat");
+            gtk_widget_set_valign(b, GTK_ALIGN_CENTER);
+            g_object_set_data(G_OBJECT(b), "sm-key", const_cast<char*>(action.key));
+            g_signal_connect(b, "clicked", G_CALLBACK(on_sm_move_clicked), s);
+            adw_action_row_add_prefix(ADW_ACTION_ROW(row), b);
+        }
+        g_object_set_data(G_OBJECT(up), "move-dir", GINT_TO_POINTER(-1));
+        g_object_set_data(G_OBJECT(down), "move-dir", GINT_TO_POINTER(+1));
+        g_object_set_data(G_OBJECT(row), "sm-up", up);
+        g_object_set_data(G_OBJECT(row), "sm-down", down);
         s->sm_items[i] = ADW_SWITCH_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(sm_items_group), row);
         g_signal_connect(row, "notify::active", G_CALLBACK(on_sm_item_toggled), s);
     }
+    rebuild_sm_rows(s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(sm_page),
                              ADW_PREFERENCES_GROUP(sm_items_group));
     g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
@@ -4220,6 +4291,10 @@ void on_activate(GtkApplication* app, gpointer) {
         {"show_audio", "Audio sliders", "Output and input volume with mute buttons.", &s->cc_audio},
         {"show_brightness", "Brightness slider", "Screen brightness (laptop backlight).", &s->cc_brightness},
         {"show_sysmon", "System monitor", "CPU usage, CPU temperature, memory and disk gauges.", &s->cc_sysmon},
+        {"show_settings_button", "Settings button", "Opens these settings from the profile row.",
+         &s->cc_settings_btn},
+        {"show_session_button", "Power button", "Opens the session menu from the profile row.",
+         &s->cc_session_btn},
     };
     for (const auto& row : cc_rows) {
         GtkWidget* sw = adw_switch_row_new();

@@ -187,6 +187,8 @@ void Config::load() {
             control_center_.show_audio = it->value("show_audio", true);
             control_center_.show_brightness = it->value("show_brightness", false);
             control_center_.show_sysmon = it->value("show_sysmon", true);
+            control_center_.show_settings_button = it->value("show_settings_button", true);
+            control_center_.show_session_button = it->value("show_session_button", true);
         }
         if (auto it = bar.find("taskbar"); it != bar.end() && it->is_object()) {
             const std::string hide = it->value("hide_mode", "hidden");
@@ -327,6 +329,10 @@ void Config::load() {
                 for (const auto& [key, v] : items->items())
                     if (v.is_boolean())
                         s.items[key] = v.get<bool>();
+            if (auto order = it->find("order"); order != it->end() && order->is_array())
+                for (const auto& v : *order)
+                    if (v.is_string())
+                        s.order.push_back(v.get<std::string>());
         }
         if (auto it = j.find("idle"); it != j.end() && it->is_object()) {
             auto& i = idle_;

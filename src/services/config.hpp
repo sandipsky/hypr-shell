@@ -98,6 +98,8 @@ public:
         bool show_audio = true;
         bool show_brightness = false;
         bool show_sysmon = true;
+        bool show_settings_button = true; // profile row: Settings button
+        bool show_session_button = true;  // profile row: Session menu (power) button
     };
     const ControlCenter& control_center() const { return control_center_; }
 
@@ -199,6 +201,7 @@ public:
         Mode mode = Mode::Dropdown;
         Layout fullscreen_layout = Layout::SingleRow;
         std::map<std::string, bool> items; // session.items.<key>; absent = the action's default
+        std::vector<std::string> order;    // session.order: action keys, menu order (partial ok)
         bool item_enabled(const std::string& key, bool default_on) const {
             auto it = items.find(key);
             return it == items.end() ? default_on : it->second;

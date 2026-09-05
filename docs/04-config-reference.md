@@ -225,7 +225,9 @@ module's cog subpage (Noctalia's shortcuts and weather rows were not ported).
 | `show_media` | bool | `true` | Media player card (220px): blurred cover art, title / artist / album, seek bar, previous / play-pause / next, player picker when several MPRIS players run. |
 | `show_audio` | bool | `true` | Audio card (60px): output and input columns, mute button + device name over a volume slider; wheel steps 5%. |
 | `show_brightness` | bool | `false` | Brightness card (60px): icon, "Brightness NN%", slider; hidden without a backlight. Noctalia's default is off too. |
-| `show_sysmon` | bool | `true` | System monitor card (84px): CPU usage, CPU temperature, memory and disk gauges (Noctalia's NCircleStat), amber at 80, red at 90. |
+| `show_sysmon` | bool | `true` | System monitor card (84px): CPU usage, CPU temperature, memory and disk gauges (Noctalia's NCircleStat), amber at 80, red at 90. The memory gauge's tooltip reads "Memory: 4.0 GB / 15.5 GB (26%)". |
+| `show_settings_button` | bool | `true` | Settings button in the profile row. |
+| `show_session_button` | bool | `true` | Power (session menu) button in the profile row. |
 
 Dev hook: `HS_OPEN_CONTROL_CENTER=1`.
 
@@ -285,6 +287,19 @@ Application search and the calculator are always on.
 Pinned apps (`~/.cache/hypr-shell/pinned_apps.json`) are set from the app
 menu's right-click menu and shown by the `taskbar` module, which also
 reorders them by drag. The launcher has no pin button any more.
+
+## `session` (top level)
+
+The session menu shared by the bar's `session` module, the app menu's power
+button, `hypr-shell --session` and the launcher's session search. The action
+table (`services/session_actions.hpp`) is shared with the settings app.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `mode` | `dropdown` / `fullscreen` | `dropdown` | List under the button, or large buttons covering the screen. |
+| `fullscreen_layout` | `single_row` / `grid` | `single_row` | Fullscreen arrangement. |
+| `items.<key>` | bool | per action | Show the action: `lock`, `suspend`, `reboot`, `logout`, `shutdown` default on; `hibernate`, `reboot_uefi`, `soft_reboot` default off. |
+| `order` | array of keys | table order | Menu order. Unknown keys are dropped and actions the list omits follow in table order, so a partial list works. Edited with the up/down buttons on the Session menu settings page. |
 
 ## `clipboard` (top level)
 
