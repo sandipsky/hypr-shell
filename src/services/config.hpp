@@ -159,6 +159,18 @@ public:
     };
     const Launcher& launcher() const { return launcher_; }
 
+    // clipboard.* (top level): the clipboard history window (Noctalia's
+    // clipboard launcher provider, as its own overlay). History is recorded by
+    // cliphist; `enabled` runs the wl-paste watchers and shows the bar module.
+    struct Clipboard {
+        enum class Position { Center, TopLeft, Top, TopRight, BottomLeft, Bottom, BottomRight };
+        bool enabled = false;       // needs cliphist + wl-clipboard
+        bool show_images = true;    // list copied images (with thumbnails)
+        bool paste_on_click = false; // copy AND paste into the focused window (wtype)
+        Position position = Position::Center;
+    };
+    const Clipboard& clipboard() const { return clipboard_; }
+
     // bar.app_menu.* — the grid app menu bar button (Noctalia's Launcher bar
     // widget + the launcher's grid view, shown in a bar popover)
     struct AppMenu {
@@ -330,6 +342,7 @@ private:
     bool aw_show_icon_ = true;
     Notifications notifications_;
     Launcher launcher_;
+    Clipboard clipboard_;
     AppMenu app_menu_;
     Session session_;
     Idle idle_;

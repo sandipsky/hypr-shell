@@ -1,5 +1,6 @@
 #include "bar/bar.hpp"
 #include "bar/idle_fade.hpp"
+#include "bar/clipboard_window.hpp"
 #include "bar/launcher_window.hpp"
 #include "bar/lock_screen.hpp"
 #include "bar/notification_popup.hpp"
@@ -41,6 +42,14 @@ protected:
             if (launcher_window_)
                 launcher_window_->toggle();
         });
+        // `hypr-shell --clipboard` toggles the clipboard history window, e.g.
+        //   bind = SUPER, V, exec, hypr-shell --clipboard
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "clipboard", 'c',
+                              "Toggle the clipboard history in the running instance");
+        add_action("clipboard", [this] {
+            if (clipboard_window_)
+                clipboard_window_->toggle();
+        });
         // `hypr-shell --app-menu` toggles the bar's app menu popover, e.g.
         //   bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu
         add_main_option_entry(Gtk::Application::OptionType::BOOL, "app-menu", 'm',
@@ -71,14 +80,15 @@ protected:
     // Runs in the *invoking* process before activate: forward --launcher to
     // the primary instance (GApplication uniqueness) and exit.
     int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
-        bool launcher = false, app_menu = false, session = false, lock = false;
+        bool launcher = false, app_menu = false, session = false, lock = false, clipboard = false;
         if (options) {
             options->lookup_value("launcher", launcher);
+            options->lookup_value("clipboard", clipboard);
             options->lookup_value("app-menu", app_menu);
             options->lookup_value("session", session);
             options->lookup_value("lock", lock);
         }
-        if (launcher || app_menu || session || lock) {
+        if (launcher || app_menu || session || lock || clipboard) {
             try {
                 register_application();
             } catch (const Glib::Error& e) {
@@ -88,6 +98,8 @@ protected:
             if (is_remote()) {
                 if (launcher)
                     activate_action("launcher");
+                if (clipboard)
+                    activate_action("clipboard");
                 if (app_menu)
                     activate_action("app-menu");
                 if (session)
@@ -98,6 +110,7 @@ protected:
             }
             // no running instance: start up normally, then open what was asked
             open_launcher_on_startup_ = launcher;
+            open_clipboard_on_startup_ = clipboard;
             open_app_menu_on_startup_ = app_menu;
             open_session_on_startup_ = session;
             lock_on_startup_ = lock;
@@ -164,6 +177,16 @@ protected:
         // app launcher overlay; hidden until toggled
         launcher_window_ = std::make_unique<LauncherWindow>();
         add_window(*launcher_window_);
+
+        // clipboard history overlay (cliphist); hidden until toggled
+        clipboard_window_ = std::make_unique<ClipboardWindow>();
+        add_window(*clipboard_window_);
+        // dev hook: HS_OPEN_CLIPBOARD=1 opens it after startup (>1 = delay in ms)
+        if (open_clipboard_on_startup_ || g_getenv("HS_OPEN_CLIPBOARD") != nullptr) {
+            const char* hook = g_getenv("HS_OPEN_CLIPBOARD");
+            Glib::signal_timeout().connect_once([this] { clipboard_window_->open(); },
+                                                std::max(400, hook ? atoi(hook) : 0));
+        }
 
         // lock screen (ext-session-lock + PAM); answers request_lock() from the
         // idle daemon, the session menus, --lock and logind's Lock signal
@@ -272,11 +295,13 @@ private:
     std::unique_ptr<NotificationPopups> popups_;
     std::unique_ptr<OsdWindow> osd_window_;
     std::unique_ptr<LauncherWindow> launcher_window_;
+    std::unique_ptr<ClipboardWindow> clipboard_window_;
     std::unique_ptr<SessionWindow> session_window_;
     std::unique_ptr<IdleFade> idle_fade_;
     std::unique_ptr<LockScreen> lock_screen_;
     bool lock_on_startup_ = false;
     bool open_launcher_on_startup_ = false;
+    bool open_clipboard_on_startup_ = false;
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;
     Glib::RefPtr<Gtk::CssProvider> theme_provider_;

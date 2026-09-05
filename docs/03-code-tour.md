@@ -24,7 +24,7 @@ what is small and what is not.
 | `css/calendar.css` | Calendar popover (`cal-*`). |
 | `css/panels.css` | Battery / audio / network / bluetooth panels (`bp-*`, `ap-*`, `np-*`, `bt-*`), the NToggle-style switch, rate buttons. |
 | `css/notifications.css` | History panel and toast popups (`notif-*`, `window.notification-popups`). |
-| `css/launcher.css` | Launcher window (`launcher-*`, `window.launcher`). |
+| `css/launcher.css` | Launcher window (`launcher-*`, `window.launcher`) and the clipboard history window, which reuses those classes plus `clipboard-thumb`, `button.clipboard-delete`, `button.clipboard-clear`. |
 | `hypr-shell.gresource.xml` | Lists every file bundled into the binary (style.css + css/*). Add new CSS files here. |
 | `hypr-shell-settings.desktop.in` | Launcher entry template; `@bindir@` is replaced at build time. Presents as "Settings" with `Icon=dev.hyprshell.Settings` (GNOME Settings' icon, bundled in `data/icons/`) and `StartupWMClass=dev.hyprshell.Settings`. |
 | `fonts/noctalia-tabler-icons.ttf` | Tabler icon font (MIT) for almost every glyph. |
@@ -111,6 +111,7 @@ is missing.
 | `wallpaper_window.{hpp,cpp}` (~560 lines) | `App` (`WallpaperManager`) | The desktop wallpaper: `WallpaperTextureCache` (async decode at monitor pixel size per fill mode), `WallpaperView` (custom widget: fill modes as texture placement, transitions fade/wipe/disc/stripes as GSK cross-fade + mask nodes, no shaders), `WallpaperWindow` (background layer, one per monitor), `WallpaperManager` (monitor hotplug, config, `HS_WALLPAPER_DUMP` frame dumps). |
 | `lock_background.{hpp,cpp}` | `LockSurface` | Custom widget: wallpaper decoded async at monitor pixel size, cover-scaled, GSK-blurred once into a cached texture. |
 | `launcher_window.{hpp,cpp}` (~680 lines) | `App` via GAction | Fullscreen overlay: dim backdrop, centred panel with search entry, result list, footer. Providers: apps, calculator, settings search, session commands, web search. Keyboard navigation, hover-after-move selection, Spotlight-style grow animation when `show_all_apps` is off (the pin buttons were removed — pinning lives in the app menu). |
+| `clipboard_window.{hpp,cpp}` | `App` via GAction | Clipboard history overlay in the launcher's design: search entry, one row per cliphist entry (type glyph / colour swatch / clipped 64×36 thumbnail), Enter copies or pastes (`clipboard.paste_on_click`), Delete and a trash button remove, footer count + Clear all. Placed by `clipboard.position`; exclusive zone 0 so it clears the bar. |
 
 CSS prefixes: `bp-*` (battery, reused as the generic card style), `ap-*`,
 `np-*`, `bt-*`, `cal-*`, `notif-*`, `launcher-*`, `lock-*`.

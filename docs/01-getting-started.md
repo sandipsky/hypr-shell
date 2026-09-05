@@ -142,6 +142,7 @@ opt-in hooks that open them about 0.8 s after startup:
 | `HS_POPOVER_DEBUG=1` | Logs every module popover's anchor, size, alignment and final position |
 | `HS_OPEN_NOTIFICATIONS=1` | Opens the notification history panel |
 | `HS_OPEN_LAUNCHER=1` | Opens the app launcher |
+| `HS_OPEN_CLIPBOARD=1` | Opens the clipboard history window (needs `clipboard.enabled`) |
 | `HS_LAUNCHER_QUERY=<text>` | Pre-fills the launcher search every time it opens |
 | `HS_LOCK_PREVIEW=1` | Shows the lock screen UI as a plain overlay window (no real session lock; Escape on the cover closes it). `=2` also opens its session menu |
 | `HS_LOCK_AVATAR=<path>` | Overrides the `~/.face` avatar (empty = person glyph fallback) |

@@ -49,6 +49,7 @@ constexpr ModuleInfo kModules[] = {
     {"control_center", "Control center", "Media, audio, brightness and system monitor panel", 2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
+    {"clipboard",     "Clipboard",     "Clipboard history button",     2},
     {"notifications", "Notifications", "Notification bell and history", 2},
     {"clock",         "Clock",         "Date and time",                2},
     {"session",       "Session",       "Power button opening the session menu", 2},
@@ -75,6 +76,7 @@ constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"hotspot_page", "Hotspot", "glyph:\uED1B"}, // tabler access-point
     {"vpn_page", "VPN", "glyph:\uED58"},         // tabler shield-lock
     {"launcher_page", "Launcher", "glyph:\uEC45"}, // tabler rocket, the app menu's default
+    {"clipboard_page", "Clipboard", "edit-paste-symbolic"},
     {"session_page", "Session menu", "system-shutdown-symbolic"},
     {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
     {"idle_page", "Idle", "alarm-symbolic"},
@@ -84,6 +86,9 @@ constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
 };
 constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
+constexpr const char* kClipboardPositionKeys[] = {"center", "top_left", "top", "top_right",
+                                                  "bottom_left", "bottom", "bottom_right"};
+constexpr guint kClipboardPositionCount = G_N_ELEMENTS(kClipboardPositionKeys);
 // wallpaper page (Noctalia's fillModeModel order / transitionsModel minus the
 // two shader-only types the shell does not render)
 constexpr const char* kWpFillKeys[] = {"center", "crop", "fit", "stretch", "repeat"};
@@ -270,6 +275,11 @@ struct Settings {
     AdwSwitchRow* lp_web_search = nullptr;
     AdwSwitchRow* lp_result_count = nullptr;
     AdwSwitchRow* lp_show_all = nullptr;
+    // Clipboard page (top-level "clipboard" object)
+    AdwSwitchRow* cb_enabled = nullptr;
+    AdwSwitchRow* cb_show_images = nullptr;
+    AdwSwitchRow* cb_paste = nullptr;
+    AdwComboRow* cb_position = nullptr;
 
     AdwSwitchRow* notif_badge = nullptr; // notifications module (bell widget)
     AdwSwitchRow* notif_hide_zero = nullptr;
@@ -706,6 +716,25 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->aw_empty, i);
     adw_switch_row_set_active(s->aw_icon, aw_icon);
     update_aw_row_visibility(s);
+    {
+        bool cb_enabled = false, cb_images = true, cb_paste = false;
+        std::string cb_position = "center";
+        try {
+            const json cb = s->root.value("clipboard", json::object());
+            cb_enabled = cb.value("enabled", false);
+            cb_images = cb.value("show_images", true);
+            cb_paste = cb.value("paste_on_click", false);
+            cb_position = cb.value("position", cb_position);
+        } catch (const json::exception&) {
+            // defaults
+        }
+        adw_switch_row_set_active(s->cb_enabled, cb_enabled);
+        adw_switch_row_set_active(s->cb_show_images, cb_images);
+        adw_switch_row_set_active(s->cb_paste, cb_paste);
+        for (guint i = 0; i < kClipboardPositionCount; ++i)
+            if (cb_position == kClipboardPositionKeys[i])
+                adw_combo_row_set_selected(s->cb_position, i);
+    }
     adw_switch_row_set_active(s->lp_settings_search, lp_settings);
     adw_switch_row_set_active(s->lp_session_search, lp_session);
     adw_switch_row_set_active(s->lp_web_search, lp_web);
@@ -1021,6 +1050,35 @@ void on_launcher_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "launcher-key"));
     launcher_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Clipboard page: the top-level "clipboard" config object -------------------
+
+json& clipboard_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["clipboard"].is_object())
+        s->root["clipboard"] = json::object();
+    return s->root["clipboard"];
+}
+
+void on_clipboard_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "clipboard-key"));
+    clipboard_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_clipboard_position_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->cb_position);
+    clipboard_object(s)["position"] =
+        kClipboardPositionKeys[selected < kClipboardPositionCount ? selected : 0];
     save(s);
 }
 
@@ -3029,6 +3087,76 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lp_page),
                              ADW_PREFERENCES_GROUP(lp_group));
 
+    // -- Clipboard sidebar page (top-level "clipboard" object) ----------------
+    GtkWidget* cb_page = adw_preferences_page_new();
+    GtkWidget* cb_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cb_group), "Clipboard history");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(cb_group),
+        "Everything you copy is recorded by cliphist and listed in a searchable window. "
+        "Open it from the bar's clipboard button or bind a key in hyprland.conf:\n"
+        "bind = SUPER, V, exec, hypr-shell --clipboard");
+    {
+        char* cliphist = g_find_program_in_path("cliphist");
+        char* wl_paste = g_find_program_in_path("wl-paste");
+        char* wtype = g_find_program_in_path("wtype");
+        const bool have_cliphist = cliphist != nullptr && wl_paste != nullptr;
+        const bool have_wtype = wtype != nullptr;
+        g_free(cliphist);
+        g_free(wl_paste);
+        g_free(wtype);
+
+        GtkWidget* enabled_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(enabled_row), "Enable clipboard history");
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(enabled_row),
+            have_cliphist ? "Record copied text and images and show the clipboard button in the bar."
+                          : "Install the cliphist and wl-clipboard packages to record clipboard history.");
+        gtk_widget_set_sensitive(enabled_row, have_cliphist);
+        g_object_set_data(G_OBJECT(enabled_row), "clipboard-key", const_cast<char*>("enabled"));
+        s->cb_enabled = ADW_SWITCH_ROW(enabled_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), enabled_row);
+        g_signal_connect(enabled_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* images_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(images_row), "Show images");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(images_row),
+                                    "List copied images with a thumbnail. Off hides them from the list.");
+        g_object_set_data(G_OBJECT(images_row), "clipboard-key", const_cast<char*>("show_images"));
+        s->cb_show_images = ADW_SWITCH_ROW(images_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), images_row);
+        g_signal_connect(images_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* paste_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(paste_row), "Paste on click");
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(paste_row),
+            have_wtype ? "Paste the chosen entry into the focused window right away instead of "
+                         "only copying it."
+                       : "Install the wtype package to paste entries automatically.");
+        gtk_widget_set_sensitive(paste_row, have_wtype);
+        g_object_set_data(G_OBJECT(paste_row), "clipboard-key", const_cast<char*>("paste_on_click"));
+        s->cb_paste = ADW_SWITCH_ROW(paste_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), paste_row);
+        g_signal_connect(paste_row, "notify::active", G_CALLBACK(on_clipboard_toggled), s);
+
+        GtkWidget* position_row = adw_combo_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(position_row), "Position");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(position_row),
+                                    "Where the clipboard window appears on the screen.");
+        const char* position_options[] = {"Center",      "Top left",     "Top center",
+                                          "Top right",   "Bottom left",  "Bottom center",
+                                          "Bottom right", nullptr};
+        GtkStringList* position_model = gtk_string_list_new(position_options);
+        adw_combo_row_set_model(ADW_COMBO_ROW(position_row), G_LIST_MODEL(position_model));
+        g_object_unref(position_model);
+        s->cb_position = ADW_COMBO_ROW(position_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(cb_group), position_row);
+        g_signal_connect(position_row, "notify::selected",
+                         G_CALLBACK(on_clipboard_position_changed), s);
+    }
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(cb_page), ADW_PREFERENCES_GROUP(cb_group));
+
     // -- Session menu sidebar page (top-level "session" object) ---------------
     GtkWidget* sm_page = adw_preferences_page_new();
 
@@ -4043,6 +4171,13 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(lp_view), lp_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(lp_view), lp_page);
 
+    GtkWidget* cb_view = adw_toolbar_view_new();
+    GtkWidget* cb_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(cb_header),
+                                    adw_window_title_new("Clipboard", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(cb_view), cb_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(cb_view), cb_page);
+
     GtkWidget* sm_view = adw_toolbar_view_new();
     GtkWidget* sm_header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(sm_header),
@@ -4094,6 +4229,7 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
     gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
+    gtk_stack_add_named(GTK_STACK(stack), cb_view, "clipboard_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
     gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
     gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");

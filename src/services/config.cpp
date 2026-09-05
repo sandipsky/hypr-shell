@@ -26,6 +26,7 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"control_center", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
+    {"clipboard", Config::BarSection::Right},
     {"notifications", Config::BarSection::Right},
     {"clock", Config::BarSection::Right},
     {"session", Config::BarSection::Right},
@@ -97,6 +98,7 @@ void Config::load() {
     aw_show_icon_ = true;
     notifications_ = Notifications{};
     launcher_ = Launcher{};
+    clipboard_ = Clipboard{};
     app_menu_ = AppMenu{};
     session_ = Session{};
     idle_ = Idle{};
@@ -288,6 +290,21 @@ void Config::load() {
             l.enable_web_search = it->value("enable_web_search", false);
             l.show_result_count = it->value("show_result_count", true);
             l.show_all_apps = it->value("show_all_apps", true);
+        }
+        if (auto it = j.find("clipboard"); it != j.end() && it->is_object()) {
+            auto& c = clipboard_;
+            c.enabled = it->value("enabled", false);
+            c.show_images = it->value("show_images", true);
+            c.paste_on_click = it->value("paste_on_click", false);
+            const std::string position = it->value("position", "center");
+            using P = Clipboard::Position;
+            c.position = position == "top_left"     ? P::TopLeft
+                         : position == "top"          ? P::Top
+                         : position == "top_right"    ? P::TopRight
+                         : position == "bottom_left"  ? P::BottomLeft
+                         : position == "bottom"       ? P::Bottom
+                         : position == "bottom_right" ? P::BottomRight
+                                                      : P::Center;
         }
         if (auto it = j.find("session"); it != j.end() && it->is_object()) {
             auto& s = session_;

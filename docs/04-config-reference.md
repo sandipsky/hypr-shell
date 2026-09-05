@@ -129,7 +129,7 @@ launcher).
 ## `bar.modules.<name>`
 
 Booleans keyed by module name. **Absent means enabled.** Known names:
-`launcher`, `workspaces`, `active_window`, `network`, `bluetooth`, `volume`,
+`launcher`, `workspaces`, `active_window`, `network`, `bluetooth`, `volume`, `clipboard`,
 `battery`, `notifications`, `clock`. A disabled module is not parented into
 the bar at all.
 
@@ -278,6 +278,20 @@ Application search and the calculator are always on.
 Pinned apps (`~/.cache/hypr-shell/pinned_apps.json`) are set from the app
 menu's right-click menu and shown by the `taskbar` module, which also
 reorders them by drag. The launcher has no pin button any more.
+
+## `clipboard` (top level)
+
+Exposed as `Config::get().clipboard()` (struct `Config::Clipboard`). The
+clipboard history window (`hypr-shell --clipboard`, the `clipboard` bar
+module). History is stored by cliphist; the shell only runs the
+`wl-paste --watch cliphist store` watchers when no other process does.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enabled` | bool | `false` | Record history and show the bar module. Needs `cliphist` and `wl-clipboard`. |
+| `show_images` | bool | `true` | List copied images (with thumbnails); `false` hides them. |
+| `paste_on_click` | bool | `false` | Enter/click pastes into the focused window via `wtype` instead of only copying. |
+| `position` | `center` / `top_left` / `top` / `top_right` / `bottom_left` / `bottom` / `bottom_right` | `center` | Where the window's panel appears. |
 
 ## `lock_screen` (top level)
 

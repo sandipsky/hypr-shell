@@ -354,6 +354,8 @@ Gtk::Widget* Bar::module_widget(const std::string& name) {
         return &volume_;
     if (name == "battery")
         return &battery_;
+    if (name == "clipboard")
+        return &clipboard_;
     if (name == "notifications")
         return &notifications_;
     if (name == "clock")

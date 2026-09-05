@@ -62,7 +62,7 @@ src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap fr
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, taskbar, active_window, clock, network,
                                volume, battery, bluetooth, control_center,
-                               notifications, session)
+                               clipboard, notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/palette.hpp                theme palette derivation (accent + dark/light → the m*
                                         tokens), header-only, shared with the settings app
@@ -92,6 +92,8 @@ src/services/lock_keys.{hpp,cpp}        Caps/Num/Scroll Lock via /sys/class/leds
 src/services/osd.{hpp,cpp}              OSD trigger logic (Pulse/Brightness/LockKeys diffs + suppression)
 src/bar/osd_window.{hpp,cpp}            on-screen display layer window (volume/mic/brightness/lock keys)
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
+src/bar/clipboard_window.{hpp,cpp}      clipboard history overlay (launcher design, cliphist entries)
+src/services/clipboard.{hpp,cpp}        cliphist history: wl-paste watchers, list/decode/copy/paste/delete
 src/bar/app_menu_panel.{hpp,cpp}        app menu popover (search + settings/session buttons + app grid)
 src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps +
                                         window-class → entry lookup (Noctalia's ThemeIcons)
@@ -182,6 +184,10 @@ scripted key presses. `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
 settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
+Clipboard testing: `HS_OPEN_CLIPBOARD=3000` opens the history window after 3s
+(`hypr-shell --clipboard` against a running instance also works). It needs
+`clipboard.enabled` in config.json; Noctalia's own `wl-paste … cliphist store`
+watchers are detected by pgrep and ours are then not started.
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
 renders the first monitor's frames offscreen (frame-25/50/75.png as the first
 transition passes those marks, frame-final.png after 4s) and
@@ -317,7 +323,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       folder picker and image grid; no separate selector window, per user;
       2026-09-04: night light landed — Noctalia's NightLightService over
       hyprsunset with a "Night light" settings page, minus the day
-      temperature option, per user)*
+      temperature option, per user; 2026-09-05: clipboard history landed —
+      Noctalia's cliphist-backed clipboard provider as its own overlay
+      window with a "Clipboard" settings page, bar module and
+      `hypr-shell --clipboard`)*
 
 ## Decision log
 
@@ -1440,6 +1449,70 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   body / 14pt headings, set the same day) were not touched. Every `HS_OPEN_*`
   hook now takes a delay in ms (a value above 1), not just the three noted
   above.
+- 2026-09-05 — Clipboard history (Noctalia's ClipboardService +
+  ClipboardProvider, as a **separate overlay window** that shares the
+  launcher's design — user request; nothing was added to the launcher).
+  `services/clipboard`: the history IS cliphist's database. While
+  `clipboard.enabled` (and cliphist + wl-clipboard are in PATH) the service
+  runs Noctalia's two watchers, `wl-paste --type text|image --watch cliphist
+  store`, restarted 1 s after they exit, spawned with
+  `prctl(PR_SET_PDEATHSIG)` in the child so they die with the shell — unless
+  `pgrep -f` finds watchers already running (Noctalia's Quickshell owns two
+  today: its enableClipboardHistory is on), then ours stay off so nothing is
+  stored twice. Everything else shells out asynchronously: `cliphist list
+  -preview-width 100` (tab-separated `id<TAB>preview`, made valid UTF-8; the
+  "[[ binary data 1.2 MiB png 1920x1080 ]]" meta parsed like parseImageMeta;
+  Noctalia's browser-junk filters and its text/link/file/code/color
+  detection ported), `cliphist decode` (thumbnails decoded from the bytes
+  with gdk_pixbuf_new_from_stream_at_scale_async at 128 px, LRU of 100 —
+  **one decode at a time from a queue** (Noctalia's _b64Queue): the first
+  version spawned a `cliphist decode` per image row inside the click
+  handler, 55 fork/execs, and the window took 600 ms to map; now 15 ms
+  cold, ~65 ms warm with 65 rows; the queue is cleared on every row
+  rebuild),
+  `cliphist decode ID | wl-copy [--type mime]` to copy, plus wtype to paste, 150 ms
+  after our window closed so the keys land in the refocused window: Noctalia
+  sends Ctrl+Shift+V for all text, but that is VS Code's Markdown preview
+  (user report), so the shortcut follows the focused window's class from
+  `j/activewindow` — Ctrl+Shift+V for terminals (kitty, foot, alacritty,
+  wezterm, ghostty, konsole, …), Ctrl+V elsewhere and for images — and every
+  modifier is released with `-m`: wtype exiting with modifiers held left
+  Ctrl+Shift stuck in Hyprland's seat, which blocked the user's touchpad
+  workspace gestures after a paste —, `printf ID | cliphist delete`, `cliphist wipe`. Ids
+  are digit-checked before reaching `sh -c`. `bar/clipboard_window`: overlay
+  layer, **exclusive zone 0** (unlike the launcher's -1) so the surface
+  excludes the bar and a top/bottom position sits beside it, and keyboard
+  mode **ON_DEMAND**, not EXCLUSIVE: Hyprland routes pointer input only to
+  exclusive layer surfaces while one is mapped (`InputManager::
+  mouseMoveUnified` consults `m_exclusiveLSes` first — verified in the
+  0.56.2 source), so with EXCLUSIVE the bar's clipboard button could not be
+  clicked to close the window (user report); on-demand layers still receive
+  keyboard focus on map (`LayerSurface::onMap`, GRABSFOCUS), verified with
+  GTK's is-active after mapping;
+  panel = the launcher's fixed max(25 %, 552) × max(50 %, 600) box with the
+  launcher's CSS classes (window `launcher`, `launcher-panel`,
+  `launcher-search`, `launcher-row`, …) placed by `clipboard.position`
+  (center / top_left / top / top_right / bottom_left / bottom /
+  bottom_right, 13 px from the edges). Rows: type glyph, colour swatch
+  (cairo, for #rgb/#rrggbb entries) or a 64×36 thumbnail — the Picture is an
+  unmeasured, clipped Gtk::Overlay child, because a plain Picture reports
+  the scaled image as natural width and a 1920×49 banner widened the row —
+  title/description per formatTextEntry / formatImageEntry (no relative
+  times: cliphist has none, Noctalia fakes them). Enter/click copies, or
+  pastes with `paste_on_click`; the selected row shows a trash button and
+  Delete (with an empty query) removes; footer = count + "Clear all"
+  (wipe). Substring search over the preview like Noctalia; no category
+  chips, no preview pane, no annotation tool. Config `clipboard.*`:
+  enabled (default off — needs cliphist; turned on in the user's config
+  the same day), show_images (off hides image entries), paste_on_click,
+  position. Module `clipboard` (tabler clipboard glyph, default right
+  section before notifications, hidden while history is disabled or
+  cliphist is missing, no cog — per user) and GAction "clipboard" /
+  `hypr-shell --clipboard` (`bind = SUPER, V, exec, hypr-shell --clipboard`,
+  shown on the settings page). Settings: "Clipboard" sidebar page after
+  Launcher (edit-paste icon) with the four rows; Enable is insensitive with
+  an install hint without cliphist, Paste on click without wtype. Dev hook:
+  HS_OPEN_CLIPBOARD (delay in ms above 1).
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

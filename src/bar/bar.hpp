@@ -4,6 +4,7 @@
 #include "bar/modules/app_menu.hpp"
 #include "bar/modules/battery.hpp"
 #include "bar/modules/bluetooth.hpp"
+#include "bar/modules/clipboard.hpp"
 #include "bar/modules/control_center.hpp"
 #include "bar/modules/clock.hpp"
 #include "bar/modules/launcher.hpp"
@@ -55,6 +56,7 @@ private:
     ControlCenter control_center_;
     Volume volume_;
     Battery battery_;
+    ClipboardModule clipboard_;
     Notifications notifications_;
     Clock clock_;
     Session session_;

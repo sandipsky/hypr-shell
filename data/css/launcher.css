@@ -105,3 +105,51 @@ separator.launcher-divider {
   font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
+
+/* clipboard history window — the launcher's design (same classes on the
+ * backdrop, panel, search, rows) plus its own bits */
+/* smaller search text than the launcher's 14pt (user request; the launcher
+ * input is untouched — this only matches inside the clipboard panel) */
+.clipboard-panel entry.launcher-search {
+  font-size: 12pt;
+}
+
+picture.clipboard-thumb {
+  border-radius: 8px;
+}
+
+button.clipboard-delete {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  color: @mOnSurfaceVariant;
+}
+
+button.clipboard-delete .launcher-glyph {
+  font-size: 17px;
+  color: inherit;
+}
+
+button.clipboard-delete:hover {
+  background: alpha(@mOnSurface, 0.1);
+  color: @mError; /* mError */
+}
+
+button.clipboard-clear {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: @mOnSurfaceVariant;
+}
+
+button.clipboard-clear:hover {
+  background: alpha(@mOnSurface, 0.1);
+  color: @mError;
+}
