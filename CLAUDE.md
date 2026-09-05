@@ -1521,6 +1521,15 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   Launcher (edit-paste icon) with the four rows; Enable is insensitive with
   an install hint without cliphist, Paste on click without wtype. Dev hook:
   HS_OPEN_CLIPBOARD (delay in ms above 1).
+- 2026-09-05 — Notifications settings page trimmed to three rows (user
+  request): Do not disturb, Always on top (`overlay_layer`), Position. The
+  daemon is on by default, so the Enable switch went; density, background
+  opacity, the duration / history / sound / filter-rule groups are hidden
+  with `gtk_widget_set_visible(FALSE)` rather than deleted — the widgets
+  stay parented so the existing load / save / sensitivity code is untouched
+  and the rows can return by flipping the flag. Those keys are config-only
+  now; the page description says so. The launcher's static settings index
+  lost the matching entries.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

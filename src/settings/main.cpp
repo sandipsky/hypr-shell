@@ -3655,8 +3655,9 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_general), "Notifications");
     adw_preferences_group_set_description(
         ADW_PREFERENCES_GROUP(nd_general),
-        "Configure notifications appearance and behavior. hypr-shell must be "
-        "the only notification daemon (disable mako/dunst or Noctalia's).");
+        "hypr-shell is the notification daemon and must be the only one "
+        "(disable mako/dunst or Noctalia's). Popup duration, history, sounds "
+        "and filter rules are config-only (notifications.* in config.json).");
 
     GtkWidget* nd_enabled_row = adw_switch_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_enabled_row),
@@ -3667,6 +3668,10 @@ void on_activate(GtkApplication* app, gpointer) {
     s->nd_enabled = ADW_SWITCH_ROW(nd_enabled_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_enabled_row);
     g_signal_connect(nd_enabled_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+    // the daemon is on by default and the user wants only DND / always on top /
+    // position on this page (2026-09-05): the other rows and groups stay built
+    // (their config still loads) but hidden
+    gtk_widget_set_visible(nd_enabled_row, FALSE);
 
     GtkWidget* nd_density_row = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_density_row), "Density");
@@ -3680,6 +3685,7 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_density_row);
     g_signal_connect(nd_density_row, "notify::selected",
                      G_CALLBACK(on_nd_density_changed), s);
+    gtk_widget_set_visible(nd_density_row, FALSE);
 
     GtkWidget* nd_dnd_row = adw_switch_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_dnd_row), "Do not disturb");
@@ -3692,6 +3698,17 @@ void on_activate(GtkApplication* app, gpointer) {
     s->nd_dnd = ADW_SWITCH_ROW(nd_dnd_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_dnd_row);
     g_signal_connect(nd_dnd_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_overlay_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(nd_overlay_row),
+        "Display notifications above fullscreen windows and other layers.");
+    g_object_set_data(G_OBJECT(nd_overlay_row), "nd-key",
+                      const_cast<char*>("overlay_layer"));
+    s->nd_overlay = ADW_SWITCH_ROW(nd_overlay_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_overlay_row);
+    g_signal_connect(nd_overlay_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
 
     GtkWidget* nd_location_row = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_location_row), "Position");
@@ -3708,17 +3725,6 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_location_row);
     g_signal_connect(nd_location_row, "notify::selected",
                      G_CALLBACK(on_nd_location_changed), s);
-
-    GtkWidget* nd_overlay_row = adw_switch_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");
-    adw_action_row_set_subtitle(
-        ADW_ACTION_ROW(nd_overlay_row),
-        "Display notifications above fullscreen windows and other layers.");
-    g_object_set_data(G_OBJECT(nd_overlay_row), "nd-key",
-                      const_cast<char*>("overlay_layer"));
-    s->nd_overlay = ADW_SWITCH_ROW(nd_overlay_row);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_overlay_row);
-    g_signal_connect(nd_overlay_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
 
     GtkWidget* nd_opacity_row = adw_action_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_opacity_row),
@@ -3741,6 +3747,7 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_opacity_row);
     g_signal_connect(s->nd_opacity, "value-changed", G_CALLBACK(on_nd_opacity_changed),
                      s);
+    gtk_widget_set_visible(nd_opacity_row, FALSE);
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
                              ADW_PREFERENCES_GROUP(nd_general));
@@ -3790,6 +3797,7 @@ void on_activate(GtkApplication* app, gpointer) {
     }
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
                              ADW_PREFERENCES_GROUP(nd_duration));
+    gtk_widget_set_visible(nd_duration, FALSE);
 
     GtkWidget* nd_history = adw_preferences_group_new();
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_history), "History");
@@ -3831,6 +3839,7 @@ void on_activate(GtkApplication* app, gpointer) {
     }
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
                              ADW_PREFERENCES_GROUP(nd_history));
+    gtk_widget_set_visible(nd_history, FALSE);
 
     GtkWidget* nd_sound = adw_preferences_group_new();
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(nd_sound), "Sound");
@@ -3921,6 +3930,7 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
                              ADW_PREFERENCES_GROUP(nd_sound));
+    gtk_widget_set_visible(nd_sound, FALSE);
 
     GtkWidget* rules_group = adw_preferences_group_new();
     adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(rules_group), "Filter rules");
@@ -3938,6 +3948,7 @@ void on_activate(GtkApplication* app, gpointer) {
     s->nd_dependent_groups.push_back(rules_group);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(nd_page),
                              ADW_PREFERENCES_GROUP(rules_group));
+    gtk_widget_set_visible(rules_group, FALSE);
 
     populate(s);
     g_signal_connect(pos_row, "notify::selected", G_CALLBACK(on_position_changed), s);

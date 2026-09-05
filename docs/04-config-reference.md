@@ -236,6 +236,9 @@ Dev hook: `HS_OPEN_CONTROL_CENTER=1`.
 
 ## `notifications` (top level: daemon + popups)
 
+Only `do_not_disturb`, `overlay_layer` and `location` have controls in
+hypr-shell-settings (since 2026-09-05); every other key below is config-only.
+
 Exposed as `Config::get().notifications()` (struct `Config::Notifications`).
 
 | Key | Type | Default | Meaning |
