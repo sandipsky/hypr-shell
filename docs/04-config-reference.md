@@ -290,7 +290,7 @@ module). History is stored by cliphist; the shell only runs the
 |-----|------|---------|---------|
 | `enabled` | bool | `false` | Record history and show the bar module. Needs `cliphist` and `wl-clipboard`. |
 | `show_images` | bool | `true` | List copied images (with thumbnails); `false` hides them. |
-| `paste_on_click` | bool | `false` | Enter/click pastes into the focused window via `wtype` instead of only copying. |
+| `paste_on_click` | bool | `false` | Enter/click pastes into the focused window (Hyprland's `send_shortcut`; `wtype` outside Hyprland) instead of only copying. Ctrl+Shift+V in terminals, Ctrl+V elsewhere. |
 | `position` | `center` / `top_left` / `top` / `top_right` / `bottom_left` / `bottom` / `bottom_right` | `center` | Where the window's panel appears. |
 
 ## `lock_screen` (top level)

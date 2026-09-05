@@ -46,6 +46,13 @@ public:
     // focusWindow: focus + alter_zorder top).
     void focus_window(const std::string& address);
 
+    // Press a shortcut in the focused window through the seat's real keyboard
+    // (`hl.dsp.send_shortcut({ mods, key })`, no window = current focus).
+    // Unlike wtype's virtual keyboard this reaches Chromium/Electron apps.
+    // `mods` is Hyprland's mod string ("CTRL", "CTRL SHIFT"), `key` a keysym
+    // name; neither may contain quotes.
+    void send_shortcut(const std::string& mods, const std::string& key);
+
     // Turn every monitor's DPMS on or off (Noctalia's turnOn/OffMonitors).
     // Hyprland accepts ANY argument table for dpms without error — only this
     // exact form is known to do what it says; never probe it blind.

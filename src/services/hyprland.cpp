@@ -101,6 +101,11 @@ void Hyprland::focus_window(const std::string& address) {
              "\" })");
 }
 
+void Hyprland::send_shortcut(const std::string& mods, const std::string& key) {
+    // grammar verified on 0.56.2 against a non-existent window target
+    dispatch("hl.dsp.send_shortcut({ mods = \"" + mods + "\", key = \"" + key + "\" })");
+}
+
 void Hyprland::set_dpms(bool on) {
     dispatch(std::string("hl.dsp.dpms({ action = \"") + (on ? "on" : "off") + "\" })");
 }

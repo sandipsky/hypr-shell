@@ -1470,15 +1470,23 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   handler, 55 fork/execs, and the window took 600 ms to map; now 15 ms
   cold, ~65 ms warm with 65 rows; the queue is cleared on every row
   rebuild),
-  `cliphist decode ID | wl-copy [--type mime]` to copy, plus wtype to paste, 150 ms
-  after our window closed so the keys land in the refocused window: Noctalia
-  sends Ctrl+Shift+V for all text, but that is VS Code's Markdown preview
-  (user report), so the shortcut follows the focused window's class from
-  `j/activewindow` — Ctrl+Shift+V for terminals (kitty, foot, alacritty,
-  wezterm, ghostty, konsole, …), Ctrl+V elsewhere and for images — and every
-  modifier is released with `-m`: wtype exiting with modifiers held left
-  Ctrl+Shift stuck in Hyprland's seat, which blocked the user's touchpad
-  workspace gestures after a paste —, `printf ID | cliphist delete`, `cliphist wipe`. Ids
+  `cliphist decode ID | wl-copy [--type mime]` to copy, plus the paste shortcut,
+  pressed 150 ms after our window closed (focus is back on the previous
+  window) and 60 ms after `wl-copy` exited (it forks; the child serves the
+  selection). **The shortcut is sent by Hyprland** — `Hyprland::
+  send_shortcut()` → `hl.dsp.send_shortcut({ mods, key })`, no window =
+  current focus, grammar taken from `/usr/share/hypr/stubs/hl.meta.lua` +
+  LuaBindingsDispatchers.cpp and verified against a non-existent window
+  target — because wtype's virtual keyboard (Noctalia's way) carries its own
+  keymap and Chromium/Electron apps (VS Code) dropped its Ctrl+V while GTK
+  apps took it (user report). wtype stays the fallback outside Hyprland,
+  with every modifier released via `-m` (a wtype run exiting with modifiers
+  held left Ctrl+Shift stuck in Hyprland's seat, which blocked the user's
+  touchpad workspace gestures after a paste). Noctalia sends Ctrl+Shift+V
+  for all text; that is VS Code's Markdown preview, so the focused window's
+  class from `j/activewindow` decides — Ctrl+Shift+V for terminals (kitty,
+  foot, alacritty, wezterm, ghostty, konsole, …), Ctrl+V elsewhere and for
+  images —, `printf ID | cliphist delete`, `cliphist wipe`. Ids
   are digit-checked before reaching `sh -c`. `bar/clipboard_window`: overlay
   layer, **exclusive zone 0** (unlike the launcher's -1) so the surface
   excludes the bar and a top/bottom position sits beside it, and keyboard

@@ -3101,7 +3101,9 @@ void on_activate(GtkApplication* app, gpointer) {
         char* wl_paste = g_find_program_in_path("wl-paste");
         char* wtype = g_find_program_in_path("wtype");
         const bool have_cliphist = cliphist != nullptr && wl_paste != nullptr;
-        const bool have_wtype = wtype != nullptr;
+        // the shell pastes through Hyprland's own send_shortcut dispatcher;
+        // wtype is only the fallback outside Hyprland
+        const bool have_wtype = wtype != nullptr || g_getenv("HYPRLAND_INSTANCE_SIGNATURE") != nullptr;
         g_free(cliphist);
         g_free(wl_paste);
         g_free(wtype);
@@ -3133,7 +3135,7 @@ void on_activate(GtkApplication* app, gpointer) {
             ADW_ACTION_ROW(paste_row),
             have_wtype ? "Paste the chosen entry into the focused window right away instead of "
                          "only copying it."
-                       : "Install the wtype package to paste entries automatically.");
+                       : "Needs Hyprland (or the wtype package) to paste entries automatically.");
         gtk_widget_set_sensitive(paste_row, have_wtype);
         g_object_set_data(G_OBJECT(paste_row), "clipboard-key", const_cast<char*>("paste_on_click"));
         s->cb_paste = ADW_SWITCH_ROW(paste_row);

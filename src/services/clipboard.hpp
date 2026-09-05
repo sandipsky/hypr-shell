@@ -38,7 +38,7 @@ public:
     static Clipboard& get();
 
     bool available() const { return available_; }             // cliphist + wl-paste + wl-copy
-    bool paste_available() const { return paste_available_; } // wtype
+    bool paste_available() const; // Hyprland IPC (send_shortcut) or wtype
     bool enabled() const;                                      // config && available
     bool loading() const { return loading_; }
     const std::vector<Item>& items() const { return items_; }
@@ -69,7 +69,8 @@ private:
     void start_watchers();
     void stop_watchers();
     void spawn_watcher(std::size_t index);
-    void run_shell(const std::string& command); // fire-and-forget `sh -c`
+    // `sh -c command`; on_done (optional) runs on the main loop when it exits
+    void run_shell(const std::string& command, std::function<void()> on_done = {});
 
     bool available_ = false;
     bool paste_available_ = false;

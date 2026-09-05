@@ -398,16 +398,22 @@ void Clipboard::pump_thumbnails() {
     });
 }
 
-void Clipboard::run_shell(const std::string& command) {
+bool Clipboard::paste_available() const {
+    return Hyprland::get().available() || paste_available_;
+}
+
+void Clipboard::run_shell(const std::string& command, std::function<void()> on_done) {
     try {
         auto proc = Gio::Subprocess::create({"sh", "-c", command},
                                             Gio::Subprocess::Flags::STDOUT_SILENCE |
                                                 Gio::Subprocess::Flags::STDERR_SILENCE);
-        proc->wait_async([proc](Glib::RefPtr<Gio::AsyncResult>& result) {
+        proc->wait_async([proc, on_done](Glib::RefPtr<Gio::AsyncResult>& result) {
             try {
                 proc->wait_finish(result);
             } catch (const Glib::Error&) {
             }
+            if (on_done)
+                on_done();
         });
     } catch (const Glib::Error& e) {
         g_warning("clipboard: `%s` failed: %s", command.c_str(), e.what());
@@ -422,29 +428,44 @@ void Clipboard::copy(const Item& item) {
     run_shell("cliphist decode " + item.id + " | wl-copy" + type);
 }
 
-// Paste = copy, then press the paste shortcut with wtype once the caller's
-// window is gone and focus is back on the previous window. Noctalia sends
-// Ctrl+Shift+V for text everywhere; that is the paste key in terminals but
-// means something else in many apps (VS Code opens the Markdown preview), so
-// the shortcut is picked from the focused window's class: Ctrl+Shift+V in
-// terminals, Ctrl+V elsewhere and for images. Every modifier is released
-// explicitly (-m): a wtype run that exits with modifiers pressed leaves them
-// stuck in Hyprland's seat until the next real press — that blocked the
-// user's touchpad workspace gestures after a paste.
+// Paste = copy, then press the paste shortcut once the caller's window is
+// gone and focus is back on the previous window. The shortcut is sent by
+// Hyprland itself (`hl.dsp.send_shortcut`, the seat's real keyboard): wtype's
+// virtual keyboard, which Noctalia uses, carries its own keymap and Chromium/
+// Electron apps (VS Code) dropped its Ctrl+V while GTK apps took it. wtype
+// remains the fallback outside Hyprland, with every modifier released
+// explicitly (-m) — a wtype run exiting with modifiers held left Ctrl+Shift
+// stuck in Hyprland's seat, which blocked touchpad workspace gestures.
+// Noctalia sends Ctrl+Shift+V for all text; that is the paste key in
+// terminals but means something else elsewhere (VS Code: Markdown preview),
+// so the focused window's class decides: Ctrl+Shift+V in terminals, Ctrl+V
+// elsewhere and for images.
 void Clipboard::paste(const Item& item) {
     if (!available_)
         return;
-    if (!paste_available_) {
+    if (!paste_available()) {
         copy(item);
         return;
     }
     const std::string type = item.is_image && item.mime != "image/*" ? " --type " + item.mime : "";
     const std::string copy_cmd = "cliphist decode " + item.id + " | wl-copy" + type;
+    auto press = [](bool shift) {
+        if (Hyprland::get().available()) {
+            Hyprland::get().send_shortcut(shift ? "CTRL SHIFT" : "CTRL", "V");
+        } else {
+            Clipboard::get().run_shell(shift ? "wtype -M ctrl -M shift -k v -m shift -m ctrl"
+                                             : "wtype -M ctrl -k v -m ctrl");
+        }
+    };
     if (item.is_image) {
-        run_shell(copy_cmd + " && wtype -M ctrl -k v -m ctrl");
+        // wl-copy forks and serves the selection from its child: give it a
+        // moment before the target window asks for the data
+        run_shell(copy_cmd, [press] {
+            Glib::signal_timeout().connect_once([press] { press(false); }, 60);
+        });
         return;
     }
-    Hyprland::get().request("j/activewindow", [this, copy_cmd](const std::string& reply) {
+    Hyprland::get().request("j/activewindow", [this, copy_cmd, press](const std::string& reply) {
         std::string klass;
         try {
             klass = lowercase(nlohmann::json::parse(reply).value("class", ""));
@@ -460,9 +481,9 @@ void Clipboard::paste(const Item& item) {
         for (const char* name : kTerminals)
             if (klass.find(name) != std::string::npos)
                 terminal = true;
-        const std::string keys = terminal ? "wtype -M ctrl -M shift -k v -m shift -m ctrl"
-                                          : "wtype -M ctrl -k v -m ctrl";
-        run_shell(copy_cmd + " && " + keys);
+        run_shell(copy_cmd, [press, terminal] {
+            Glib::signal_timeout().connect_once([press, terminal] { press(terminal); }, 60);
+        });
     });
 }
 
