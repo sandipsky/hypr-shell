@@ -1,4 +1,5 @@
 #include "bar/notification_popup.hpp"
+#include "services/theme.hpp"
 
 #include "bar/notification_ui.hpp"
 #include "services/config.hpp"
@@ -16,11 +17,10 @@ struct Rgb {
     double r, g, b;
 };
 Rgb urgency_color(int urgency) {
-    if (urgency == 2)
-        return {1.0, 0.706, 0.671}; // mError #ffb4ab
-    if (urgency == 0)
-        return {0.898, 0.882, 0.902}; // mOnSurface #e5e1e6
-    return {0.749, 0.761, 1.0}; // mPrimary #bfc2ff
+    const Gdk::RGBA c = Theme::get().rgba(urgency == 2 ? "mError"        // critical
+                                          : urgency == 0 ? "mOnSurface" // low
+                                                         : "mPrimary");
+    return {c.get_red(), c.get_green(), c.get_blue()};
 }
 
 } // namespace

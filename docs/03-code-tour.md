@@ -26,7 +26,7 @@ what is small and what is not.
 | `css/notifications.css` | History panel and toast popups (`notif-*`, `window.notification-popups`). |
 | `css/launcher.css` | Launcher window (`launcher-*`, `window.launcher`). |
 | `hypr-shell.gresource.xml` | Lists every file bundled into the binary (style.css + css/*). Add new CSS files here. |
-| `hypr-shell-settings.desktop.in` | Launcher entry template; `@bindir@` is replaced at build time. Presents as "Settings" with `Icon=org.gnome.Settings` (not shipped) and `StartupWMClass=dev.hyprshell.Settings`. |
+| `hypr-shell-settings.desktop.in` | Launcher entry template; `@bindir@` is replaced at build time. Presents as "Settings" with `Icon=dev.hyprshell.Settings` (GNOME Settings' icon, bundled in `data/icons/`) and `StartupWMClass=dev.hyprshell.Settings`. |
 | `fonts/noctalia-tabler-icons.ttf` | Tabler icon font (MIT) for almost every glyph. |
 | `fonts/SegoeIcons.ttf` | Microsoft "Segoe Fluent Icons" for the Windows-11-style battery. Proprietary; personal use only. Remove before publishing. |
 | `fonts/*-license.txt`, `*-NOTICE.txt` | License texts installed alongside the fonts. |
@@ -141,6 +141,8 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `mpris` | `org.mpris.MediaPlayer2.*` on the session bus | One `Gio::DBus::Proxy` pair per player (NameOwnerChanged adds/removes), metadata / status / capabilities from PropertiesChanged, Position polled every second while playing (+ Seeked), `active()` = playing else most recent; PlayPause / Next / Previous / SetPosition / Volume. |
 | `system_stats` | `/proc/stat`, `/proc/meminfo`, hwmon / thermal zones, `statvfs` | Noctalia's SystemStatService subset: CPU usage + temperature every 1 s, memory 5 s, disk 30 s — only while a consumer is registered (the sysmon card while its panel is open). |
 | `user_info.hpp` | GLib user info (header-only) | `user_display_name()` (GECOS, else login) and `user_avatar_path()` (`~/.face`, `HS_LOCK_AVATAR` override). |
+| `palette.hpp` | nothing (header-only) | `derive_palette(accent, dark)` → the 17 `m*` tokens as hex, `palette_css()` (`@define-color` lines), hex/HSL helpers; shared with the settings app, which uses it for libadwaita's accent. |
+| `theme` | Config | `Theme::get()`: palette + font + dark flag from `ui.*`, recomputed on config change (`signal_changed`); `rgba("mPrimary")` for cairo/GSK drawing, `css()` for the theme provider. |
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |
 | `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
 

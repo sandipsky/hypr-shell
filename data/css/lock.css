@@ -1,22 +1,21 @@
 /* lock screen — Noctalia's LockScreen (LockScreenBackground + LockScreenPanel)
  * on ext-session-lock. Colors are the user's noctalia colors.json snapshot
- * (mPrimary #bfc2ff, mOnPrimary #202578, mTertiary #e8b9d5, mOnTertiary
- * #46263b, mError #ffb4ab, mOnError #690005, mSurface #131316, mOnSurface
- * #e5e1e6, mOnSurfaceVariant #c7c5d0, mOutline #46464f, mShadow #000000);
+ * (mPrimary @mPrimary, mOnPrimary @mOnPrimary, mTertiary @mTertiary, mOnTertiary
+ * @mOnTertiary, mError @mError, mOnError @mOnError, mSurface @mSurface, mOnSurface
+ * @mOnSurface, mOnSurfaceVariant @mOnSurfaceVariant, mOutline @mOutline, mShadow @mShadow);
  * Qt pointSize values are written in pt. */
 
 window.lock-surface {
-  background: #000000;
-  font-family: "Fira Sans";
+  background: @mShadow;
 }
 
 /* Noctalia's four-stop shadow gradient over the wallpaper */
 .lock-gradient {
   background: linear-gradient(to bottom,
-    alpha(#000000, 0.4) 0%,
-    alpha(#000000, 0.2) 30%,
-    alpha(#000000, 0.25) 70%,
-    alpha(#000000, 0.5) 100%);
+    alpha(@mShadow, 0.4) 0%,
+    alpha(@mShadow, 0.2) 30%,
+    alpha(@mShadow, 0.25) 70%,
+    alpha(@mShadow, 0.5) 100%);
 }
 
 .lock-hidden-input {
@@ -39,19 +38,19 @@ window.lock-surface {
 .lock-time {
   font-size: 72pt;
   font-weight: 700;
-  color: #e5e1e6; /* mOnSurface */
+  color: @mOnSurface; /* mOnSurface */
 }
 
 .lock-date {
   font-size: 18pt; /* fontSizeXXL */
   font-weight: 500;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 /* -- login stage: avatar, name, password ------------------------------------- */
 .lock-avatar-ring {
   border-radius: 65px;
-  border: 1px solid alpha(#e5e1e6, 0.25);
+  border: 1px solid alpha(@mOnSurface, 0.25);
 }
 
 .lock-avatar {
@@ -60,26 +59,25 @@ window.lock-surface {
 
 .lock-avatar-fallback {
   font-size: 56pt;
-  color: #c7c5d0; /* mOnSurfaceVariant */
-  background: #201f23; /* mSurfaceVariant */
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+  background: @mSurfaceVariant; /* mSurfaceVariant */
   border-radius: 62px;
 }
 
 .lock-name {
-  font-family: "Fira Sans SemiBold", "Fira Sans";
   font-size: 24pt; /* fontSizeXXXL */
   font-weight: 600;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 .lock-password {
-  background: #131316; /* mSurface */
+  background: @mSurface; /* mSurface */
   border-radius: 15px; /* min(iRadiusL, height/2) */
-  border: 1px solid alpha(#46464f, 0.3); /* mOutline; no focus highlight, per user */
+  border: 1px solid alpha(@mOutline, 0.3); /* mOutline; no focus highlight, per user */
 }
 
 .lock-caret {
-  background: #bfc2ff;
+  background: @mPrimary;
   min-width: 2px;
   min-height: 20px;
   transition: opacity 530ms linear; /* lockScreenAnimations: smooth blink */
@@ -97,13 +95,13 @@ window.lock-surface {
 
 .lock-dots {
   font-size: 13pt; /* fontSizeL */
-  color: #bfc2ff;
+  color: @mPrimary;
   letter-spacing: 1px; /* marginXXXS */
 }
 
 .lock-plain {
   font-size: 11pt; /* fontSizeM */
-  color: #bfc2ff;
+  color: @mPrimary;
 }
 
 button.lock-eye,
@@ -122,15 +120,15 @@ button.lock-cancel {
 
 button.lock-eye .lock-glyph {
   font-size: 14pt;
-  color: #c7c5d0; /* mOnSurfaceVariant */
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
 button.lock-eye:hover {
-  background: #bfc2ff;
+  background: @mPrimary;
 }
 
 button.lock-eye:hover .lock-glyph {
-  color: #202578; /* mOnPrimary */
+  color: @mOnPrimary; /* mOnPrimary */
 }
 
 /* -- pills 200px above the bottom edge ---------------------------------------- */
@@ -153,58 +151,58 @@ button.lock-eye:hover .lock-glyph {
 }
 
 .lock-pill.info {
-  background: #e8b9d5; /* mTertiary */
+  background: @mTertiary; /* mTertiary */
 }
 
 .lock-pill.info .lock-glyph,
 .lock-pill.info .lock-pill-text {
-  color: #46263b; /* mOnTertiary */
+  color: @mOnTertiary; /* mOnTertiary */
 }
 
 .lock-pill.error {
-  background: #ffb4ab; /* mError */
+  background: @mError; /* mError */
 }
 
 .lock-pill.error .lock-glyph,
 .lock-pill.error .lock-pill-text {
-  color: #690005; /* mOnError */
+  color: @mOnError; /* mOnError */
 }
 
 .lock-pill.countdown {
-  background: #131316; /* mSurface */
+  background: @mSurface; /* mSurface */
   padding: 0 9px; /* marginM */
 }
 
 .lock-pill.countdown .lock-pill-icon {
-  color: #bfc2ff; /* mPrimary */
+  color: @mPrimary; /* mPrimary */
 }
 
 .lock-pill.countdown .lock-pill-text {
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.lock-cancel {
-  background: alpha(#bfc2ff, 0.1);
+  background: alpha(@mPrimary, 0.1);
 }
 
 button.lock-cancel .lock-glyph {
   font-size: 13pt;
-  color: #bfc2ff;
+  color: @mPrimary;
 }
 
 button.lock-cancel:hover {
-  background: #bfc2ff;
+  background: @mPrimary;
 }
 
 button.lock-cancel:hover .lock-glyph {
-  color: #202578;
+  color: @mOnPrimary;
 }
 
 /* -- bottom right: battery + power button ------------------------------------- */
 .lock-battery .icon {
   font-family: "Segoe Fluent Icons";
   font-size: 16pt; /* fontSizeXL */
-  color: #e5e1e6; /* frameColor mOnSurface */
+  color: @mOnSurface; /* frameColor mOnSurface */
 }
 
 .lock-battery.charging .icon-fill {
@@ -218,31 +216,31 @@ button.lock-cancel:hover .lock-glyph {
 .lock-battery-text {
   font-size: 11pt;
   font-weight: 500;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.lock-power {
-  background: alpha(#131316, 0.65);
+  background: alpha(@mSurface, 0.65);
 }
 
 button.lock-power .lock-glyph {
   font-size: 14pt;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.lock-power:hover {
-  background: #bfc2ff;
+  background: @mPrimary;
 }
 
 button.lock-power:hover .lock-glyph {
-  color: #202578;
+  color: @mOnPrimary;
 }
 
 /* -- session menu above the power button -------------------------------------- */
 .lock-session-menu {
-  background: #131316; /* mSurface */
+  background: @mSurface; /* mSurface */
   border-radius: 16px; /* radiusM */
-  border: 1px solid alpha(#46464f, 0.3);
+  border: 1px solid alpha(@mOutline, 0.3);
   padding: 9px;
 }
 
@@ -259,32 +257,32 @@ button.lock-session-item {
 
 .lock-session-glyph {
   font-size: 13pt; /* fontSizeL */
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 .lock-session-label {
   font-size: 11pt; /* fontSizeM */
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.lock-session-item:hover {
-  background: #bfc2ff;
+  background: @mPrimary;
 }
 
 button.lock-session-item:hover .lock-session-glyph,
 button.lock-session-item:hover .lock-session-label {
-  color: #202578;
+  color: @mOnPrimary;
 }
 
 button.lock-session-item.destructive .lock-session-glyph {
-  color: #ffb4ab; /* mError */
+  color: @mError; /* mError */
 }
 
 button.lock-session-item.destructive:hover {
-  background: #ffb4ab;
+  background: @mError;
 }
 
 button.lock-session-item.destructive:hover .lock-session-glyph,
 button.lock-session-item.destructive:hover .lock-session-label {
-  color: #690005; /* mOnError */
+  color: @mOnError; /* mOnError */
 }

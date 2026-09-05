@@ -244,6 +244,15 @@ public:
     };
     const Wallpaper& wallpaper() const { return wallpaper_; }
 
+    // ui.* (top level): theme — text font, accent colour (hex) and dark/light.
+    // The palette is derived from these in services/palette.hpp.
+    struct Ui {
+        std::string font = "Fira Sans";
+        std::string accent = "#bfc2ff";
+        bool dark_mode = true;
+    };
+    const Ui& ui() const { return ui_; }
+
     // night_light.* (top level): Noctalia's Settings.data.nightLight driven
     // through hyprsunset. The day temperature is fixed at 6500 K (neutral: no
     // filter process during the day), per user.
@@ -327,6 +336,7 @@ private:
     LockScreen lock_screen_;
     Wallpaper wallpaper_;
     NightLight night_light_;
+    Ui ui_;
     Osd osd_;
     sigc::signal<void()> changed_;
 };

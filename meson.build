@@ -73,6 +73,7 @@ sources = files(
   'src/services/bluez.cpp',
   'src/services/brightness.cpp',
   'src/services/config.cpp',
+  'src/services/theme.cpp',
   'src/bar/modules/active_window.cpp',
   'src/bar/modules/app_menu.cpp',
   'src/bar/modules/battery.cpp',
@@ -112,6 +113,17 @@ install_data(
   install_dir: get_option('datadir') / 'hypr-shell' / 'sounds',
 )
 
+# Settings app icon: GNOME Settings' icon, renamed (GPL-2.0-or-later, see
+# data/icons/NOTICE.txt). GTK finds files under ~/.local/share/icons/hicolor
+# without an icon cache.
+install_data(
+  'data/icons/dev.hyprshell.Settings.svg',
+  install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
+)
+install_data(
+  'data/icons/dev.hyprshell.Settings-symbolic.svg',
+  install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'symbolic' / 'apps',
+)
 install_data(
   'data/fonts/noctalia-tabler-icons.ttf',
   'data/fonts/tabler-icons-license.txt',

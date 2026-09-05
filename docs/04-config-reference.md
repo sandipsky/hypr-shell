@@ -316,6 +316,17 @@ shell simply maps no wallpaper window.
 | `slideshow_interval_s` | 60..86400 | `300` | Seconds between changes (the settings app edits minutes). A manual pick restarts the timer. |
 | `slideshow_order` | `random` / `alphabetical` | `random` | `random` is a shuffle bag (every image once before repeats, never the same twice in a row), `alphabetical` steps through the sorted folder. |
 
+## `ui` (top level)
+
+Theme of the shell and of the settings window. The whole palette derives
+from these three values (see [styling](09-styling-and-icons.md#colours)).
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `dark_mode` | bool | `true` | Dark surfaces with light text; `false` gives the light palette (Material tone-40 accent, near-white surfaces). Also forces the settings window's libadwaita colour scheme. |
+| `accent` | `"#rrggbb"` | `"#bfc2ff"` | Accent colour (the settings page offers ten swatches; any hex works by hand). Dark mode uses a pastel of it as `mPrimary` (lightness raised to at least 0.80); light mode darkens it so white text reads on it. Invalid strings fall back to the default. |
+| `font` | string | `"Fira Sans"` | Text font family for every window and popover (icon fonts are unaffected). Sizes are not configurable. |
+
 ## `night_light` (top level)
 
 Exposed as `Config::get().night_light()` (struct `Config::NightLight`).

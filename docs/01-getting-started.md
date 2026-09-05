@@ -94,7 +94,7 @@ side.
 | `~/.local/bin/hypr-shell`, `~/.local/bin/hypr-shell-settings` | Installed binaries. |
 | `~/.local/share/fonts/hypr-shell/` | Bundled icon fonts. |
 | `~/.local/share/hypr-shell/sounds/` | Default notification sound. |
-| `~/.local/share/applications/hypr-shell-settings.desktop` | Launcher entry. Shows as plain "Settings" with the GNOME Settings icon, which hypr-shell does **not** ship; install `org.gnome.Settings.svg` into your icon theme yourself or change `Icon=` in the `.desktop.in`. |
+| `~/.local/share/applications/hypr-shell-settings.desktop` | Launcher entry. Shows as plain "Settings" with GNOME Settings' icon, bundled as `dev.hyprshell.Settings.svg` (installed under `~/.local/share/icons/hicolor`, see `data/icons/NOTICE.txt`). |
 | `build/` | Meson build directory (git-ignored). Safe to delete and recreate. |
 
 Rule worth knowing early: **the shell never writes `config.json`**. Only the

@@ -3,10 +3,9 @@ Type=Application
 Name=Settings
 Comment=Configure the hypr-shell desktop shell
 Exec=@bindir@/hypr-shell-settings
-# GNOME Control Center's icon — not shipped by hypr-shell; the user installs
-# the svg as org.gnome.Settings.svg under /usr/share/icons/hicolor/scalable/apps
-# (or anywhere in the icon theme path)
-Icon=org.gnome.Settings
+# GNOME Settings' icon, bundled as data/icons/dev.hyprshell.Settings.svg and
+# installed into <datadir>/icons/hicolor (see data/icons/NOTICE.txt)
+Icon=dev.hyprshell.Settings
 Terminal=false
 Categories=Settings;DesktopSettings;
 StartupWMClass=dev.hyprshell.Settings

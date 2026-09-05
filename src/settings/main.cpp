@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "services/app_menu_icons.hpp"
+#include "services/palette.hpp"
 #include "services/session_actions.hpp"
 #include "services/wallpaper_files.hpp"
 #include "settings/about_page.hpp"
@@ -68,6 +69,7 @@ constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // Settings look; About last, like GNOME)
 constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"bar", "Bar", "focus-top-bar-symbolic"},
+    {"ui_page", "User interface", "preferences-desktop-appearance-symbolic"},
     {"wallpaper_page", "Wallpaper", "preferences-desktop-wallpaper-symbolic"},
     {"night_light_page", "Night light", "night-light-symbolic"},
     {"hotspot_page", "Hotspot", "glyph:\uED1B"}, // tabler access-point
@@ -108,6 +110,18 @@ constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
 constexpr guint kAmPresetCount = G_N_ELEMENTS(hyprshell::kAppMenuIconPresets);
 constexpr guint kAmIconDistroIndex = kAmPresetCount;
 constexpr guint kAmIconCustomIndex = kAmPresetCount + 1;
+// User interface page: GNOME Settings' accent swatches, plus the shell's
+// default lavender first. The hex is the `ui.accent` value.
+struct AccentSwatch {
+    const char* name;
+    const char* hex;
+};
+constexpr AccentSwatch kAccents[] = {
+    {"Lavender", "#bfc2ff"}, {"Blue", "#3584e4"},   {"Teal", "#2190a4"},  {"Green", "#3a944a"},
+    {"Yellow", "#c88800"},   {"Orange", "#ed5b00"}, {"Red", "#e62d42"},   {"Pink", "#d56199"},
+    {"Purple", "#9141ac"},   {"Slate", "#6f8396"},
+};
+constexpr gsize kAccentCount = G_N_ELEMENTS(kAccents);
 constexpr const char* kNdDensityKeys[] = {"default", "compact"};
 constexpr const char* kNdLocationKeys[] = {"top",    "top_left",    "top_right",
                                            "bottom", "bottom_left", "bottom_right"};
@@ -131,6 +145,7 @@ void update_bar_visibility_rows(Settings* s);
 void update_nd_rows(Settings* s);
 void rebuild_rule_rows(Settings* s);
 void update_wp_rows(Settings* s);
+void update_ui_style_tiles(Settings* s);
 void update_nl_rows(Settings* s);
 std::string nl_time_option(guint index);
 void wp_set_directory(Settings* s, const std::string& directory);
@@ -214,6 +229,12 @@ struct Settings {
     AdwComboRow* nl_sunset = nullptr;
     AdwSwitchRow* nl_forced = nullptr;
     bool nl_available = false; // hyprsunset found in PATH
+
+    // User interface sidebar page (top-level "ui" object): theme
+    GtkWidget* ui_style_preview[2] = {}; // Default (light) / Dark tiles' drawing areas
+    GtkWidget* ui_swatches[kAccentCount] = {}; // GtkCheckButtons, one per kAccents
+    GtkWidget* ui_font_button = nullptr;   // GtkFontDialogButton
+    GtkCssProvider* ui_accent_css = nullptr; // this app's own accent color
 
     // Wallpaper sidebar page (top-level "wallpaper" object)
     AdwEntryRow* wp_directory = nullptr;
@@ -346,6 +367,14 @@ json& bar_object(Settings* s) {
     if (!s->root["bar"].is_object())
         s->root["bar"] = json::object();
     return s->root["bar"];
+}
+
+json& ui_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["ui"].is_object())
+        s->root["ui"] = json::object();
+    return s->root["ui"];
 }
 
 void populate(Settings* s) {
@@ -695,6 +724,21 @@ void populate(Settings* s) {
             adw_combo_row_set_selected(s->wp_fill, i);
     adw_switch_row_set_active(s->wp_transitions, wp_transitions);
     adw_switch_row_set_active(s->nl_enabled, nl_enabled && s->nl_available);
+
+    // user interface (ui.*)
+    update_ui_style_tiles(s);
+    {
+        std::string accent = ui_object(s).value("accent", std::string(hyprshell::kDefaultAccent));
+        gchar* lower = g_ascii_strdown(accent.c_str(), -1);
+        for (gsize i = 0; i < kAccentCount; ++i) // no match (custom hex) = none checked
+            gtk_check_button_set_active(GTK_CHECK_BUTTON(s->ui_swatches[i]),
+                                        g_strcmp0(lower, kAccents[i].hex) == 0);
+        g_free(lower);
+        const std::string font = ui_object(s).value("font", std::string(hyprshell::kDefaultFont));
+        PangoFontDescription* desc = pango_font_description_from_string(font.c_str());
+        gtk_font_dialog_button_set_font_desc(GTK_FONT_DIALOG_BUTTON(s->ui_font_button), desc);
+        pango_font_description_free(desc);
+    }
     gtk_adjustment_set_value(s->nl_temp, nl_temp);
     for (guint i = 0; i < kNlTimeOptions; ++i) {
         if (nl_time_option(i) == nl_sunrise)
@@ -1235,6 +1279,146 @@ void update_nl_rows(Settings* s) {
     gtk_widget_set_sensitive(GTK_WIDGET(s->nl_sunrise), !forced);
     gtk_widget_set_sensitive(GTK_WIDGET(s->nl_sunset), !forced);
 }
+
+// The settings window follows the shell's theme too: forced dark/light via
+// AdwStyleManager and the accent as libadwaita's accent_bg_color (the
+// light-mode primary — a mid tone that carries white text, which libadwaita
+// expects of its accent; the dark-mode primary would be too pale).
+void apply_settings_theme(Settings* s) {
+    const bool dark = ui_object(s).value("dark_mode", true);
+    adw_style_manager_set_color_scheme(adw_style_manager_get_default(),
+                                       dark ? ADW_COLOR_SCHEME_FORCE_DARK
+                                            : ADW_COLOR_SCHEME_FORCE_LIGHT);
+    std::string accent = ui_object(s).value("accent", std::string(hyprshell::kDefaultAccent));
+    hyprshell::Rgb probe;
+    if (!hyprshell::parse_hex_color(accent, probe))
+        accent = hyprshell::kDefaultAccent;
+    const auto palette = hyprshell::derive_palette(accent, /*dark=*/false);
+    // libadwaita >= 1.6 reads its accent from CSS variables on :root (the
+    // legacy @define-color names are ignored there), so set both forms
+    const std::string primary = hyprshell::palette_color(palette, "mPrimary");
+    const std::string css = "@define-color accent_bg_color " + primary +
+                            ";\n@define-color accent_fg_color #ffffff;\n"
+                            ":root { --accent-bg-color: " + primary +
+                            "; --accent-fg-color: #ffffff; --accent-color: " + primary + "; }\n";
+    if (s->ui_accent_css == nullptr) {
+        s->ui_accent_css = gtk_css_provider_new();
+        gtk_style_context_add_provider_for_display(gdk_display_get_default(),
+                                                   GTK_STYLE_PROVIDER(s->ui_accent_css),
+                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+    gtk_css_provider_load_from_string(s->ui_accent_css, css.c_str());
+}
+
+void update_ui_style_tiles(Settings* s) {
+    const bool dark = ui_object(s).value("dark_mode", true);
+    for (int i = 0; i < 2; ++i) {
+        if (s->ui_style_preview[i] == nullptr)
+            continue;
+        if ((i == 1) == dark)
+            gtk_widget_add_css_class(s->ui_style_preview[i], "selected");
+        else
+            gtk_widget_remove_css_class(s->ui_style_preview[i], "selected");
+    }
+}
+
+void on_ui_style_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const bool dark = g_object_get_data(G_OBJECT(button), "dark") != nullptr;
+    ui_object(s)["dark_mode"] = dark;
+    update_ui_style_tiles(s);
+    save(s);
+    apply_settings_theme(s);
+}
+
+void on_ui_swatch_toggled(GtkCheckButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading || !gtk_check_button_get_active(button))
+        return;
+    const char* hex = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "hex"));
+    if (hex == nullptr)
+        return;
+    ui_object(s)["accent"] = hex;
+    save(s);
+    apply_settings_theme(s);
+}
+
+// GNOME Settings' style preview: a blue desktop with two windows behind and
+// one in front, light or dark. Drawn in cairo so it needs no image assets.
+void draw_style_preview(GtkDrawingArea* area, cairo_t* cr, int width, int height, gpointer) {
+    const bool dark = g_object_get_data(G_OBJECT(area), "dark") != nullptr;
+    const auto rounded = [cr](double x, double y, double w, double h, double r) {
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, x + w - r, y + r, r, -G_PI / 2, 0);
+        cairo_arc(cr, x + w - r, y + h - r, r, 0, G_PI / 2);
+        cairo_arc(cr, x + r, y + h - r, r, G_PI / 2, G_PI);
+        cairo_arc(cr, x + r, y + r, r, G_PI, 3 * G_PI / 2);
+        cairo_close_path(cr);
+    };
+    // desktop
+    rounded(0, 0, width, height, 12);
+    cairo_set_source_rgb(cr, 0.02, 0.25, 0.56);
+    cairo_fill(cr);
+    // two windows behind (always dark, like GNOME's preview)
+    const auto window = [&](double x, double y, double w, double h, double body_r,
+                            double body_g, double body_b, double head_r, double head_g,
+                            double head_b) {
+        rounded(x, y, w, h, 5);
+        cairo_set_source_rgb(cr, body_r, body_g, body_b);
+        cairo_fill(cr);
+        rounded(x, y, w, 12, 5);
+        cairo_rectangle(cr, x, y + 6, w, 6);
+        cairo_set_source_rgb(cr, head_r, head_g, head_b);
+        cairo_fill(cr);
+    };
+    window(width * 0.36, height * 0.15, width * 0.48, height * 0.52, 0.17, 0.17, 0.17, 0.22,
+           0.22, 0.22);
+    window(width * 0.52, height * 0.15, width * 0.32, height * 0.52, 0.17, 0.17, 0.17, 0.22,
+           0.22, 0.22);
+    // the front window shows the style
+    if (dark)
+        window(width * 0.15, height * 0.38, width * 0.50, height * 0.46, 0.20, 0.20, 0.20, 0.27,
+               0.27, 0.27);
+    else
+        window(width * 0.15, height * 0.38, width * 0.50, height * 0.46, 0.98, 0.98, 0.98, 0.92,
+               0.92, 0.92);
+}
+
+GtkWidget* make_style_tile(Settings* s, const char* label, bool dark) {
+    GtkWidget* button = gtk_button_new();
+    gtk_widget_add_css_class(button, "style-tile");
+    gtk_widget_add_css_class(button, "flat");
+    if (dark)
+        g_object_set_data(G_OBJECT(button), "dark", GINT_TO_POINTER(1));
+    GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    GtkWidget* preview = gtk_drawing_area_new();
+    gtk_widget_add_css_class(preview, "style-preview");
+    gtk_widget_set_size_request(preview, 172, 130);
+    if (dark)
+        g_object_set_data(G_OBJECT(preview), "dark", GINT_TO_POINTER(1));
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(preview), draw_style_preview, nullptr,
+                                   nullptr);
+    gtk_box_append(GTK_BOX(box), preview);
+    gtk_box_append(GTK_BOX(box), gtk_label_new(label));
+    gtk_button_set_child(GTK_BUTTON(button), box);
+    g_signal_connect(button, "clicked", G_CALLBACK(on_ui_style_clicked), s);
+    s->ui_style_preview[dark ? 1 : 0] = preview;
+    return button;
+}
+
+void on_ui_font_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    PangoFontDescription* desc =
+        gtk_font_dialog_button_get_font_desc(GTK_FONT_DIALOG_BUTTON(s->ui_font_button));
+    const char* family = desc != nullptr ? pango_font_description_get_family(desc) : nullptr;
+    if (family == nullptr || *family == '\0')
+        return;
+    ui_object(s)["font"] = family;
+    save(s);
+}
+
 
 void on_nl_enabled_toggled(GObject*, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
@@ -2258,8 +2442,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // wallpaper grid tiles (Noctalia's panel look: rounded cover thumbnails,
     // accent border on the current one, others veiled until hovered)
     GtkCssProvider* css = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(
-        css,
+    std::string settings_css =
         ".wp-tile { padding: 4px; border-radius: 20px; }"
         ".wp-frame { border-radius: 16px; border: 3px solid transparent; }"
         ".wp-tile.current .wp-frame { border-color: @accent_bg_color; }"
@@ -2271,7 +2454,32 @@ void on_activate(GtkApplication* app, gpointer) {
         // search result target flash (removed again by the search module)
         "row.search-hit { background-color: alpha(@accent_bg_color, 0.28); }"
         // tabler glyph standing in for an icon (sidebar + search results)
-        ".page-glyph { font-family: \"noctalia-tabler-icons\"; font-size: 15px; }");
+        ".page-glyph { font-family: \"noctalia-tabler-icons\"; font-size: 15px; }"
+        // User interface page: GNOME's Appearance look
+        "button.style-tile { background: none; box-shadow: none; border: none; padding: 6px; }"
+        ".style-preview { border-radius: 12px; }"
+        // (libadwaita >= 1.6 exposes the accent as a CSS variable, not a named colour)
+        ".style-preview.selected { outline: 2px solid var(--accent-bg-color);"
+        "  outline-offset: 3px; }"
+        // grouped GtkCheckButtons render a `radio` node (a lone one a `check` node)
+        "checkbutton.accent-swatch { padding: 0; margin: 0 8px; background: none; }"
+        "checkbutton.accent-swatch > radio, checkbutton.accent-swatch > check {"
+        "  min-width: 24px; min-height: 24px; margin: 0; border-radius: 999px; border: none;"
+        "  box-shadow: none; background-image: none; -gtk-icon-source: none;"
+        "  -gtk-icon-size: 0; }"
+        "checkbutton.accent-swatch > radio:checked, checkbutton.accent-swatch > check:checked {"
+        "  outline-width: 2px; outline-style: solid; outline-offset: 3px; }";
+    for (gsize i = 0; i < kAccentCount; ++i) {
+        gchar* rule = g_strdup_printf(
+            "checkbutton.accent-swatch-%zu > radio, checkbutton.accent-swatch-%zu > check"
+            "  { background-color: %s; }"
+            "checkbutton.accent-swatch-%zu > radio:checked,"
+            "checkbutton.accent-swatch-%zu > check:checked { outline-color: %s; }",
+            i, i, kAccents[i].hex, i, i, kAccents[i].hex);
+        settings_css += rule;
+        g_free(rule);
+    }
+    gtk_css_provider_load_from_string(css, settings_css.c_str());
     gtk_style_context_add_provider_for_display(gdk_display_get_default(), GTK_STYLE_PROVIDER(css),
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
@@ -2955,6 +3163,78 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(s->lock_blur, "value-changed", G_CALLBACK(on_lock_blur_changed), s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(lock_page),
                              ADW_PREFERENCES_GROUP(lock_group));
+
+    // -- User interface sidebar page (top-level "ui" object) -------------------
+    // GNOME Settings' Appearance panel: Style tiles, an accent swatch row, the font
+    GtkWidget* ui_page = adw_preferences_page_new();
+    GtkWidget* ui_style_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_style_group), "Style");
+    GtkWidget* ui_style_list = gtk_list_box_new();
+    gtk_widget_add_css_class(ui_style_list, "boxed-list");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_style_list), GTK_SELECTION_NONE);
+    GtkWidget* ui_style_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 24);
+    gtk_widget_set_halign(ui_style_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(ui_style_box, 18);
+    gtk_widget_set_margin_bottom(ui_style_box, 18);
+    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Default", false));
+    gtk_box_append(GTK_BOX(ui_style_box), make_style_tile(s, "Dark", true));
+    GtkWidget* ui_style_row = gtk_list_box_row_new();
+    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_style_row), FALSE);
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_style_row), ui_style_box);
+    gtk_list_box_append(GTK_LIST_BOX(ui_style_list), ui_style_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_style_group), ui_style_list);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_style_group));
+
+    GtkWidget* ui_accent_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_accent_group), "Accent Color");
+    GtkWidget* ui_accent_list = gtk_list_box_new();
+    gtk_widget_add_css_class(ui_accent_list, "boxed-list");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui_accent_list), GTK_SELECTION_NONE);
+    GtkWidget* ui_accent_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_halign(ui_accent_box, GTK_ALIGN_CENTER);
+    gtk_widget_set_margin_top(ui_accent_box, 14);
+    gtk_widget_set_margin_bottom(ui_accent_box, 14);
+    GtkCheckButton* swatch_group = nullptr;
+    for (gsize i = 0; i < kAccentCount; ++i) {
+        GtkWidget* swatch = gtk_check_button_new();
+        gtk_widget_add_css_class(swatch, "accent-swatch");
+        gchar* swatch_class = g_strdup_printf("accent-swatch-%zu", i);
+        gtk_widget_add_css_class(swatch, swatch_class);
+        g_free(swatch_class);
+        gtk_widget_set_tooltip_text(swatch, kAccents[i].name);
+        g_object_set_data(G_OBJECT(swatch), "hex", const_cast<char*>(kAccents[i].hex));
+        if (swatch_group != nullptr)
+            gtk_check_button_set_group(GTK_CHECK_BUTTON(swatch), swatch_group);
+        else
+            swatch_group = GTK_CHECK_BUTTON(swatch);
+        g_signal_connect(swatch, "toggled", G_CALLBACK(on_ui_swatch_toggled), s);
+        gtk_box_append(GTK_BOX(ui_accent_box), swatch);
+        s->ui_swatches[i] = swatch;
+    }
+    GtkWidget* ui_accent_row = gtk_list_box_row_new();
+    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(ui_accent_row), FALSE);
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(ui_accent_row), ui_accent_box);
+    gtk_list_box_append(GTK_LIST_BOX(ui_accent_list), ui_accent_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_accent_group), ui_accent_list);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page),
+                             ADW_PREFERENCES_GROUP(ui_accent_group));
+
+    GtkWidget* ui_font_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_font_group), "Font");
+    GtkWidget* ui_font_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_row), "Font");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_row),
+                                "Text font of the bar, panels and lock screen");
+    GtkFontDialog* font_dialog = gtk_font_dialog_new();
+    gtk_font_dialog_set_title(font_dialog, "Shell font");
+    s->ui_font_button = gtk_font_dialog_button_new(font_dialog);
+    gtk_font_dialog_button_set_level(GTK_FONT_DIALOG_BUTTON(s->ui_font_button),
+                                     GTK_FONT_LEVEL_FAMILY);
+    gtk_font_dialog_button_set_use_font(GTK_FONT_DIALOG_BUTTON(s->ui_font_button), TRUE);
+    gtk_widget_set_valign(s->ui_font_button, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(ui_font_row), s->ui_font_button);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_font_group));
 
     // -- Night light sidebar page (top-level "night_light" object) -------------
     GtkWidget* nl_page = adw_preferences_page_new();
@@ -3802,6 +4082,15 @@ void on_activate(GtkApplication* app, gpointer) {
 
     GtkWidget* stack = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(stack), nav, "bar");
+    GtkWidget* ui_view = adw_toolbar_view_new();
+    GtkWidget* ui_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(ui_header),
+                                    adw_window_title_new("User interface", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(ui_view), ui_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(ui_view), ui_page);
+    gtk_stack_add_named(GTK_STACK(stack), ui_view, "ui_page");
+    g_signal_connect(s->ui_font_button, "notify::font-desc", G_CALLBACK(on_ui_font_changed), s);
+    apply_settings_theme(s);
     gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
     gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");

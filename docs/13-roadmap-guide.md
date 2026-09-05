@@ -107,11 +107,11 @@ The sidebar exists. What remains is breadth: every config key must have a
 control (audit against [config reference](04-config-reference.md)), plus the
 pages the user listed in `todo.txt`:
 
-- **User Interface**: font selection, font size, accent colour, dark mode.
-  This is the theming work: turn the hardcoded colours in `data/css/*` into
-  tokens the shell regenerates as a CSS provider from config (the
-  `background_opacity` rule is the pattern, scaled up). Do the token
-  refactor first, then the page.
+- **User Interface**: landed (font, accent colour, dark mode — see
+  [styling](09-styling-and-icons.md#colours) for the token mechanism).
+  Remaining: a font-size setting (the CSS still hard-codes sizes; a scale
+  factor would need every `font-size` turned into a token or a
+  `font-size` on `window` with relative sizes below).
 - **Wallpaper**, **Display**, **On-Screen Display**, **Lock Screen**,
   **Idle**, **Session Menu**: each is a top-level config object + a sidebar
   page + (usually) a service. Follow the

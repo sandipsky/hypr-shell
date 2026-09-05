@@ -47,6 +47,7 @@ AdwNavigationSplitView
      ├─ "wallpaper_page", "night_light_page", "launcher_page", "session_page",
      │  "lock_page", "idle_page", "osd_page", "notifications_page":
      │  one AdwPreferencesPage each for a top-level config object
+     ├─ "ui_page": AdwPreferencesPage for the top-level ui object (theme)
      ├─ "hotspot_page": build_hotspot_page() — NetworkManager state, no config.json
      ├─ "vpn_page": build_vpn_page() — NetworkManager profiles, no config.json
      └─ "about_page": build_about_page() — read-only system facts

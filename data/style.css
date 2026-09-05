@@ -15,3 +15,29 @@
 @import url("css/osd.css");
 @import url("css/wallpaper.css");
 @import url("css/control_center.css");
+
+/* Palette tokens (a snapshot of the user's Noctalia colors.json). The shell
+ * redefines every one of these from config.json's `ui` block (accent colour
+ * + dark/light) through a higher-priority provider — see
+ * services/palette.hpp for the derivation and main.cpp's apply_theme(). */
+@define-color mPrimary #bfc2ff;
+@define-color mOnPrimary #202578;
+@define-color mPrimaryHover #d3d5ff;
+@define-color mSecondary #c5c4dd;
+@define-color mOnSecondary #2e2f42;
+@define-color mTertiary #e8b9d5;
+@define-color mOnTertiary #46263b;
+@define-color mError #ffb4ab;
+@define-color mOnError #690005;
+@define-color mSurface #131316;
+@define-color mOnSurface #e5e1e6;
+@define-color mSurfaceVariant #201f23;
+@define-color mOnSurfaceVariant #c7c5d0;
+@define-color mOutline #46464f;
+@define-color mShadow #000000;
+@define-color mHover #e8b9d5;
+@define-color mOnHover #46263b;
+
+/* Text font for every window and popover (icon fonts set their own family
+ * on their classes). ui.font re-emits this rule from the theme provider. */
+window, popover { font-family: "Fira Sans"; }

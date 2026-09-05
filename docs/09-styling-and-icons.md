@@ -84,17 +84,45 @@ GTK box-model note: borders sit **outside** `min-width`/`min-height`, so a
 
 ## Colours
 
-The palette is currently hardcoded in `style.css`. The bar uses Catppuccin
-Mocha-ish values (`#11111b` background, `#cdd6f4` text, `#a6adc8` dim text).
-The popovers use a snapshot of the user's Noctalia `colors.json`
-(`mPrimary #bfc2ff`, `mOnPrimary #202578`, ...). The plan is to make these
-config-driven theme tokens later; until then, keep new colours consistent
-with the existing ones and put them in `style.css`, not in C++.
+Never write a hex colour in `data/css/*.css` or in C++ (the two status
+colours — battery green `#9fd89f` and amber `#eaa300` — are the exception).
+Use the palette tokens, Noctalia's names:
+
+| Token | Role | Dark default |
+|-------|------|--------------|
+| `@mPrimary` / `@mOnPrimary` / `@mPrimaryHover` | accent, text on it, hover shade | `#bfc2ff` / `#202578` / `#d3d5ff` |
+| `@mSecondary` / `@mOnSecondary` | muted accent | `#c5c4dd` / `#2e2f42` |
+| `@mTertiary` / `@mOnTertiary` (= `@mHover` / `@mOnHover`) | warning tint, hover highlights | `#e8b9d5` / `#46263b` |
+| `@mError` / `@mOnError` | destructive, critical | `#ffb4ab` / `#690005` |
+| `@mSurface` / `@mOnSurface` | panel background, text | `#131316` / `#e5e1e6` |
+| `@mSurfaceVariant` / `@mOnSurfaceVariant` | cards, tracks / dim text | `#201f23` / `#c7c5d0` |
+| `@mOutline` | borders | `#46464f` |
+| `@mShadow` | shadows (`alpha(@mShadow, 0.45)`) | `#000000` |
+
+The defaults are `@define-color`d at the end of `data/style.css`. At runtime
+the shell's theme provider (`App::apply_theme()`, priority APPLICATION+1)
+redefines every token from config.json's `ui` block: `derive_palette()` in
+`services/palette.hpp` turns the accent colour and the dark/light flag into
+the full set (in dark mode the accent is `mPrimary` verbatim, in light mode
+it is darkened for white text; the neutrals take the accent's hue). A
+`@define-color` in a higher-priority provider overrides a lower one's, so
+this works without touching the base sheet — and a user's
+`~/.config/hypr-shell/style.css` (USER priority) can override any single
+token the same way.
+
+Drawing code (cairo, GSK) asks `Theme::get().rgba("mPrimary")` at draw time
+instead of keeping colour constants; the calendar ring, the OSD bar, the
+control-center gauges and the notification countdown do this.
 
 ## Fonts
 
-Text: `"Fira Sans"` (Noctalia's default). If it is not installed, GTK falls
-back to the system sans; the bar still works.
+Text: `ui.font` (default `"Fira Sans"`, Noctalia's default). One inherited
+rule in `data/style.css` — `window, popover { font-family: … }` — sets it
+for everything; the theme provider re-emits the same rule with the
+configured family, so **never put a text `font-family` on a widget class**
+(icon-font classes are the exception, see below). Sizes stay in the
+per-area files. If the font is not installed, GTK falls back to the system
+sans; the bar still works.
 
 Icons come from two icon fonts installed to
 `~/.local/share/fonts/hypr-shell/` by `meson install`:

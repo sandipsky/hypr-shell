@@ -133,8 +133,11 @@ void AppMenu::open() {
 void AppMenu::apply_config() {
     const auto& cfg = Config::get().app_menu();
     using Display = Config::AppMenu::Display;
-    const bool want_icon = cfg.display != Display::Text;
-    const bool want_text = cfg.display != Display::Icon;
+    // a vertical bar has no room for a label: icon only, whatever `display`
+    // says (like Noctalia's bar pills on the side bars)
+    const bool vertical = Config::get().bar_vertical();
+    const bool want_icon = cfg.display != Display::Text || vertical;
+    const bool want_text = cfg.display != Display::Icon && !vertical;
 
     bool use_image = false;
     const char* glyph = kAppMenuIconPresets[0].glyph; // rocket fallback

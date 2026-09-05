@@ -6,46 +6,45 @@
 .app-menu-text {
   font-size: 13px;
   font-weight: 600;
-  color: #cdd6f4;
+  color: @mOnSurface;
 }
 
 popover.app-menu-popover > contents {
-  background: #131316; /* mSurface */
+  background: @mSurface; /* mSurface */
   border-radius: 20px;
   border: none;
-  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
   padding: 12px;
-  font-family: "Fira Sans";
 }
 
 /* search input — the launcher's NTextInput port on a variant surface */
 entry.am-search {
-  background: #201f23; /* mSurfaceVariant */
-  color: #e5e1e6; /* mOnSurface */
-  border: 1px solid #46464f; /* mOutline */
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  color: @mOnSurface; /* mOnSurface */
+  border: 1px solid @mOutline; /* mOutline */
   border-radius: 999px;
   padding: 6px 14px;
   min-height: 24px;
   font-size: 14px;
-  caret-color: #bfc2ff; /* mPrimary */
+  caret-color: @mPrimary; /* mPrimary */
   box-shadow: none;
 }
 
 entry.am-search:focus-within {
-  border-color: #c5c4dd; /* mSecondary — not GTK's blue focus ring */
+  border-color: @mSecondary; /* mSecondary — not GTK's blue focus ring */
   outline: none;
 }
 
 entry.am-search selection {
-  background: #bfc2ff;
-  color: #202578;
+  background: @mPrimary;
+  color: @mOnPrimary;
 }
 
 /* round header buttons: settings, session (".active" while its dropdown is
  * open; the dropdown itself is styled in session.css) */
 button.am-icon-btn {
-  background: #201f23; /* mSurfaceVariant */
-  border: 1px solid #46464f; /* mOutline */
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border: 1px solid @mOutline; /* mOutline */
   box-shadow: none;
   border-radius: 999px;
   min-width: 36px;
@@ -55,46 +54,46 @@ button.am-icon-btn {
 
 button.am-icon-btn:hover,
 button.am-icon-btn.active {
-  background: #e8b9d5; /* mHover */
-  border-color: #e8b9d5;
+  background: @mTertiary; /* mHover */
+  border-color: @mTertiary;
 }
 
 .am-btn-glyph {
   font-family: "noctalia-tabler-icons";
   font-size: 17px;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.am-icon-btn:hover .am-btn-glyph,
 button.am-icon-btn.active .am-btn-glyph {
-  color: #46263b; /* mOnHover */
+  color: @mOnTertiary; /* mOnHover */
 }
 
 /* application tiles: mSurfaceVariant cards, mHover when selected (keyboard
  * or hover), Noctalia's grid delegate */
 .am-tile {
-  background: #201f23; /* mSurfaceVariant */
+  background: @mSurfaceVariant; /* mSurfaceVariant */
   border-radius: 14px;
   padding: 10px 6px 8px 6px;
 }
 
 .am-tile.selected {
-  background: #e8b9d5; /* mHover */
+  background: @mTertiary; /* mHover */
 }
 
 .am-tile-name {
   font-size: 12px;
   font-weight: normal; /* user request: not bold */
-  color: #e5e1e6; /* mOnSurface */
+  color: @mOnSurface; /* mOnSurface */
 }
 
 .am-tile.selected .am-tile-name {
-  color: #46263b; /* mOnHover */
+  color: @mOnTertiary; /* mOnHover */
 }
 
 .am-empty {
   font-size: 13px;
-  color: #c7c5d0; /* mOnSurfaceVariant */
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
 /* grid scrollbar: thin themed thumb, like the launcher's */
@@ -108,7 +107,7 @@ button.am-icon-btn.active .am-btn-glyph {
 }
 
 .app-menu-panel scrollbar slider {
-  background: alpha(#e5e1e6, 0.22); /* mOnSurface */
+  background: alpha(@mOnSurface, 0.22); /* mOnSurface */
   border-radius: 999px;
   min-width: 3px;
   margin: 1px;
@@ -116,18 +115,17 @@ button.am-icon-btn.active .am-btn-glyph {
 
 .app-menu-panel scrollbar slider:hover,
 .app-menu-panel scrollbar slider:active {
-  background: alpha(#e5e1e6, 0.4);
+  background: alpha(@mOnSurface, 0.4);
 }
 
 /* right-click context menu on a tile: Pin to / Unpin from taskbar
  * (session-dropdown look: mSurface card, mOutline border, mHover row) */
 popover.am-context-popover > contents {
-  background: #131316; /* mSurface */
+  background: @mSurface; /* mSurface */
   border-radius: 12px;
-  border: 1px solid #46464f; /* mOutline */
-  box-shadow: 0 4px 16px alpha(#000000, 0.45);
+  border: 1px solid @mOutline; /* mOutline */
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
   padding: 4px;
-  font-family: "Fira Sans";
 }
 
 button.am-context-item {
@@ -139,21 +137,21 @@ button.am-context-item {
 }
 
 button.am-context-item:hover {
-  background: #e8b9d5; /* mHover */
+  background: @mTertiary; /* mHover */
 }
 
 .am-context-glyph {
   font-family: "noctalia-tabler-icons";
   font-size: 15px;
-  color: #e5e1e6; /* mOnSurface */
+  color: @mOnSurface; /* mOnSurface */
 }
 
 .am-context-label {
   font-size: 13px;
-  color: #e5e1e6;
+  color: @mOnSurface;
 }
 
 button.am-context-item:hover .am-context-glyph,
 button.am-context-item:hover .am-context-label {
-  color: #46263b; /* mOnHover */
+  color: @mOnTertiary; /* mOnHover */
 }

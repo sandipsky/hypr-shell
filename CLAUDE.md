@@ -45,7 +45,8 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
 ```
 meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
-data/style.css                 default theme entry — @imports data/css/* (GResource)
+data/style.css                 default theme entry — @imports data/css/*, declares the
+                               @define-color palette tokens + the text-font rule (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
                                notifications, launcher, app_menu, session, idle,
                                lock, osd, wallpaper, control_center
@@ -63,6 +64,10 @@ src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                volume, battery, bluetooth, control_center,
                                notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
+src/services/palette.hpp                theme palette derivation (accent + dark/light → the m*
+                                        tokens), header-only, shared with the settings app
+src/services/theme.{hpp,cpp}            Theme singleton: derived palette / font from `ui.*`;
+                                        cairo/GSK drawing code reads colours here
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
 src/services/upower.{hpp,cpp}           battery via UPower DisplayDevice (Gio::DBus)
 src/services/network_manager.{hpp,cpp}  NM primary connection + wifi strength (Gio::DBus)
@@ -362,6 +367,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   title, sidebar header) with `Icon=org.gnome.Settings` — the GNOME Control
   Center icon, which hypr-shell does NOT ship: the user installs the svg
   themselves as org.gnome.Settings.svg in the icon theme path.
+  **Superseded 2026-09-05**: the icon is bundled — `data/icons/
+  dev.hyprshell.Settings{,-symbolic}.svg` are gnome-control-center 50.4's
+  org.gnome.Settings icons renamed (GPL-2.0-or-later, `data/icons/NOTICE.txt`),
+  installed to `<datadir>/icons/hicolor/{scalable,symbolic}/apps`, and the
+  desktop entry says `Icon=dev.hyprshell.Settings`. GTK finds them under
+  ~/.local/share/icons/hicolor without an icon cache.
   StartupWMClass=dev.hyprshell.Settings maps the running window to the entry
   so docks pick up the same icon.
 - 2026-08-31 — Module placement lives in `bar.layout` = `{left:[], center:[],
@@ -1237,6 +1248,62 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   the user's Wi-Fi. NOT ported/added: GNOME's QR code (needs a QR encoder),
   "share from" interface choice (NM picks the default route), client list
   with names, data usage.
+- 2026-09-05 — App menu button is icon-only on vertical bars (user request;
+  `bar.app_menu.display` is ignored there — text/icon_text fall back to the
+  icon, since a side bar has no room for a label; Noctalia's side-bar pills
+  behave the same). Applies on config reload like every other setting.
+- 2026-09-05 — Theming: "User interface" settings page (todo.txt) with dark
+  mode (default on), accent colour and font. **Mechanism**: every hard-coded
+  colour in `data/css/*.css` became a GTK named colour (`@mPrimary`,
+  `@mOnPrimary`, `@mPrimaryHover`, `@mSecondary`, `@mOnSecondary`,
+  `@mTertiary`, `@mOnTertiary`, `@mError`, `@mOnError`, `@mSurface`,
+  `@mOnSurface`, `@mSurfaceVariant`, `@mOnSurfaceVariant`, `@mOutline`,
+  `@mShadow`, `@mHover`, `@mOnHover` — Noctalia's names) whose defaults are
+  `@define-color`d in `data/style.css`; the shell's theme provider
+  (`App::apply_theme`, APPLICATION+1, the old opacity provider grown up)
+  re-`@define-color`s all of them from `ui.*`, and **a higher-priority
+  provider's @define-color overrides a lower one's across providers** —
+  verified live (light mode recoloured the bar/launcher). Catppuccin
+  leftovers were folded into tokens (#11111b bar → mSurface, #cdd6f4 /
+  #e0eaff / #ffffff text → mOnSurface, #a6adc8 → mOnSurfaceVariant);
+  battery green/amber and the trigger window's rgba stay literal. Palette
+  derivation (`services/palette.hpp`, header-only, shared): dark →
+  mPrimary is a tone-80 pastel of the accent (lightness raised to ≥ 0.80,
+  never lowered — GNOME's mid-tone swatches become Noctalia-style pastels;
+  the default #bfc2ff is already there), mOnPrimary a 30% shade of its hue,
+  secondary/tertiary/
+  neutrals tinted with the accent hue (tertiary = hue+87°, surfaces L 0.08 /
+  0.13, on-surface L 0.89) — the default accent #bfc2ff reproduces the CSS
+  snapshot within a couple of RGB steps; light → Material tone-40 primary
+  (accent darkened to L ≤ 0.42 for white text), surfaces L 0.985 / 0.92,
+  error #ba1a1a. **Font**: the nine per-area `font-family: "Fira Sans"`
+  rules collapsed into one inherited `window, popover { font-family }` in
+  style.css that the theme provider re-emits with `ui.font` (icon fonts keep
+  their class rules; "Fira Sans SemiBold" became the inherited family +
+  weight 600). Cairo/GSK code (calendar ring, OSD bar + track, control
+  center gauges + their "Fira Sans Bold" label, notification countdown)
+  reads `Theme::get().rgba("mX")` / `font()` instead of constants. Config
+  `ui.font` / `ui.accent` ("#rrggbb", else default) / `ui.dark_mode`.
+  Settings page after Bar (appearance icon), laid out like GNOME's
+  Appearance panel (user request, superseding a first version with a switch,
+  a GtkColorDialogButton and reset buttons): a "Style" boxed row with two
+  cairo-drawn preview tiles (Default / Dark — blue desktop, two dark windows
+  behind, a light or dark one in front; the selected tile gets a 2px
+  `var(--accent-bg-color)` outline), an "Accent Color" boxed row of ten
+  round swatches (grouped GtkCheckButtons — note their CSS node is `radio`,
+  not `check`; the shell's lavender default first, then GNOME's nine:
+  blue teal green yellow orange red pink purple slate; a custom hex in
+  config leaves none checked), and a Font row (GtkFontDialogButton at
+  family level, use-font preview). American "Color" on this page, per
+  user. The settings window follows the
+  theme itself: AdwStyleManager FORCE_DARK/LIGHT and the accent as
+  libadwaita's accent — **libadwaita ≥ 1.6 ignores `@define-color
+  accent_bg_color` from an app provider; it must be set as `:root {
+  --accent-bg-color; --accent-fg-color; --accent-color }`** (both forms are
+  emitted). The libadwaita accent is the *light-mode* primary (a mid tone
+  that carries white text) in both modes. Not done: font size, per-token
+  overrides (users keep `~/.config/hypr-shell/style.css`, which may also
+  `@define-color` any token), the settings window's font.
 - 2026-09-05 — VPN moved out of the bar into hypr-shell-settings (user
   request): `bar/modules/vpn`, `bar/vpn_panel`, `services/vpn`, the
   `bar.vpn.*` config keys (`Config::Vpn`), the `vpn` module row/default

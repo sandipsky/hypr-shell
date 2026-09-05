@@ -40,6 +40,11 @@ info "Installing"
 meson install -C build >/dev/null
 # icon font (wifi/volume glyphs) lands in $PREFIX/share/fonts — refresh the cache
 fc-cache -f "$PREFIX/share/fonts/hypr-shell" >/dev/null 2>&1 || true
+# A stale icon-theme.cache in ~/.local/share/icons/hicolor hides newly
+# installed icons (GTK trusts the cache over the directory) — refresh it.
+if [ -f "$PREFIX/share/icons/hicolor/icon-theme.cache" ]; then
+    gtk-update-icon-cache -q -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
+fi
 
 ok "installed: $PREFIX/bin/hypr-shell"
 

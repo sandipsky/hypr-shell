@@ -198,9 +198,15 @@ toggle (do-not-disturb) is adopted from config only on value-change
 *edges*, so unrelated saves from the settings app don't clobber the runtime
 state.
 
-**Desktop entry icon**: the settings entry uses `Icon=org.gnome.Settings`,
-which hypr-shell does not ship. Without the svg installed the launcher shows
-a generic icon; that is expected, not a bug.
+**Desktop entry icon**: the settings entry uses `Icon=dev.hyprshell.Settings`,
+GNOME Settings' icon bundled in `data/icons/` and installed under
+`<datadir>/icons/hicolor`. Docks match the running window to the entry
+through `StartupWMClass`; if a generic icon shows, the icon theme path does
+not include `~/.local/share/icons` (XDG_DATA_HOME / XDG_DATA_DIRS) — or a
+**stale `icon-theme.cache`** sits in `~/.local/share/icons/hicolor`: GTK
+trusts an existing cache over the directory listing, so an icon installed
+after the cache was written is invisible until `gtk-update-icon-cache -f -t`
+runs (install.sh does this).
 
 ## Services
 

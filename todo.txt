@@ -1,7 +1,2 @@
---settings 
 
-- User Interface
-    - font selection
-    - accent color selection 
-    - dark mode toggle (By default on)
 

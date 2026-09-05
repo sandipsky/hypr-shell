@@ -1,5 +1,7 @@
 #include "services/config.hpp"
 
+#include "services/palette.hpp"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -101,6 +103,7 @@ void Config::load() {
     lock_screen_ = LockScreen{};
     wallpaper_ = Wallpaper{};
     night_light_ = NightLight{};
+    ui_ = Ui{};
     osd_ = Osd{};
     // deferred to the end of load() so the fallback runs for every early return
     struct FillUnplaced {
@@ -360,6 +363,16 @@ void Config::load() {
             w.slideshow_order = it->value("slideshow_order", "random") == "alphabetical"
                                     ? Wallpaper::Order::Alphabetical
                                     : Wallpaper::Order::Random;
+        }
+        if (auto it = j.find("ui"); it != j.end() && it->is_object()) {
+            const std::string font = it->value("font", ui_.font);
+            if (!font.empty())
+                ui_.font = font;
+            const std::string accent = it->value("accent", ui_.accent);
+            Rgb probe;
+            if (parse_hex_color(accent, probe)) // "#rrggbb" only
+                ui_.accent = accent;
+            ui_.dark_mode = it->value("dark_mode", true);
         }
         if (auto it = j.find("night_light"); it != j.end() && it->is_object()) {
             auto& n = night_light_;

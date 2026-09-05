@@ -7,6 +7,7 @@
 #include "bar/session_window.hpp"
 #include "bar/wallpaper_window.hpp"
 #include "services/config.hpp"
+#include "services/theme.hpp"
 #include "services/idle.hpp"
 #include "services/night_light.hpp"
 #include "services/osd.hpp"
@@ -14,6 +15,8 @@
 
 #include <gtk4-layer-shell.h>
 #include <gtkmm.h>
+
+#include <algorithm>
 
 #include <iostream>
 #include <memory>
@@ -120,9 +123,9 @@ protected:
         hold();
 
         load_css();
-        apply_bar_opacity();
+        apply_theme();
         Config::get().signal_changed().connect(
-            sigc::mem_fun(*this, &App::apply_bar_opacity));
+            sigc::mem_fun(*this, &App::apply_theme));
         bar_ = std::make_unique<Bar>();
         add_window(*bar_);
         // bar.visibility = "hidden" starts the shell with no bar mapped;
@@ -227,22 +230,29 @@ private:
             });
     }
 
-    // bar.background_opacity, applied as a one-rule CSS provider just above
-    // the built-in theme so ~/.config/hypr-shell/style.css (USER priority)
-    // still overrides it. #11111b is the default theme's bar color — becomes
-    // a theme token when theming lands.
-    void apply_bar_opacity() {
-        if (!opacity_provider_) {
-            opacity_provider_ = Gtk::CssProvider::create();
+    // Theme provider: the palette tokens (@define-color, redefining the
+    // defaults declared in data/style.css), the text font and
+    // bar.background_opacity, regenerated on every config reload. Sits just
+    // above the built-in theme so ~/.config/hypr-shell/style.css (USER
+    // priority) still overrides everything.
+    void apply_theme() {
+        if (!theme_provider_) {
+            theme_provider_ = Gtk::CssProvider::create();
             Gtk::StyleProvider::add_provider_for_display(
-                Gdk::Display::get_default(), opacity_provider_,
+                Gdk::Display::get_default(), theme_provider_,
                 GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
         }
         // g_ascii_dtostr: locale-independent "0.88" (never a decimal comma)
         char buf[G_ASCII_DTOSTR_BUF_SIZE];
         g_ascii_dtostr(buf, sizeof buf, Config::get().bar_background_opacity());
-        opacity_provider_->load_from_data(Glib::ustring::compose(
-            ".bar-inner { background-color: alpha(#11111b, %1); }", buf));
+        // the font name is quoted; a stray quote inside would break the sheet
+        std::string font = Theme::get().font();
+        font.erase(std::remove(font.begin(), font.end(), '"'), font.end());
+        std::string css = Theme::get().css();
+        css += Glib::ustring::compose("window, popover { font-family: \"%1\"; }\n", font);
+        css += Glib::ustring::compose(".bar-inner { background-color: alpha(@mSurface, %1); }\n",
+                                      buf);
+        theme_provider_->load_from_data(css);
     }
 
     void reload_user_css() {
@@ -269,7 +279,7 @@ private:
     bool open_launcher_on_startup_ = false;
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;
-    Glib::RefPtr<Gtk::CssProvider> opacity_provider_;
+    Glib::RefPtr<Gtk::CssProvider> theme_provider_;
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;
     std::string user_css_path_;

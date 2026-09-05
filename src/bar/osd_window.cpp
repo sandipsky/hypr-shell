@@ -1,4 +1,5 @@
 #include "bar/osd_window.hpp"
+#include "services/theme.hpp"
 
 #include "services/brightness.hpp"
 #include "services/config.hpp"
@@ -297,9 +298,13 @@ void OsdWindow::refresh() {
     card_.set_size_request(card_w_, card_h_);
 
     // progress bar target (value + color), animated 300ms InOutQuad
-    const Rgb color = bar_state == kStateError ? Rgb{1.0, 0.706, 0.671}
-                      : bar_state == kStateDim ? Rgb{0.780, 0.773, 0.816}
-                                               : Rgb{0.749, 0.761, 1.0};
+    const auto theme_rgb = [](const char* name) {
+        const Gdk::RGBA c = Theme::get().rgba(name);
+        return Rgb{c.get_red(), c.get_green(), c.get_blue()};
+    };
+    const Rgb color = bar_state == kStateError ? theme_rgb("mError")
+                      : bar_state == kStateDim ? theme_rgb("mOnSurfaceVariant")
+                                               : theme_rgb("mPrimary");
     const double target = std::min(1.0, value);
     if (!bar_synced_ || !get_visible()) {
         bar_value_ = bar_to_ = target;
@@ -445,7 +450,8 @@ void OsdWindow::draw_bar(const Cairo::RefPtr<Cairo::Context>& cr, int width, int
     };
     // track: mSurfaceVariant
     rounded(0, 0, width, height);
-    cr->set_source_rgb(0.125, 0.122, 0.137); // #201f23
+    const Gdk::RGBA track = Theme::get().rgba("mSurfaceVariant");
+    cr->set_source_rgb(track.get_red(), track.get_green(), track.get_blue());
     cr->fill_preserve();
     cr->clip();
     // fill grows from the left, or from the bottom in the vertical column

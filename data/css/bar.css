@@ -16,28 +16,27 @@ window.bar-trigger {
 .bar-inner {
   /* the alpha here is the fallback — bar.background_opacity in config.json
    * overrides it via a generated provider (user style.css still wins) */
-  background: alpha(#11111b, 0.88);
-  border-bottom: 1px solid alpha(#cdd6f4, 0.07);
+  background: alpha(@mSurface, 0.88);
+  border-bottom: 1px solid alpha(@mOnSurface, 0.07);
   padding: 3px 10px;
-  font-family: "Fira Sans"; /* Noctalia's fontDefault */
 }
 
 /* bar.position = "bottom" in config.json: hairline sits on the top edge */
 window.bar.bottom .bar-inner {
   border-bottom: none;
-  border-top: 1px solid alpha(#cdd6f4, 0.07);
+  border-top: 1px solid alpha(@mOnSurface, 0.07);
 }
 
 /* vertical bars: hairline moves to the inner edge, paddings rotate */
 window.bar.left .bar-inner {
   border-bottom: none;
-  border-right: 1px solid alpha(#cdd6f4, 0.07);
+  border-right: 1px solid alpha(@mOnSurface, 0.07);
   padding: 10px 3px;
 }
 
 window.bar.right .bar-inner {
   border-bottom: none;
-  border-left: 1px solid alpha(#cdd6f4, 0.07);
+  border-left: 1px solid alpha(@mOnSurface, 0.07);
   padding: 10px 3px;
 }
 
@@ -49,7 +48,7 @@ window.bar.right .module {
 .module {
   padding: 0 10px;
   font-size: 13px;
-  color: #cdd6f4;
+  color: @mOnSurface;
 }
 
 /* workspaces */
@@ -66,43 +65,43 @@ window.bar.right .module {
   border-radius: 999px;
   border: none;
   box-shadow: none;
-  background: alpha(#cdd6f4, 0.08);
-  color: #a6adc8;
+  background: alpha(@mOnSurface, 0.08);
+  color: @mOnSurfaceVariant;
   font-size: 12px;
   font-weight: 600;
   transition: background 150ms ease;
 }
 
 .workspaces button:hover {
-  background: alpha(#cdd6f4, 0.18);
+  background: alpha(@mOnSurface, 0.18);
 }
 
 /* GNOME-overview-style pills: white active, mid-gray occupied, faint empty.
- * The "white" is #e0eaff — cool-tinted to cancel the user's hyprsunset 5919K
+ * The "white" is @mOnSurface — cool-tinted to cancel the user's hyprsunset 5919K
  * night-light warming, so the pill reads neutral white on screen. Use plain
- * #ffffff if night light is off. */
+ * @mOnSurface if night light is off. */
 .workspaces button.occupied {
-  background: alpha(#e0eaff, 0.35);
-  color: #ffffff;
+  background: alpha(@mOnSurface, 0.35);
+  color: @mOnSurface;
 }
 
 .workspaces button.occupied:hover {
-  background: alpha(#e0eaff, 0.48);
+  background: alpha(@mOnSurface, 0.48);
 }
 
 /* focused workspace: solid white */
 .workspaces button.active {
-  background: #e0eaff;
-  color: #11111b;
+  background: @mOnSurface;
+  color: @mSurface;
 }
 
 .workspaces button.active:hover {
-  background: alpha(#e0eaff, 0.88);
+  background: alpha(@mOnSurface, 0.88);
 }
 
 /* focused window title */
 .active-window {
-  color: #a6adc8;
+  color: @mOnSurfaceVariant;
   font-size: 16px;
 }
 
@@ -110,7 +109,7 @@ window.bar.right .module {
 .icon {
   font-family: "noctalia-tabler-icons";
   font-size: 18px;
-  color: #cdd6f4;
+  color: @mOnSurface;
 }
 
 .network,
@@ -152,8 +151,8 @@ window.bar.right .battery .icon {
   min-width: 7px;
   min-height: 7px;
   border-radius: 4px;
-  background: #bfc2ff; /* mPrimary */
-  border: 1px solid #11111b;
+  background: @mPrimary; /* mPrimary */
+  border: 1px solid @mSurface;
 }
 
 /* taskbar (Noctalia's Taskbar widget) — app icons with a 4px indicator bar
@@ -181,11 +180,11 @@ window.bar.right .taskbar-capsule {
 }
 
 .taskbar-item.hovered .taskbar-indicator {
-  background: #e8b9d5; /* mHover */
+  background: @mTertiary; /* mHover */
 }
 
 .taskbar-item.focused .taskbar-indicator {
-  background: #bfc2ff; /* mPrimary */
+  background: @mPrimary; /* mPrimary */
 }
 
 /* bar.taskbar.show_title: icon + ellipsized title on a pill that lights up
@@ -199,15 +198,15 @@ window.bar.right .taskbar-capsule {
 
 .taskbar-item.with-title.hovered,
 .taskbar-item.with-title.focused {
-  background: #e8b9d5; /* mHover */
+  background: @mTertiary; /* mHover */
 }
 
 .taskbar-title {
   font-size: 12px;
-  color: #e5e1e6; /* mOnSurface */
+  color: @mOnSurface; /* mOnSurface */
 }
 
 .taskbar-item.with-title.hovered .taskbar-title,
 .taskbar-item.with-title.focused .taskbar-title {
-  color: #46263b; /* mOnHover */
+  color: @mOnTertiary; /* mOnHover */
 }

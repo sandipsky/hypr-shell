@@ -1,4 +1,5 @@
 #include "bar/calendar.hpp"
+#include "services/theme.hpp"
 
 #include "services/config.hpp"
 
@@ -21,7 +22,6 @@ constexpr const char* kMonths[] = {
 };
 
 // mOnPrimary from the user's Noctalia colors.json (#202578)
-constexpr double kRingR = 0x20 / 255.0, kRingG = 0x25 / 255.0, kRingB = 0x78 / 255.0;
 
 Gtk::Button* make_icon_button(const char* glyph) {
     auto* button = Gtk::make_managed<Gtk::Button>(glyph);
@@ -238,13 +238,14 @@ void Calendar::on_ring_draw(const Cairo::RefPtr<Cairo::Context>& cr, int width, 
     cr->set_line_width(2.0);
     cr->set_line_cap(Cairo::Context::LineCap::ROUND);
 
-    // faint full track
-    cr->set_source_rgba(kRingR, kRingG, kRingB, 0.25);
+    // faint full track (mOnPrimary on the primary-coloured header)
+    const Gdk::RGBA ring = Theme::get().rgba("mOnPrimary");
+    cr->set_source_rgba(ring.get_red(), ring.get_green(), ring.get_blue(), 0.25);
     cr->arc(cx, cy, radius, 0, 2 * G_PI);
     cr->stroke();
 
     // seconds progress, from 12 o'clock
-    cr->set_source_rgb(kRingR, kRingG, kRingB);
+    cr->set_source_rgb(ring.get_red(), ring.get_green(), ring.get_blue());
     cr->arc(cx, cy, radius, -G_PI / 2, -G_PI / 2 + ring_fraction_ * 2 * G_PI);
     cr->stroke();
 }

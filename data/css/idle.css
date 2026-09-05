@@ -3,5 +3,5 @@
  * action (screen off / lock / suspend); any input cancels it */
 
 window.idle-fade {
-  background: #000000;
+  background: @mShadow;
 }

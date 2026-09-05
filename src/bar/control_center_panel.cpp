@@ -1,4 +1,5 @@
 #include "bar/control_center_panel.hpp"
+#include "services/theme.hpp"
 
 #include "services/brightness.hpp"
 #include "services/config.hpp"
@@ -41,10 +42,11 @@ constexpr const char* kMemory = "";
 constexpr const char* kStorage = "";
 
 // Noctalia colour snapshot (the user's colors.json, like the other panels)
-const Gdk::RGBA kPrimary{"#bfc2ff"};
-const Gdk::RGBA kTertiary{"#e8b9d5"}; // warning
-const Gdk::RGBA kError{"#ffb4ab"};    // critical
-const Gdk::RGBA kSurface{"#131316"};
+// palette lookups (theme-dependent, so functions rather than constants)
+Gdk::RGBA kPrimary() { return Theme::get().rgba("mPrimary"); }
+Gdk::RGBA kTertiary() { return Theme::get().rgba("mTertiary"); } // warning
+Gdk::RGBA kError() { return Theme::get().rgba("mError"); }       // critical
+Gdk::RGBA kSurface() { return Theme::get().rgba("mSurface"); }
 
 constexpr const char* kUser = "\uEB4D";
 constexpr const char* kSettings = "\uEB20";
@@ -83,10 +85,10 @@ double ease_out_cubic(double t) { return 1 - std::pow(1 - t, 3); }
 
 Gdk::RGBA stat_color(double value, double warning, double critical) {
     if (value >= critical)
-        return kError;
+        return kError();
     if (value >= warning)
-        return kTertiary;
-    return kPrimary;
+        return kTertiary();
+    return kPrimary();
 }
 
 void style_round_button(Gtk::Button& button, Gtk::Label& icon, const char* css) {
@@ -102,7 +104,7 @@ void style_round_button(Gtk::Button& button, Gtk::Label& icon, const char* css) 
 // ---------------------------------------------------------------------------
 // CircleStat
 
-CircleStat::CircleStat(const char* glyph, const char* suffix) : glyph_(glyph), suffix_(suffix), color_(kPrimary) {
+CircleStat::CircleStat(const char* glyph, const char* suffix) : glyph_(glyph), suffix_(suffix), color_(kPrimary()) {
     set_content_width(57);
     set_content_height(47);
     set_halign(Gtk::Align::CENTER);
@@ -143,7 +145,8 @@ void CircleStat::draw(const Cairo::RefPtr<Cairo::Context>& cr, int w, int) {
     const double start = 150.0 * kPi / 180.0, sweep = 240.0 * kPi / 180.0;
     cr->set_line_width(line);
     cr->set_line_cap(Cairo::Context::LineCap::ROUND);
-    cr->set_source_rgba(kSurface.get_red(), kSurface.get_green(), kSurface.get_blue(), 1.0);
+    const Gdk::RGBA surface = kSurface();
+    cr->set_source_rgba(surface.get_red(), surface.get_green(), surface.get_blue(), 1.0);
     cr->arc(cx, cy, radius, start, start + sweep);
     cr->stroke();
     if (animated_ > 0.005) {
@@ -153,7 +156,7 @@ void CircleStat::draw(const Cairo::RefPtr<Cairo::Context>& cr, int w, int) {
     }
     // value, bold 9.4pt, centered 3.8px above the middle
     auto layout = create_pango_layout(std::to_string(static_cast<int>(std::round(animated_ * 100))) + suffix_);
-    Pango::FontDescription font("Fira Sans Bold 9.4");
+    Pango::FontDescription font(Theme::get().font() + " Bold 9.4");
     layout->set_font_description(font);
     int tw = 0, th = 0;
     layout->get_pixel_size(tw, th);
