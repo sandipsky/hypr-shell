@@ -364,6 +364,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Fixed workspace count", "Bar › Workspaces", "workspaces"},
         {"Workspace scroll wrap-around", "Bar › Workspaces", "workspaces"},
         {"Clock format", "Bar › Clock", "clock"},
+        {"Clock tooltip format", "Bar › Clock", "clock"},
         {"First day of week", "Bar › Clock", "clock"},
         {"Active window title", "Bar › Active window", "active_window"},
         {"Window icon", "Bar › Active window", "active_window"},

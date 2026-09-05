@@ -63,28 +63,11 @@ inline void place_bar_popover(Gtk::Popover& popover) {
         }
         to_edge = std::max(0.0, to_edge);
     }
-    const int offset = kBarPopoverGap + static_cast<int>(std::lround(to_edge));
-    switch (position) {
-    case Config::BarPosition::Top:
-        popover.set_position(Gtk::PositionType::BOTTOM);
-        popover.set_offset(0, offset);
-        break;
-    case Config::BarPosition::Bottom:
-        popover.set_position(Gtk::PositionType::TOP);
-        popover.set_offset(0, -offset);
-        break;
-    case Config::BarPosition::Left:
-        popover.set_position(Gtk::PositionType::RIGHT);
-        popover.set_offset(offset, 0);
-        break;
-    case Config::BarPosition::Right:
-        popover.set_position(Gtk::PositionType::LEFT);
-        popover.set_offset(-offset, 0);
-        break;
-    }
+    const int normal_offset = kBarPopoverGap + static_cast<int>(std::lround(to_edge));
 
     // Alignment along the bar: centre unless that runs off the window.
     auto align = Gtk::Align::CENTER;
+    double along_offset = 0; // shift along the bar, applied with the alignment
     if (bounds && child) {
         // A hidden popover measures 0x0, so measure its child (the panel): a
         // widget's measure works before mapping. Add the popover contents'
@@ -97,10 +80,38 @@ inline void place_bar_popover(Gtk::Popover& popover) {
         const double extent = vertical ? window->get_height() : window->get_width();
         const double centre = vertical ? bounds->get_y() + bounds->get_height() / 2.0
                                        : bounds->get_x() + bounds->get_width() / 2.0;
-        if (centre + half > extent)
-            align = Gtk::Align::END; // popover's far edge = anchor's far edge
-        else if (centre - half < 0)
+        // START/END hang the popover off the anchor's near edge; shift it so
+        // that edge sits kBarPopoverGap from the screen edge instead — the
+        // same gap as between bar and popover (user request; the Apps popover
+        // sat 18px in, the clipboard one 13px, i.e. wherever the icon was)
+        const double anchor_start = vertical ? bounds->get_y() : bounds->get_x();
+        const double anchor_end = anchor_start + (vertical ? bounds->get_height() : bounds->get_width());
+        if (centre + half > extent) {
+            align = Gtk::Align::END;
+            along_offset = (extent - kBarPopoverGap) - anchor_end;
+        } else if (centre - half < 0) {
             align = Gtk::Align::START;
+            along_offset = kBarPopoverGap - anchor_start;
+        }
+    }
+    const int along = static_cast<int>(std::lround(along_offset));
+    switch (position) {
+    case Config::BarPosition::Top:
+        popover.set_position(Gtk::PositionType::BOTTOM);
+        popover.set_offset(along, normal_offset);
+        break;
+    case Config::BarPosition::Bottom:
+        popover.set_position(Gtk::PositionType::TOP);
+        popover.set_offset(along, -normal_offset);
+        break;
+    case Config::BarPosition::Left:
+        popover.set_position(Gtk::PositionType::RIGHT);
+        popover.set_offset(normal_offset, along);
+        break;
+    case Config::BarPosition::Right:
+        popover.set_position(Gtk::PositionType::LEFT);
+        popover.set_offset(-normal_offset, along);
+        break;
     }
     if (vertical) {
         popover.set_halign(Gtk::Align::FILL);

@@ -56,6 +56,61 @@ constexpr ModuleInfo kModules[] = {
 };
 
 constexpr gsize kModuleCount = G_N_ELEMENTS(kModules);
+
+// Clock format guide — Noctalia's NDateTimeTokens rows translated from Qt
+// date/time tokens to the strftime ones Glib::DateTime::format takes ("-"
+// drops the leading zero); examples are rendered live from the current time.
+struct FormatToken {
+    const char* category; // also the CSS class suffix for the badge colour
+    const char* token;
+    const char* description;
+};
+constexpr FormatToken kFormatTokens[] = {
+    {"Common", "%I:%M %p", "12-hour time with minutes"},
+    {"Common", "%H:%M", "24-hour time with minutes"},
+    {"Common", "%H:%M:%S", "24-hour time with seconds"},
+    {"Common", "%a %b %-d", "Weekday, month and day"},
+    {"Common", "%Y-%m-%d", "ISO date format"},
+    {"Common", "%m/%d/%Y", "US date format"},
+    {"Common", "%d.%m.%Y", "European date format"},
+    {"Common", "%a, %b %d", "Weekday with date"},
+    {"Hour", "%-H", "Hour without leading zero (0-23) — 24-hour format"},
+    {"Hour", "%H", "Hour with leading zero (00-23) — 24-hour format"},
+    {"Hour", "%-I", "Hour without leading zero (1-12) — 12-hour format"},
+    {"Hour", "%I", "Hour with leading zero (01-12) — 12-hour format"},
+    {"Minute", "%-M", "Minute without leading zero (0-59)"},
+    {"Minute", "%M", "Minute with leading zero (00-59)"},
+    {"Second", "%-S", "Second without leading zero (0-59)"},
+    {"Second", "%S", "Second with leading zero (00-59)"},
+    {"AM/PM", "%p", "AM/PM in uppercase"},
+    {"AM/PM", "%P", "am/pm in lowercase"},
+    {"Timezone", "%Z", "Timezone abbreviation"},
+    {"Year", "%y", "Year as two-digit number (00-99)"},
+    {"Year", "%Y", "Year as four-digit number"},
+    {"Month", "%-m", "Month as number without leading zero (1-12)"},
+    {"Month", "%m", "Month as number with leading zero (01-12)"},
+    {"Month", "%b", "Abbreviated month name"},
+    {"Month", "%B", "Full month name"},
+    {"Day", "%-d", "Day without leading zero (1-31)"},
+    {"Day", "%d", "Day with leading zero (01-31)"},
+    {"Day", "%a", "Abbreviated day name"},
+    {"Day", "%A", "Full day name"},
+    {"Literal", "%%", "A literal percent sign"},
+};
+constexpr gsize kFormatTokenCount = G_N_ELEMENTS(kFormatTokens);
+
+const char* format_token_css_class(const char* category) {
+    const std::string_view c = category;
+    if (c == "Common" || c == "AM/PM")
+        return "error"; // Noctalia: mError badge
+    if (c == "Hour" || c == "Year")
+        return "accent"; // mPrimary
+    if (c == "Minute" || c == "Month")
+        return "success"; // mSecondary
+    if (c == "Second" || c == "Day")
+        return "warning"; // mTertiary
+    return "neutral"; // Timezone, Literal: mOnSurface
+}
 constexpr const char* kSectionKeys[] = {"left", "center", "right"};
 constexpr const char* kSectionTitles[] = {"Left section", "Center section", "Right section"};
 constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
@@ -177,6 +232,10 @@ struct Settings {
     AdwComboRow* clock_fdow = nullptr; // Sunday / Monday
     AdwEntryRow* clock_fmt_h = nullptr;
     AdwEntryRow* clock_fmt_v = nullptr;
+    AdwEntryRow* clock_fmt_tip = nullptr; // bar.clock.tooltip_format
+    AdwEntryRow* clock_fmt_target = nullptr;    // format guide inserts here (last focused)
+    GtkWidget* clock_guide = nullptr;            // the guide list (refresh only while mapped)
+    std::vector<GtkWidget*> clock_guide_examples; // live example labels, kFormatTokens order
 
     AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
 
@@ -646,11 +705,13 @@ void populate(Settings* s) {
     int clock_fdow = 0;
     std::string fmt_h = "%H:%M %a, %b %d";
     std::string fmt_v = "%H %M";
+    std::string fmt_tip = "%A, %B %-d, %Y";
     try {
         const json clock = s->root.value("bar", json::object()).value("clock", json::object());
         clock_fdow = std::clamp(clock.value("first_day_of_week", 0), 0, 1);
         fmt_h = clock.value("format_horizontal", fmt_h);
         fmt_v = clock.value("format_vertical", fmt_v);
+        fmt_tip = clock.value("tooltip_format", fmt_tip);
     } catch (const json::exception&) {
         // defaults
     }
@@ -706,6 +767,7 @@ void populate(Settings* s) {
     adw_combo_row_set_selected(s->clock_fdow, clock_fdow);
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_h), fmt_h.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_v), fmt_v.c_str());
+    gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_tip), fmt_tip.c_str());
     for (guint i = 0; i < 3; ++i)
         if (aw_hide == kAwHideKeys[i])
             adw_combo_row_set_selected(s->aw_hide, i);
@@ -2267,6 +2329,48 @@ json& clock_object(Settings* s) {
     return bar["clock"];
 }
 
+// live examples in the clock format guide: one label per token, re-rendered
+// from the current time every second while the list is on screen
+void clock_guide_refresh(Settings* s) {
+    if (s->clock_guide == nullptr || !gtk_widget_get_mapped(s->clock_guide))
+        return;
+    GDateTime* now = g_date_time_new_now_local();
+    for (gsize i = 0; i < kFormatTokenCount && i < s->clock_guide_examples.size(); ++i) {
+        gchar* text = g_date_time_format(now, kFormatTokens[i].token);
+        gtk_label_set_text(GTK_LABEL(s->clock_guide_examples[i]), text != nullptr ? text : "?");
+        g_free(text);
+    }
+    g_date_time_unref(now);
+}
+
+gboolean on_clock_guide_tick(gpointer data) {
+    clock_guide_refresh(static_cast<Settings*>(data));
+    return G_SOURCE_CONTINUE;
+}
+
+// clicking a guide row appends its token to the format field that was edited
+// last (Noctalia's tokenClicked inserts into its single field)
+void on_clock_token_activated(GtkListBox*, GtkListBoxRow* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const auto* token = static_cast<const char*>(g_object_get_data(G_OBJECT(row), "token"));
+    AdwEntryRow* target = s->clock_fmt_target != nullptr ? s->clock_fmt_target : s->clock_fmt_h;
+    if (token == nullptr || target == nullptr)
+        return;
+    std::string text = gtk_editable_get_text(GTK_EDITABLE(target));
+    if (!text.empty() && text.back() != ' ' && std::string_view(token).front() == '%' &&
+        std::string_view(token).size() > 2)
+        text += ' '; // separate whole "Common" patterns from what is there
+    text += token;
+    gtk_editable_set_text(GTK_EDITABLE(target), text.c_str()); // "changed" saves
+}
+
+void on_clock_format_focus(GtkEventControllerFocus* controller, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
+    if (ADW_IS_ENTRY_ROW(row))
+        s->clock_fmt_target = ADW_ENTRY_ROW(row);
+}
+
 void on_clock_format_changed(GtkEditable* row, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     if (s->loading)
@@ -2526,7 +2630,23 @@ void on_activate(GtkApplication* app, gpointer) {
         "  box-shadow: none; background-image: none; -gtk-icon-source: none;"
         "  -gtk-icon-size: 0; }"
         "checkbutton.accent-swatch > radio:checked, checkbutton.accent-swatch > check:checked {"
-        "  outline-width: 2px; outline-style: solid; outline-offset: 3px; }";
+        "  outline-width: 2px; outline-style: solid; outline-offset: 3px; }"
+        // clock format guide (Noctalia's NDateTimeTokens): category badge, token
+        // pill, live example pill — colours from libadwaita's semantic variables
+        ".fmt-cat { border-radius: 6px; padding: 2px 8px; font-size: 0.8em; font-weight: bold; }"
+        ".fmt-cat.accent { background: var(--accent-bg-color); color: var(--accent-fg-color); }"
+        ".fmt-cat.success { background: var(--success-bg-color); color: var(--success-fg-color); }"
+        ".fmt-cat.warning { background: var(--warning-bg-color); color: var(--warning-fg-color); }"
+        ".fmt-cat.error { background: var(--error-bg-color); color: var(--error-fg-color); }"
+        ".fmt-cat.neutral { background: var(--window-fg-color); color: var(--window-bg-color); }"
+        ".fmt-token { border-radius: 6px; padding: 2px 8px; font-family: monospace;"
+        "  font-weight: bold; font-size: 0.9em; background: var(--window-fg-color);"
+        "  color: var(--window-bg-color); }"
+        ".fmt-example { border-radius: 6px; padding: 2px 8px; font-size: 0.9em;"
+        "  background: alpha(var(--window-fg-color), 0.08);"
+        "  border: 1px solid alpha(var(--window-fg-color), 0.15); }"
+        ".fmt-guide row:hover .fmt-token { background: var(--accent-bg-color);"
+        "  color: var(--accent-fg-color); }";
     for (gsize i = 0; i < kAccentCount; ++i) {
         gchar* rule = g_strdup_printf(
             "checkbutton.accent-swatch-%zu > radio, checkbutton.accent-swatch-%zu > check"
@@ -2711,7 +2831,8 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_group_set_description(
         ADW_PREFERENCES_GROUP(fmt_group),
         "strftime format, e.g. %H:%M %a, %b %d. On vertical bars each "
-        "space-separated part becomes its own line");
+        "space-separated part becomes its own line. The tooltip shows while "
+        "hovering the clock; leave it empty for no tooltip");
 
     GtkWidget* fmt_h_row = adw_entry_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fmt_h_row), "Horizontal bar");
@@ -2727,8 +2848,86 @@ void on_activate(GtkApplication* app, gpointer) {
     s->clock_fmt_v = ADW_ENTRY_ROW(fmt_v_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(fmt_group), fmt_v_row);
 
+    GtkWidget* fmt_tip_row = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(fmt_tip_row), "Tooltip");
+    g_object_set_data(G_OBJECT(fmt_tip_row), "format-key",
+                      const_cast<char*>("tooltip_format"));
+    s->clock_fmt_tip = ADW_ENTRY_ROW(fmt_tip_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(fmt_group), fmt_tip_row);
+
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(clock_page),
                              ADW_PREFERENCES_GROUP(fmt_group));
+
+    // remember which format field was edited last — the guide inserts there
+    for (GtkWidget* row : {fmt_h_row, fmt_v_row, fmt_tip_row}) {
+        GtkEventController* focus = gtk_event_controller_focus_new();
+        g_signal_connect(focus, "enter", G_CALLBACK(on_clock_format_focus), s);
+        gtk_widget_add_controller(row, focus);
+    }
+
+    // -- format guide (Noctalia's NDateTimeTokens): badge, token, description,
+    //    live example; click a row to append its token --------------------------
+    GtkWidget* guide_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(guide_group), "Format guide");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(guide_group),
+        "Click a row to add its token to the format you edited last. Examples show the "
+        "current time.");
+    GtkWidget* guide_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(guide_list), GTK_SELECTION_NONE);
+    gtk_widget_add_css_class(guide_list, "boxed-list");
+    gtk_widget_add_css_class(guide_list, "fmt-guide");
+    s->clock_guide = guide_list;
+    s->clock_guide_examples.clear();
+    for (const auto& entry : kFormatTokens) {
+        GtkWidget* row_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        gtk_widget_set_margin_start(row_box, 10);
+        gtk_widget_set_margin_end(row_box, 10);
+        gtk_widget_set_margin_top(row_box, 7);
+        gtk_widget_set_margin_bottom(row_box, 7);
+        GtkWidget* badge = gtk_label_new(entry.category);
+        gtk_widget_add_css_class(badge, "fmt-cat");
+        gtk_widget_add_css_class(badge, format_token_css_class(entry.category));
+        gtk_widget_set_size_request(badge, 72, -1);
+        gtk_widget_set_valign(badge, GTK_ALIGN_CENTER);
+        gtk_box_append(GTK_BOX(row_box), badge);
+        GtkWidget* token = gtk_label_new(entry.token);
+        gtk_widget_add_css_class(token, "fmt-token");
+        gtk_widget_set_size_request(token, 96, -1);
+        gtk_widget_set_valign(token, GTK_ALIGN_CENTER);
+        gtk_box_append(GTK_BOX(row_box), token);
+        GtkWidget* desc = gtk_label_new(entry.description);
+        gtk_widget_add_css_class(desc, "dim-label");
+        gtk_label_set_xalign(GTK_LABEL(desc), 0.0f);
+        gtk_label_set_wrap(GTK_LABEL(desc), TRUE);
+        gtk_widget_set_hexpand(desc, TRUE);
+        gtk_box_append(GTK_BOX(row_box), desc);
+        GtkWidget* example = gtk_label_new("");
+        gtk_widget_add_css_class(example, "fmt-example");
+        gtk_widget_set_valign(example, GTK_ALIGN_CENTER);
+        gtk_box_append(GTK_BOX(row_box), example);
+        s->clock_guide_examples.push_back(example);
+        GtkWidget* row = gtk_list_box_row_new();
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), row_box);
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), TRUE);
+        g_object_set_data(G_OBJECT(row), "token", const_cast<char*>(entry.token));
+        gtk_widget_set_tooltip_text(row, "Add to the format");
+        gtk_list_box_append(GTK_LIST_BOX(guide_list), row);
+    }
+    g_signal_connect(guide_list, "row-activated", G_CALLBACK(on_clock_token_activated), s);
+    GtkWidget* guide_scroller = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(guide_scroller), GTK_POLICY_NEVER,
+                                   GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(guide_scroller), TRUE);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(guide_scroller), 360);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(guide_scroller), guide_list);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(guide_group), guide_scroller);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(clock_page), ADW_PREFERENCES_GROUP(guide_group));
+    g_signal_connect(guide_list, "map", G_CALLBACK(+[](GtkWidget*, gpointer data) {
+                         clock_guide_refresh(static_cast<Settings*>(data));
+                     }),
+                     s);
+    g_timeout_add_seconds(1, on_clock_guide_tick, s); // no-op while unmapped
 
     // -- Active window subpage ------------------------------------------------
     GtkWidget* aw_page = adw_preferences_page_new();
@@ -3965,6 +4164,7 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(fdow_row, "notify::selected", G_CALLBACK(on_clock_fdow_changed), s);
     g_signal_connect(fmt_h_row, "changed", G_CALLBACK(on_clock_format_changed), s);
     g_signal_connect(fmt_v_row, "changed", G_CALLBACK(on_clock_format_changed), s);
+    g_signal_connect(fmt_tip_row, "changed", G_CALLBACK(on_clock_format_changed), s);
     g_signal_connect(aw_hide_row, "notify::selected", G_CALLBACK(on_aw_hide_changed), s);
     g_signal_connect(aw_title_row, "notify::active", G_CALLBACK(on_aw_show_title_toggled), s);
     g_signal_connect(aw_text_row, "notify::selected", G_CALLBACK(on_aw_text_changed), s);

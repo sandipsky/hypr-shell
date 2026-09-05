@@ -91,6 +91,7 @@ void Config::load() {
     clock_first_day_of_week_ = 0;
     clock_format_horizontal_ = "%H:%M %a, %b %d";
     clock_format_vertical_ = "%H %M";
+    clock_tooltip_format_ = "%A, %B %-d, %Y";
     aw_hide_ = ActiveWindowHide::Hidden;
     aw_show_title_ = true;
     aw_title_mode_ = ActiveWindowText::Title;
@@ -230,6 +231,7 @@ void Config::load() {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);
             clock_format_horizontal_ = it->value("format_horizontal", clock_format_horizontal_);
             clock_format_vertical_ = it->value("format_vertical", clock_format_vertical_);
+            clock_tooltip_format_ = it->value("tooltip_format", clock_tooltip_format_);
         }
         if (auto it = j.find("notifications"); it != j.end() && it->is_object()) {
             auto& n = notifications_;

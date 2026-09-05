@@ -551,8 +551,11 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
 - 2026-09-01 — The wifi/bluetooth panel switches are a 1:1 NToggle port
   (superseding the network panel's original "dark trough + primary knob"
   styling): 36x22 mOutline-bordered pill — mSurface track/mPrimary knob off,
-  mPrimary track/mOnPrimary knob on, off-state knob ringed 2px mSurface (the
-  on-state ring was dropped 2026-09-01 per user). GTK box-model
+  mPrimary track/mOnPrimary knob on. The knob is a solid 14px circle with a
+  3px margin (2026-09-05, user request: "ring colour = knob colour"), which
+  looks like NToggle's 18px knob + 2px mSurface ring — that ring was dropped
+  for the on state 2026-09-01, restored briefly 2026-09-05, then replaced by
+  the plain margin. GTK box-model
   note: borders sit OUTSIDE min-width/height, so the CSS says 34x20 + 1px
   border (track) and 14px + 2px ring (18px knob), margin 1px.
 - 2026-09-01 — Notification module + panel (phase 3 pulled forward; Noctalia's
@@ -1132,7 +1135,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   ends up wider than requested — the control center measures 466px, not
   its 440px request — still hangs over). The fit test measures the
   popover's *child* + 12px padding per side: a hidden popover itself
-  measures 0x0, and its shadow may legitimately hang off screen. Dev hooks:
+  measures 0x0, and its shadow may legitimately hang off screen. Later the
+  same day (user request, seeing the Apps popover 18px and the clipboard
+  popover 13px from the screen edge): a START/END-aligned popover is also
+  shifted along the bar (the offset's other axis) so its near edge sits
+  exactly kBarPopoverGap from the screen edge — the same 6px as between bar
+  and popover — on horizontal and vertical bars alike. Dev hooks:
   every `HS_OPEN_*` hook now calls `place_bar_popover()` before `popup()`
   (they had skipped it, so hook screenshots never exercised the placement);
   `HS_POPOVER_DEBUG=1` logs the anchor bounds, window size, natural size,
@@ -1530,6 +1538,25 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   and the rows can return by flipping the flag. Those keys are config-only
   now; the page description says so. The launcher's static settings index
   lost the matching entries.
+- 2026-09-05 — Clock tooltip (user request): hovering the clock shows
+  `bar.clock.tooltip_format` (strftime through Glib::DateTime, default
+  "%A, %B %-d, %Y" → "Saturday, September 5, 2026"; empty = no tooltip,
+  invalid = no tooltip rather than a fallback), re-rendered with the label
+  every minute. Settings: a "Tooltip" entry row under the Clock subpage's
+  Time format group, saved through the same `format-key` handler as the two
+  label formats.
+- 2026-09-05 — Clock format guide in the settings app (user request):
+  Noctalia's NDateTimeTokens ported under the Clock subpage's Time format
+  group as a "Format guide" boxed list — category badge (libadwaita's
+  accent / success / warning / error variables standing in for Noctalia's
+  mPrimary / mSecondary / mTertiary / mError), monospace token pill,
+  description, live example pill re-rendered every second while mapped.
+  Tokens are strftime for Glib::DateTime (`%-d` = no leading zero) instead
+  of Qt's; the 8 "Common" patterns plus hour / minute / second / AM-PM /
+  timezone / year / month / day tokens and `%%`. Clicking a row appends its
+  token to the format entry that had focus last (Noctalia's tokenClicked
+  into its single field; ours has three), defaulting to the horizontal one.
+  The list scrolls inside a 360px cap like the wallpaper grid.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

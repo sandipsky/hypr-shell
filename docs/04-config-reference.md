@@ -45,7 +45,8 @@ launcher).
     "active_window": { "hide_mode": "hidden", "show_title": true, "title_mode": "title",
                        "no_window_text": "default", "show_icon": true },
     "clock":         { "first_day_of_week": 0,
-                       "format_horizontal": "%H:%M %a, %b %d", "format_vertical": "%H %M" },
+                       "format_horizontal": "%H:%M %a, %b %d", "format_vertical": "%H %M",
+                       "tooltip_format": "%A, %B %-d, %Y" },
     "battery":       { "show_power_profiles": true, "show_brightness": true, "show_refresh_rate": true },
     "bluetooth":     { "auto_connect": false },
     "notifications": { "show_unread_badge": true, "hide_when_zero": false, "hide_when_zero_unread": false }
@@ -166,6 +167,7 @@ decides *whether*.
 | `first_day_of_week` | `0` (Sun) \| `1` (Mon) | `0` | Calendar grid start. |
 | `format_horizontal` | strftime | `"%H:%M %a, %b %d"` | Top/bottom bars. |
 | `format_vertical` | strftime | `"%H %M"` | Left/right bars; space-separated tokens stack. |
+| `tooltip_format` | strftime | `"%A, %B %-d, %Y"` | Tooltip while hovering the clock; empty string = no tooltip. |
 
 Invalid formats fall back to `%H:%M`.
 

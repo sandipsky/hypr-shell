@@ -9,6 +9,9 @@
 
 #include <string>
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -90,6 +93,7 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     if (const char* hook = g_getenv("HS_OPEN_APP_MENU")) {
         const bool session = g_strcmp0(hook, "2") == 0;
         const bool pin = g_strcmp0(hook, "3") == 0;
+        const int delay = std::max(800, std::atoi(hook)); // >3 = delay in ms
         Glib::signal_timeout().connect_once(
             [this, session, pin] {
                 open();
@@ -100,7 +104,7 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
                     Glib::signal_timeout().connect_once(
                         [this] { panel_->open_pin_menu(0); }, 400);
             },
-            800);
+            delay);
     }
 
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &AppMenu::apply_config));

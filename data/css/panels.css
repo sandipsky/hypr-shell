@@ -295,8 +295,8 @@ popover.bluetooth-popover > contents {
 }
 
 /* radio toggles: 1:1 Noctalia NToggle (bluetooth-panel size, base 33*0.65):
- * 36x22 outlined pill, primary track when on, 18px knob with a surface ring
- * (primary knob while off, on-primary knob while on) */
+ * 36x22 outlined pill, primary track when on, solid 14px knob 3px in from
+ * the track (primary knob while off, on-primary knob while on) */
 .bluetooth-panel switch,
 .network-panel switch {
   background: @mSurface; /* mSurface while off */
@@ -316,19 +316,20 @@ popover.bluetooth-popover > contents {
 .network-panel switch slider {
   background: @mPrimary; /* mPrimary while off */
   border: none;
-  /* NToggle's knob ring, drawn WITHOUT border so both states share identical
-   * box metrics — a border here made the knob grow for a frame mid-toggle */
-  box-shadow: inset 0 0 0 2px @mSurface; /* mSurface ring */
-  min-width: 18px;
-  min-height: 18px;
-  margin: 1px;
+  /* Solid 14px knob with a 3px gap to the track (Noctalia's 20-in-26
+   * proportion). NToggle draws a 2px mSurface ring around an 18px knob
+   * instead; the user wants the ring in the knob's own colour (2026-09-05),
+   * which is the same picture as no ring plus a wider margin. */
+  box-shadow: none;
+  min-width: 14px;
+  min-height: 14px;
+  margin: 3px;
   border-radius: 999px;
 }
 
 .bluetooth-panel switch:checked slider,
 .network-panel switch:checked slider {
   background: @mOnPrimary; /* mOnPrimary */
-  box-shadow: none; /* no ring on the primary track */
 }
 
 .network-panel entry {

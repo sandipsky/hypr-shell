@@ -303,6 +303,8 @@ public:
     // newlines; the vertical one's space-separated tokens render stacked.
     const std::string& clock_format_horizontal() const { return clock_format_horizontal_; }
     const std::string& clock_format_vertical() const { return clock_format_vertical_; }
+    // bar.clock.tooltip_format: strftime for the module tooltip; empty = none
+    const std::string& clock_tooltip_format() const { return clock_tooltip_format_; }
 
     sigc::signal<void()>& signal_changed() { return changed_; }
 
@@ -335,6 +337,7 @@ private:
     int clock_first_day_of_week_ = 0;
     std::string clock_format_horizontal_ = "%H:%M %a, %b %d";
     std::string clock_format_vertical_ = "%H %M";
+    std::string clock_tooltip_format_ = "%A, %B %-d, %Y";
     ActiveWindowHide aw_hide_ = ActiveWindowHide::Hidden;
     bool aw_show_title_ = true;
     ActiveWindowText aw_title_mode_ = ActiveWindowText::Title;

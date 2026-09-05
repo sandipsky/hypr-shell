@@ -73,6 +73,18 @@ void Clock::update() {
     }
     set_label(text);
 
+    // tooltip: the full date by default (`bar.clock.tooltip_format`, strftime;
+    // empty disables it); an invalid format shows nothing rather than garbage
+    Glib::ustring tooltip;
+    if (!cfg.clock_tooltip_format().empty()) {
+        try {
+            tooltip = Glib::DateTime::create_now_local().format(cfg.clock_tooltip_format());
+        } catch (const Glib::Error&) {
+        }
+    }
+    set_tooltip_text(tooltip);
+    set_has_tooltip(!tooltip.empty());
+
     // keep the calendar on the free side of the bar
     place_bar_popover(popover_);
 }
