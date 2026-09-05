@@ -1738,4 +1738,26 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   toggles the popover (a bubble-phase GestureClick on the Bar window compares
   the click with the module's bounds via `compute_bounds`). Windows' Start
   button rule; the module's own click handling is untouched.
+- 2026-09-05 — "Pin to taskbar" crashed the shell (user report; three
+  SIGSEGV core dumps). `Apps::toggle_pinned` emits `signal_changed`, the
+  open app menu rebuilds its grid on that signal, and `rebuild_grid()`
+  removed the tiles BEFORE closing the context popover — GTK finalized the
+  tile icon the popover was parented to ("still has children left"), and
+  `close_pin_menu()` then wrapped the dead widget. Reproduced without a
+  click by creating a .desktop file while the menu was open (AppInfoMonitor
+  reload → same rebuild). Fix: `rebuild_grid()` closes the pin menu before
+  touching the tiles, and the pin button pops the menu down and toggles the
+  pin from an idle, so nothing rebuilds the grid inside the button's own
+  click handler. Verified with the same reproduction: the old binary died,
+  the new one logs nothing.
+- 2026-09-05 — Taskbar "Show pinned apps" switch replaced by an "Apps to
+  show" dropdown (user request): `bar.taskbar.apps` = both (default) /
+  pinned (pinned apps only — their windows included, unpinned windows
+  dropped) / running (opened windows only, no launchers); an old
+  `show_pinned_apps: false` reads as running when `apps` is absent, and the
+  settings app removes the old key on the first change. New
+  `bar.taskbar.running_indicator` (default off, "Running indicator" switch):
+  opened-but-unfocused items get a `running` class and a grey dot
+  (`alpha(@mOnSurface, 0.4)`), the focused one keeps the accent dot. Subpage
+  order: Hiding mode, Apps to show, the two filters, Running indicator.
 

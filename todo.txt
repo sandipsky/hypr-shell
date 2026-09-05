@@ -1,11 +1,3 @@
-for taskbar hypr module 
-instead of show pinned apps toggle 
-make it dropdown with options
-show only pinned apps 
-show only opened apps
-both 
-
-also a toggle to show secondary dot on opened app but not focused ( focused app with get accent color dot which is current behaviour but opened apps will get gray shade dot)
 
 allow reodering of session menu items
 

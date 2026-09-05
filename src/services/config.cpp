@@ -195,7 +195,14 @@ void Config::load() {
                                                          : Taskbar::HideMode::Hidden;
             taskbar_.only_same_monitor = it->value("only_same_monitor", true);
             taskbar_.only_active_workspaces = it->value("only_active_workspaces", true);
-            taskbar_.show_pinned_apps = it->value("show_pinned_apps", true);
+            // "apps": both / pinned / running; the older bool show_pinned_apps
+            // (false = running only) is honoured when the new key is absent
+            const std::string apps = it->value(
+                "apps", it->value("show_pinned_apps", true) ? std::string("both") : std::string("running"));
+            taskbar_.apps = apps == "pinned"    ? Taskbar::Apps::Pinned
+                            : apps == "running" ? Taskbar::Apps::Running
+                                                : Taskbar::Apps::Both;
+            taskbar_.running_indicator = it->value("running_indicator", false);
             taskbar_.show_title = it->value("show_title", false);
             taskbar_.title_width = std::clamp(it->value("title_width", 120), 20, 600);
             taskbar_.smart_width = it->value("smart_width", true);

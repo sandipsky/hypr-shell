@@ -137,6 +137,7 @@ constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
 constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kTbHideKeys[] = {"visible", "hidden", "transparent"};
+constexpr const char* kTbAppsKeys[] = {"both", "pinned", "running"};
 constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
@@ -270,7 +271,8 @@ struct Settings {
     AdwComboRow* tb_hide = nullptr; // Always visible / Hide when empty / Transparent when empty
     AdwSwitchRow* tb_same_monitor = nullptr;
     AdwSwitchRow* tb_active_workspaces = nullptr;
-    AdwSwitchRow* tb_pinned = nullptr;
+    AdwComboRow* tb_apps = nullptr;       // both / pinned / running
+    AdwSwitchRow* tb_running_dot = nullptr;
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
     AdwEntryRow* am_text = nullptr;
@@ -543,7 +545,13 @@ void populate(Settings* s, PopulateStage stage) {
         adw_switch_row_set_active(s->tb_same_monitor, tb.value("only_same_monitor", true));
         adw_switch_row_set_active(s->tb_active_workspaces,
                                   tb.value("only_active_workspaces", true));
-        adw_switch_row_set_active(s->tb_pinned, tb.value("show_pinned_apps", true));
+        const std::string tb_apps = tb.value(
+            "apps", tb.value("show_pinned_apps", true) ? std::string("both") : std::string("running"));
+        adw_combo_row_set_selected(s->tb_apps, 0);
+        for (guint i = 0; i < 3; ++i)
+            if (tb_apps == kTbAppsKeys[i])
+                adw_combo_row_set_selected(s->tb_apps, i);
+        adw_switch_row_set_active(s->tb_running_dot, tb.value("running_indicator", false));
     } catch (const json::exception&) {
     }
     }
@@ -1007,6 +1015,17 @@ void on_tb_hide_changed(GObject*, GParamSpec*, gpointer data) {
         return;
     const auto selected = adw_combo_row_get_selected(s->tb_hide);
     taskbar_object(s)["hide_mode"] = kTbHideKeys[selected < 3 ? selected : 1];
+    save(s);
+}
+
+void on_tb_apps_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->tb_apps);
+    json& tb = taskbar_object(s);
+    tb["apps"] = kTbAppsKeys[selected < 3 ? selected : 0];
+    tb.erase("show_pinned_apps"); // superseded by "apps"
     save(s);
 }
 
@@ -4242,9 +4261,20 @@ void on_activate(GtkApplication* app, gpointer) {
          "Show only apps from the monitor where the bar is located.", &s->tb_same_monitor},
         {"only_active_workspaces", "Only from active workspaces",
          "Show only apps from active workspaces.", &s->tb_active_workspaces},
-        {"show_pinned_apps", "Show pinned apps",
-         "Show pinned apps from the dock in the taskbar.", &s->tb_pinned},
+        {"running_indicator", "Running indicator",
+         "Grey dot under opened apps that are not focused (the focused one keeps the accent dot).",
+         &s->tb_running_dot},
     };
+    GtkWidget* tb_apps_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tb_apps_row), "Apps to show");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(tb_apps_row),
+                                "Pinned apps come from the app menu's right-click menu.");
+    const char* tb_apps_options[] = {"Pinned and opened", "Only pinned", "Only opened", nullptr};
+    GtkStringList* tb_apps_model = gtk_string_list_new(tb_apps_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(tb_apps_row), G_LIST_MODEL(tb_apps_model));
+    g_object_unref(tb_apps_model);
+    s->tb_apps = ADW_COMBO_ROW(tb_apps_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(tb_group), tb_apps_row);
     for (const auto& row : tb_rows) {
         GtkWidget* sw = adw_switch_row_new();
         adw_preferences_row_set_title(ADW_PREFERENCES_ROW(sw), row.title);
@@ -4255,6 +4285,7 @@ void on_activate(GtkApplication* app, gpointer) {
         g_signal_connect(sw, "notify::active", G_CALLBACK(on_tb_toggled), s);
     }
     g_signal_connect(tb_hide_row, "notify::selected", G_CALLBACK(on_tb_hide_changed), s);
+    g_signal_connect(tb_apps_row, "notify::selected", G_CALLBACK(on_tb_apps_changed), s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(tb_page), ADW_PREFERENCES_GROUP(tb_group));
 
     // -- App menu subpage -------------------------------------------------------

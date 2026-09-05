@@ -201,7 +201,8 @@ directly on the bar without Noctalia's capsule background.
 | `hide_mode` | `visible` / `hidden` / `transparent` | `hidden` | Behaviour with no matching windows: keep showing, hide, or keep the space at opacity 0. |
 | `only_same_monitor` | bool | `true` | Only windows on the bar's monitor. |
 | `only_active_workspaces` | bool | `true` | Only windows on a monitor's active (or active special) workspace. |
-| `show_pinned_apps` | bool | `true` | Show pinned apps that are not running (or filtered out) as launchers. |
+| `apps` | `both` / `pinned` / `running` | `both` | Which apps appear: pinned + opened, only pinned (their windows included, other windows hidden), or only opened windows. The older `show_pinned_apps: false` is read as `running` when `apps` is absent. |
+| `running_indicator` | bool | `false` | Grey dot under opened apps that are not focused; the focused one keeps the accent dot. |
 | `show_title` | bool | `false` | Icon + window title per running app (horizontal bars only). Config-only. |
 | `title_width` | int px | `120` | Title label width. Config-only. |
 | `smart_width` | bool | `true` | Shrink titles so the widget fits `max_width_percent` of the screen (min 20px). Config-only. |

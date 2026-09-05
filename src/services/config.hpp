@@ -72,7 +72,9 @@ public:
         HideMode hide_mode = HideMode::Hidden;
         bool only_same_monitor = true;     // onlySameOutput
         bool only_active_workspaces = true;
-        bool show_pinned_apps = true;
+        enum class Apps { Both, Pinned, Running };
+        Apps apps = Apps::Both;            // which apps appear (user's dropdown)
+        bool running_indicator = false;    // grey dot under running, unfocused apps
         bool show_title = false;           // horizontal bars only
         int title_width = 120;             // px
         bool smart_width = true;           // cap the whole widget to max_width_percent

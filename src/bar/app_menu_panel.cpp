@@ -109,9 +109,15 @@ AppMenuPanel::AppMenuPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     pin_row->append(pin_label_);
     pin_button_.set_child(*pin_row);
     pin_button_.signal_clicked().connect([this] {
+        // Toggle from an idle, not inside the click: Apps::signal_changed
+        // rebuilds this grid, which unparents the very popover whose button
+        // is mid-click (the whole shell crashed on "Pin to taskbar").
+        std::string id;
         if (pin_index_ >= 0 && pin_index_ < static_cast<int>(results_.size()))
-            Apps::get().toggle_pinned(results_[static_cast<std::size_t>(pin_index_)].id);
+            id = results_[static_cast<std::size_t>(pin_index_)].id;
         pin_popover_.popdown();
+        if (!id.empty())
+            Glib::signal_idle().connect_once([id] { Apps::get().toggle_pinned(id); });
     });
     pin_popover_.set_child(pin_button_);
     pin_popover_.set_has_arrow(false);
@@ -288,9 +294,12 @@ void AppMenuPanel::update_results() {
 }
 
 void AppMenuPanel::rebuild_grid() {
+    // before the tiles go: the context popover is parented to a tile icon,
+    // and unparenting it after that icon's destruction dereferenced a dead
+    // widget (the crash behind "Pin to taskbar")
+    close_pin_menu();
     while (auto* child = grid_.get_first_child())
         grid_.remove(*child);
-    close_pin_menu();
     tiles_.clear();
     tile_icons_.clear();
     selected_ = -1;

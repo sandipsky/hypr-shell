@@ -188,6 +188,12 @@ window.bar.right .taskbar-capsule {
   transition: background 150ms cubic-bezier(0.33, 1, 0.68, 1); /* OutCubic */
 }
 
+/* bar.taskbar.running_indicator: opened but unfocused apps get a grey dot
+ * (the focused one keeps the accent below) */
+.taskbar-item.running .taskbar-indicator {
+  background: alpha(@mOnSurface, 0.4);
+}
+
 .taskbar-item.hovered .taskbar-indicator {
   background: @mOnSurfaceVariant; /* neutral hover mark */
 }

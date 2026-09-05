@@ -278,6 +278,8 @@ void Taskbar::update_model() {
         Item item;
         item.id = w.address;
         item.type = is_pinned_app(w.app_id) ? ItemType::PinnedRunning : ItemType::Running;
+        if (cfg.apps == Config::Taskbar::Apps::Pinned && item.type != ItemType::PinnedRunning)
+            continue; // "only pinned": windows of unpinned apps stay out
         item.window = static_cast<int>(i);
         item.app_id = w.app_id;
         item.title = !w.title.empty() ? w.title : app_name_for(w.app_id);
@@ -288,7 +290,7 @@ void Taskbar::update_model() {
             processed.push_back(normalize_app_id(resolved));
     }
 
-    if (cfg.show_pinned_apps) {
+    if (cfg.apps != Config::Taskbar::Apps::Running) {
         for (const auto& pinned : apps.pinned()) {
             const std::string key = normalize_app_id(pinned);
             if (std::find(processed.begin(), processed.end(), key) != processed.end())
@@ -419,6 +421,11 @@ void Taskbar::refresh_item(std::size_t index) {
         item.root->add_css_class("focused");
     else
         item.root->remove_css_class("focused");
+    const bool running_dot = item.window >= 0 && !focused && Config::get().taskbar().running_indicator;
+    if (running_dot)
+        item.root->add_css_class("running");
+    else
+        item.root->remove_css_class("running");
     const std::string& tooltip = item.title.empty() ? item.app_id : item.title;
     if (item.root->get_tooltip_text().raw() != tooltip)
         item.root->set_tooltip_text(tooltip);
@@ -438,6 +445,8 @@ Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_wid
     root->add_css_class("taskbar-item");
     if (focused)
         root->add_css_class("focused");
+    if (running && !focused && Config::get().taskbar().running_indicator)
+        root->add_css_class("running"); // grey dot: opened, not focused
     if (item.id == hovered_id_)
         root->add_css_class("hovered");
     if (show_title)
