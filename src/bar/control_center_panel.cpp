@@ -42,8 +42,10 @@ constexpr const char* kMemory = "";
 constexpr const char* kStorage = "";
 
 // Noctalia colour snapshot (the user's colors.json, like the other panels)
-// palette lookups (theme-dependent, so functions rather than constants)
-Gdk::RGBA kPrimary() { return Theme::get().rgba("mPrimary"); }
+// palette lookups (theme-dependent, so functions rather than constants).
+// Gauges are neutral (mOnSurface) rather than accent-coloured, per user;
+// warning / critical keep their semantic colours.
+Gdk::RGBA kPrimary() { return Theme::get().rgba("mOnSurface"); }
 Gdk::RGBA kTertiary() { return Theme::get().rgba("mTertiary"); } // warning
 Gdk::RGBA kError() { return Theme::get().rgba("mError"); }       // critical
 Gdk::RGBA kSurface() { return Theme::get().rgba("mSurface"); }
@@ -357,7 +359,7 @@ void ControlCenterPanel::build_profile() {
 
     auto* buttons = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
     buttons->set_valign(Gtk::Align::CENTER);
-    style_round_button(settings_button_, settings_icon_, "cc-media-btn");
+    style_round_button(settings_button_, settings_icon_, "cc-profile-btn");
     settings_icon_.set_text(kSettings);
     settings_button_.set_tooltip_text("Settings");
     settings_button_.signal_clicked().connect([this] {
@@ -365,7 +367,7 @@ void ControlCenterPanel::build_profile() {
         open_settings();
     });
     buttons->append(settings_button_);
-    style_round_button(power_button_, power_icon_, "cc-media-btn");
+    style_round_button(power_button_, power_icon_, "cc-profile-btn");
     power_icon_.set_text(kPower);
     power_button_.set_tooltip_text("Session menu");
     power_button_.signal_clicked().connect([this] {

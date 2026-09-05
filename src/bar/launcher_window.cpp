@@ -138,9 +138,11 @@ void LauncherWindow::open() {
         return;
     mouse_active_ = false;
     mouse_primed_ = false;
-    // dev hook: HS_LAUNCHER_QUERY pre-fills the search on every open
+    // the search always starts empty (no memory of the last query); the dev
+    // hook HS_LAUNCHER_QUERY pre-fills it on the FIRST open only
     const char* preset = g_getenv("HS_LAUNCHER_QUERY");
     search_.set_text(preset ? preset : "");
+    g_unsetenv("HS_LAUNCHER_QUERY");
     update_results();
     present();
     search_.grab_focus();

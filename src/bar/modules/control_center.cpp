@@ -5,13 +5,15 @@
 namespace hyprshell {
 
 namespace {
-constexpr const char* kNoctalia = ""; // noctalia-tabler-icons' noctalia logo
+// tabler "adjustments-horizontal" (sliders) — Noctalia's own control-center
+// icon; the gear is taken by the Settings button inside the panel (per user)
+constexpr const char* kIcon = "\uEC38";
 }
 
 ControlCenter::ControlCenter() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("control-center-module");
-    icon_.set_text(kNoctalia);
+    icon_.set_text(kIcon);
     icon_.add_css_class("icon");
     append(icon_);
     set_tooltip_text("Control center");

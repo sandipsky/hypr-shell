@@ -91,7 +91,7 @@ button.cal-icon-btn:hover {
 }
 
 .cal-day.today {
-  background: @mSecondary; /* mSecondary */
-  color: @mOnSecondary; /* mOnSecondary */
+  background: @mPrimary; /* accent, with its contrast text (user request) */
+  color: @mOnPrimary;
   font-weight: 700;
 }

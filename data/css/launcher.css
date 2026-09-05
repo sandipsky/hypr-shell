@@ -17,13 +17,16 @@ window.launcher {
 
 /* search input, Noctalia's NTextInput: mSurface field, mOutline border
  * (mSecondary while focused), radius iRadiusM */
+/* Noctalia's NTextInput: 36px tall (baseWidgetSize 33 x 1.1), iRadiusM 16,
+ * fontSizeM 11pt — GTK puts the 1px border outside min-height + padding */
 entry.launcher-search {
   background: @mSurface;
   color: @mOnSurface; /* mOnSurface */
   border: 1px solid @mOutline; /* mOutline */
   border-radius: 16px;
-  padding: 10px 12px;
-  font-size: 15px;
+  min-height: 22px;
+  padding: 6px 12px;
+  font-size: 11pt;
   caret-color: @mPrimary; /* mPrimary */
   box-shadow: none;
 }
@@ -48,7 +51,7 @@ entry.launcher-search selection {
 }
 
 .launcher-row.selected {
-  background: @mTertiary; /* mHover */
+  background: @mHover; /* grey hover / selection shade */
 }
 
 .launcher-name {
@@ -62,11 +65,6 @@ entry.launcher-search selection {
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
 }
 
-.launcher-row.selected .launcher-name,
-.launcher-row.selected .launcher-desc,
-.launcher-row.selected .launcher-glyph {
-  color: @mOnTertiary; /* mOnHover */
-}
 
 /* tabler glyph in place of an app icon (calculator/settings/session/web) */
 .launcher-glyph {

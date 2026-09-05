@@ -2,13 +2,14 @@
 // (header-only, plain C++ — no GTK types).
 //
 // One accent colour + a dark/light flag give the full Noctalia-style token
-// set (mPrimary, mOnPrimary, mSurface, ...) the way Material's tonal-spot
-// scheme does: in dark mode mPrimary is a pastel of the accent (tone 80 —
-// the accent lightened, never darkened) with a deep shade of the same hue on
-// it; in light mode the accent is darkened until white text reads on it.
-// The neutrals are tinted with the accent's hue. The default accent + dark
-// reproduces the palette the CSS was written with (a snapshot of the user's
-// Noctalia colors.json: #bfc2ff on #131316).
+// set (mPrimary, mOnPrimary, mSurface, ...). In dark mode the accent IS
+// mPrimary — a picked swatch shows exactly as picked — and mOnPrimary is
+// chosen for contrast: a deep shade of the hue on light accents, white on
+// dark ones (per user: a saturated blue header needs white text). In light
+// mode the accent is darkened until white text reads on it. The neutrals are
+// tinted with the accent's hue like Material's tonal-spot scheme. The default
+// accent + dark reproduces the palette the CSS was written with (a snapshot
+// of the user's Noctalia colors.json: #bfc2ff on #131316).
 #pragma once
 
 #include <algorithm>
@@ -107,6 +108,14 @@ inline Rgb hsl_to_rgb(const Hsl& c) {
     return {r + m, g + m, b + m};
 }
 
+// sRGB relative luminance (WCAG): 0 black .. 1 white
+inline double relative_luminance(const Rgb& c) {
+    const auto lin = [](double v) {
+        return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+}
+
 struct PaletteEntry {
     const char* name;
     std::string hex;
@@ -126,11 +135,12 @@ inline Palette derive_palette(const std::string& accent_hex, bool dark) {
     int i = 0;
     const auto put = [&](const char* name, std::string hex) { p[i++] = {name, std::move(hex)}; };
     if (dark) {
-        // tone-80 pastel of the accent; its "on" colour a deep shade of the hue
-        const double primary_l = std::max(a.l, 0.80);
-        put("mPrimary", hsl(a.h, a.s, primary_l));
-        put("mOnPrimary", hsl(a.h, std::min(1.0, a.s * 0.6 + 0.1), 0.30));
-        put("mPrimaryHover", hsl(a.h, a.s, std::min(1.0, primary_l + 0.05)));
+        // the accent as picked; text on it by contrast (WCAG relative luminance)
+        put("mPrimary", to_hex(accent));
+        put("mOnPrimary", relative_luminance(accent) > 0.35
+                              ? hsl(a.h, std::min(1.0, a.s * 0.6 + 0.1), 0.30)
+                              : "#ffffff");
+        put("mPrimaryHover", hsl(a.h, a.s, std::min(1.0, a.l + 0.05)));
         put("mSecondary", hsl(a.h + 5, a.s * 0.27, 0.82));
         put("mOnSecondary", hsl(a.h, a.s * 0.18, 0.22));
         put("mTertiary", hsl(a.h + 87, 0.51, 0.82));
@@ -143,8 +153,10 @@ inline Palette derive_palette(const std::string& accent_hex, bool dark) {
         put("mOnSurfaceVariant", hsl(a.h + 14, 0.10, 0.79));
         put("mOutline", hsl(a.h + 3, 0.06, 0.29));
         put("mShadow", "#000000");
-        put("mHover", hsl(a.h + 87, 0.51, 0.82));
-        put("mOnHover", hsl(a.h + 83, 0.30, 0.21));
+        // hover / selection: a grey shade, text keeps its colour (user request;
+        // Noctalia tints with mTertiary instead)
+        put("mHover", hsl(a.h + 3, 0.06, 0.24));
+        put("mOnHover", hsl(a.h + 51, 0.09, 0.89));
     } else {
         // Material light tones: primary dark enough for white text (tone 40)
         put("mPrimary", hsl(a.h, a.s, std::min(a.l, 0.42)));
@@ -162,8 +174,8 @@ inline Palette derive_palette(const std::string& accent_hex, bool dark) {
         put("mOnSurfaceVariant", hsl(a.h + 14, 0.10, 0.29));
         put("mOutline", hsl(a.h + 3, 0.06, 0.47));
         put("mShadow", "#000000");
-        put("mHover", hsl(a.h + 87, 0.45, 0.38));
-        put("mOnHover", "#ffffff");
+        put("mHover", hsl(a.h + 3, 0.10, 0.86));
+        put("mOnHover", hsl(a.h + 51, 0.09, 0.11));
     }
     return p;
 }

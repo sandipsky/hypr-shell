@@ -92,7 +92,8 @@ Use the palette tokens, Noctalia's names:
 |-------|------|--------------|
 | `@mPrimary` / `@mOnPrimary` / `@mPrimaryHover` | accent, text on it, hover shade | `#bfc2ff` / `#202578` / `#d3d5ff` |
 | `@mSecondary` / `@mOnSecondary` | muted accent | `#c5c4dd` / `#2e2f42` |
-| `@mTertiary` / `@mOnTertiary` (= `@mHover` / `@mOnHover`) | warning tint, hover highlights | `#e8b9d5` / `#46263b` |
+| `@mTertiary` / `@mOnTertiary` | warning / info tint | `#e8b9d5` / `#46263b` |
+| `@mHover` / `@mOnHover` | hover and selection shade (grey), text on it | `#393a3f` / `#e5e1e6` |
 | `@mError` / `@mOnError` | destructive, critical | `#ffb4ab` / `#690005` |
 | `@mSurface` / `@mOnSurface` | panel background, text | `#131316` / `#e5e1e6` |
 | `@mSurfaceVariant` / `@mOnSurfaceVariant` | cards, tracks / dim text | `#201f23` / `#c7c5d0` |

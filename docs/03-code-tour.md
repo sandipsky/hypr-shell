@@ -86,7 +86,7 @@ is missing.
 | `battery` | `Gtk::Box` with `Gtk::Overlay` of two labels | UPower + PowerProfiles | Win11 look; CSS classes `charging` / `saver`. Click → `BatteryPanel`. |
 | `notifications` | `Gtk::Box` with `Gtk::Overlay` (icon + badge) | NotificationService | Bell / bell-off (DND), unread dot. Click → `NotificationPanel`; right click toggles DND. `bar.notifications.*` hide rules. |
 | `clock` | `Gtk::Label` | none | strftime formats from config. Click → `Calendar`. |
-| `control_center` | `Gtk::Box` (icon label) | none | Noctalia glyph button; click toggles `ControlCenterPanel`. |
+| `control_center` | `Gtk::Box` (icon label) | none | Tabler "adjustments-horizontal" (sliders) button; click toggles `ControlCenterPanel`. |
 
 ### Panels and other windows
 

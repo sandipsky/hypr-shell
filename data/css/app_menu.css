@@ -54,8 +54,8 @@ button.am-icon-btn {
 
 button.am-icon-btn:hover,
 button.am-icon-btn.active {
-  background: @mTertiary; /* mHover */
-  border-color: @mTertiary;
+  background: @mHover;
+  border-color: @mOutline;
 }
 
 .am-btn-glyph {
@@ -66,7 +66,7 @@ button.am-icon-btn.active {
 
 button.am-icon-btn:hover .am-btn-glyph,
 button.am-icon-btn.active .am-btn-glyph {
-  color: @mOnTertiary; /* mOnHover */
+  color: @mOnHover;
 }
 
 /* application tiles: mSurfaceVariant cards, mHover when selected (keyboard
@@ -78,7 +78,7 @@ button.am-icon-btn.active .am-btn-glyph {
 }
 
 .am-tile.selected {
-  background: @mTertiary; /* mHover */
+  background: @mHover;
 }
 
 .am-tile-name {
@@ -88,7 +88,7 @@ button.am-icon-btn.active .am-btn-glyph {
 }
 
 .am-tile.selected .am-tile-name {
-  color: @mOnTertiary; /* mOnHover */
+  color: @mOnHover;
 }
 
 .am-empty {
@@ -137,7 +137,7 @@ button.am-context-item {
 }
 
 button.am-context-item:hover {
-  background: @mTertiary; /* mHover */
+  background: @mHover;
 }
 
 .am-context-glyph {
@@ -153,5 +153,5 @@ button.am-context-item:hover {
 
 button.am-context-item:hover .am-context-glyph,
 button.am-context-item:hover .am-context-label {
-  color: @mOnTertiary; /* mOnHover */
+  color: @mOnHover;
 }

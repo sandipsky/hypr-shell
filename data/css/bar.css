@@ -45,8 +45,10 @@ window.bar.right .module {
   padding: 8px 0;
 }
 
+/* every module gets the same 6px each side, so any two neighbours sit 12px
+ * apart (workspaces: 4px + the buttons' 2px margin; taskbar: 6px) */
 .module {
-  padding: 0 10px;
+  padding: 0 6px;
   font-size: 13px;
   color: @mOnSurface;
 }
@@ -112,13 +114,6 @@ window.bar.right .module {
   color: @mOnSurface;
 }
 
-.network,
-.bluetooth,
-.volume,
-.battery {
-  padding: 0 5px;
-}
-
 /* battery: win11-style Segoe Fluent glyph + percent text */
 .battery .icon {
   font-family: "Segoe Fluent Icons";
@@ -180,7 +175,7 @@ window.bar.right .taskbar-capsule {
 }
 
 .taskbar-item.hovered .taskbar-indicator {
-  background: @mTertiary; /* mHover */
+  background: @mOnSurfaceVariant; /* neutral hover mark */
 }
 
 .taskbar-item.focused .taskbar-indicator {
@@ -198,7 +193,7 @@ window.bar.right .taskbar-capsule {
 
 .taskbar-item.with-title.hovered,
 .taskbar-item.with-title.focused {
-  background: @mTertiary; /* mHover */
+  background: @mHover;
 }
 
 .taskbar-title {
@@ -208,5 +203,5 @@ window.bar.right .taskbar-capsule {
 
 .taskbar-item.with-title.hovered .taskbar-title,
 .taskbar-item.with-title.focused .taskbar-title {
-  color: @mOnTertiary; /* mOnHover */
+  color: @mOnHover;
 }

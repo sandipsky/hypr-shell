@@ -108,7 +108,7 @@ popover.audio-popover > contents {
 .ap-kind {
   font-size: 14px;
   font-weight: 700;
-  color: @mPrimary; /* mPrimary, like Noctalia's Output/Input labels */
+  color: @mOnSurface; /* neutral, not the accent (user request; Noctalia uses mPrimary) */
 }
 
 button.ap-mute-btn {

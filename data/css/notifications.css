@@ -19,7 +19,7 @@ popover.notification-popover > contents {
 .notif-header-icon {
   font-family: "noctalia-tabler-icons";
   font-size: 20px;
-  color: @mPrimary; /* mPrimary, like Noctalia's header bell */
+  color: @mOnSurface; /* neutral, not the accent (user request) */
 }
 
 button.notif-clear {

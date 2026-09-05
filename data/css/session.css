@@ -27,7 +27,7 @@ button.session-item {
 }
 
 button.session-item:hover {
-  background: @mTertiary; /* mHover */
+  background: @mHover;
 }
 
 .session-glyph {
@@ -50,7 +50,7 @@ button.session-item.destructive .session-label {
 
 button.session-item:hover .session-glyph,
 button.session-item:hover .session-label {
-  color: @mOnTertiary; /* mOnHover */
+  color: @mOnHover;
 }
 
 .session-empty {

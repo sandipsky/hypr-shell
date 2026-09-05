@@ -656,7 +656,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   (sortByMostUsed), custom launch prefix/terminal override, entrance
   animation. Gotcha: a GTK entry draws its own blue focus ring — needs
   `outline: none` alongside the themed border. Dev hooks: HS_OPEN_LAUNCHER=1;
-  HS_LAUNCHER_QUERY=<text> pre-fills the search on open;
+  HS_LAUNCHER_QUERY=<text> pre-fills the search on the first open only
+  (the search itself never remembers the previous query);
   HS_SETTINGS_PAGE=launcher_page opens the settings page.
 - 2026-09-02 — `launcher.show_all_apps = false` now means **Spotlight mode**
   (user request): the panel is content-sized — just the input box when the
@@ -1004,7 +1005,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   fullscreen per `session.mode`) buttons; both close the popover first via
   the panel's `signal_request_close`. Noctalia's third button (Close) was
   dropped per user. Module `control_center` (default right section): the noctalia
-  glyph (U+EC33 in the bundled font), click toggles a 440px popover; cards
+  glyph (U+EC33 in the bundled font; replaced on 2026-09-05 by the tabler
+  "adjustments-horizontal" sliders U+EC38 — Noctalia's control-center
+  settings icon — since the gear already means hypr-shell-settings inside
+  the panel, per user), click toggles a 440px popover; cards
   are stacked with Noctalia's 13px margins at its fixed heights — audio 60,
   brightness 60, media 220, sysmon 84 — so the popover never resizes
   (popover-resize gotcha; the media card swaps empty/active content inside
@@ -1267,11 +1271,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   leftovers were folded into tokens (#11111b bar → mSurface, #cdd6f4 /
   #e0eaff / #ffffff text → mOnSurface, #a6adc8 → mOnSurfaceVariant);
   battery green/amber and the trigger window's rgba stay literal. Palette
-  derivation (`services/palette.hpp`, header-only, shared): dark →
-  mPrimary is a tone-80 pastel of the accent (lightness raised to ≥ 0.80,
-  never lowered — GNOME's mid-tone swatches become Noctalia-style pastels;
-  the default #bfc2ff is already there), mOnPrimary a 30% shade of its hue,
-  secondary/tertiary/
+  derivation (`services/palette.hpp`, header-only, shared): dark → the
+  accent IS mPrimary (a swatch shows as picked — a tone-80 pastel rule was
+  tried and dropped the same day), mOnPrimary picked for contrast: a 30%
+  shade of the hue when the accent's WCAG relative luminance is above 0.35,
+  else white (the blue swatch's calendar header was unreadable with the
+  shade, per user), secondary/tertiary/
   neutrals tinted with the accent hue (tertiary = hue+87°, surfaces L 0.08 /
   0.13, on-surface L 0.89) — the default accent #bfc2ff reproduces the CSS
   snapshot within a couple of RGB steps; light → Material tone-40 primary
@@ -1304,6 +1309,31 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   that carries white text) in both modes. Not done: font size, per-token
   overrides (users keep `~/.config/hypr-shell/style.css`, which may also
   `@define-color` any token), the settings window's font.
+- 2026-09-05 — Uniform module gaps (user request): `.module` padding is
+  6px each side for every module (was 10px, with 5px overrides on the four
+  status icons and 6px on the taskbar); workspaces keep 4px + the buttons'
+  2px margin and the taskbar 6px, so every neighbouring pair is 12px apart.
+- 2026-09-05 — Accent usage trimmed (user request, after trying the blue
+  swatch): the control center's profile picture lost its 2px accent ring,
+  its Settings / Session buttons use the app menu's round-button look
+  (`.cc-profile-btn`: mSurfaceVariant, mOutline, mOnSurface glyph, tertiary
+  hover) instead of accent glyphs, and the system-monitor gauges draw in
+  mOnSurface (warning mTertiary / critical mError kept). The calendar's
+  today cell is the accent with mOnPrimary text (was mSecondary). Later the
+  same day: the notification panel's header bell and the audio panel's
+  Output / Input labels went from mPrimary to mOnSurface as well. The
+  launcher's search box took Noctalia's NTextInput metrics (36px tall: 22px
+  min-height + 6px padding + 1px border; 11pt; radius 16) and its
+  hovered / selected row is a grey shade (`alpha(@mOnSurface, 0.14)`, text
+  colours unchanged) instead of Noctalia's mHover tint (user request) —
+  then generalised: the `mHover` / `mOnHover` tokens themselves became the
+  grey shade (dark: hsl(hue, 6%, 24%) ≈ #393a3f, light: L 0.86) with
+  on-surface text, and every hover / selection rule (taskbar title pill,
+  app menu header buttons + tiles + context menu, session dropdown, control
+  center buttons, launcher rows) uses them; the taskbar's hovered indicator
+  is mOnSurfaceVariant and the control-center slider knob's :active state
+  mPrimaryHover. mTertiary remains only where it is a status colour (lock
+  screen info pill, system-monitor warning arc).
 - 2026-09-05 — VPN moved out of the bar into hypr-shell-settings (user
   request): `bar/modules/vpn`, `bar/vpn_panel`, `services/vpn`, the
   `bar.vpn.*` config keys (`Config::Vpn`), the `vpn` module row/default

@@ -324,7 +324,7 @@ from these three values (see [styling](09-styling-and-icons.md#colours)).
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `dark_mode` | bool | `true` | Dark surfaces with light text; `false` gives the light palette (Material tone-40 accent, near-white surfaces). Also forces the settings window's libadwaita colour scheme. |
-| `accent` | `"#rrggbb"` | `"#bfc2ff"` | Accent colour (the settings page offers ten swatches; any hex works by hand). Dark mode uses a pastel of it as `mPrimary` (lightness raised to at least 0.80); light mode darkens it so white text reads on it. Invalid strings fall back to the default. |
+| `accent` | `"#rrggbb"` | `"#bfc2ff"` | Accent colour (the settings page offers ten swatches; any hex works by hand). Dark mode uses it as `mPrimary` verbatim, with the on-accent text chosen for contrast (dark shade on light accents, white on dark ones); light mode darkens it so white text reads on it. Invalid strings fall back to the default. |
 | `font` | string | `"Fira Sans"` | Text font family for every window and popover (icon fonts are unaffected). Sizes are not configurable. |
 
 ## `night_light` (top level)
