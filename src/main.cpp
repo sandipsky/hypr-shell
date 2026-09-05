@@ -247,6 +247,12 @@ protected:
                 Glib::signal_timeout().connect_once([] { Idle::get().simulate_resumed(); },
                                                     1500 + static_cast<unsigned>(atoi(resume)));
         }
+        // dev hook: HS_IDLE_SIMULATE_GAMEPAD=<ms> reports controller activity
+        // that long after startup (the idle inhibitor hold, without a pad)
+        if (const char* delay = g_getenv("HS_IDLE_SIMULATE_GAMEPAD"))
+            Glib::signal_timeout().connect_once(
+                [] { Idle::get().report_external_activity(); },
+                static_cast<unsigned>(std::max(1, atoi(delay))));
         // dev hook: HS_OPEN_LAUNCHER=1 opens it shortly after startup
         if (open_launcher_on_startup_ || g_getenv("HS_OPEN_LAUNCHER") != nullptr)
             Glib::signal_timeout().connect_once([this] { launcher_window_->open(); },

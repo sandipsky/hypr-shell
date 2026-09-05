@@ -49,6 +49,25 @@ idle_notify_glue = [
   ),
 ]
 
+# idle-inhibit-unstable-v1: the idle service holds an inhibitor while a game
+# controller is in use (input the compositor does not see).
+idle_inhibit_xml = (wayland_protocols.get_variable('pkgdatadir') / 'unstable' / 'idle-inhibit'
+                    / 'idle-inhibit-unstable-v1.xml')
+idle_inhibit_glue = [
+  custom_target(
+    'idle-inhibit-unstable-v1-protocol.c',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'idle-inhibit-unstable-v1-client-protocol.h',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
+]
+
 sources = files(
   'src/main.cpp',
   'src/bar/bar.cpp',
@@ -96,6 +115,7 @@ sources = files(
   'src/bar/modules/control_center.cpp',
   'src/bar/modules/workspaces.cpp',
   'src/services/hyprland.cpp',
+  'src/services/gamepad.cpp',
   'src/services/idle.cpp',
   'src/services/lock_keys.cpp',
   'src/services/math_eval.cpp',
@@ -151,6 +171,7 @@ executable(
   sources,
   resources,
   idle_notify_glue,
+  idle_inhibit_glue,
   dependencies: dependencies,
   include_directories: include_directories('src'),
   install: true,

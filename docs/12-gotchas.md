@@ -216,6 +216,16 @@ runs (install.sh does this).
 
 **sysfs has no inotify.** Provide `refresh()` and call it when the UI opens.
 
+**The compositor does not see controller input.** Hyprland counts only
+keyboard / pointer / touch towards idleness, so a gamepad session looks
+idle. `services/gamepad` reads the evdev nodes itself — only joystick nodes
+are readable (systemd's uaccess ACL), everything else fails with EACCES —
+and `Idle` holds an `idle-inhibit-v1` inhibitor for a few seconds. The
+inhibitor sits on a bare `wl_surface` with no role: Hyprland treats an
+inhibitor whose surface has no desktop role as "non-desktop, assumed
+visible" and inhibits unconditionally, and releasing it re-arms every idle
+notification with its full timeout (the idle clock restarts).
+
 **`nmcli` can exit 0 on failure.** Grep the output for `Error`. Use `-t`
 terse mode with `--escape yes` and unescape `\:`.
 

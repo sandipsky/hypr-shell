@@ -11,6 +11,10 @@
 
 struct wl_registry;
 struct wl_seat;
+struct wl_compositor;
+struct wl_surface;
+struct zwp_idle_inhibit_manager_v1;
+struct zwp_idle_inhibitor_v1;
 struct ext_idle_notifier_v1;
 struct ext_idle_notification_v1;
 
@@ -24,6 +28,12 @@ namespace hyprshell {
 // Optional per-stage commands and custom timeout/command pairs come from the
 // same config object. A 1s heartbeat notification tracks idle seconds. The
 // compositor honors idle inhibitors for us (v1 notifications).
+//
+// Input the compositor cannot see (game controllers, read by services/gamepad)
+// is fed back through report_external_activity(): the service holds an
+// idle-inhibit-v1 inhibitor for a few seconds after each report, which makes
+// the compositor cancel a running fade and restart every timeout from zero
+// when the inhibitor is released — a controller resets idleness like a key.
 //
 // "lock" asks the shell's lock screen via request_lock() (services/session).
 // HS_IDLE_DRY_RUN=1 logs every action instead of running it.
@@ -41,6 +51,10 @@ public:
     Stage fade_pending() const { return fade_pending_; }
     // Fade overlay state changed (fade_pending() == None means hide).
     sigc::signal<void()>& signal_fade_changed() { return fade_changed_; }
+
+    // Activity from a device the compositor does not count (a gamepad button,
+    // a stick moved): pause the idle timers briefly so they restart afterwards.
+    void report_external_activity();
 
     // Dev hooks: drive a stage as if the compositor reported the seat idle,
     // then resumed — without touching the real idle state.
@@ -81,6 +95,10 @@ private:
     wl_registry* registry_ = nullptr;
     wl_seat* seat_ = nullptr;
     ext_idle_notifier_v1* notifier_ = nullptr;
+    wl_compositor* compositor_ = nullptr;
+    zwp_idle_inhibit_manager_v1* inhibit_manager_ = nullptr;
+    wl_surface* inhibit_surface_ = nullptr;     // role-less surface carrying the inhibitor
+    zwp_idle_inhibitor_v1* inhibitor_ = nullptr; // held while external input is recent
 
     std::unique_ptr<Monitor> screen_off_, lock_, suspend_, heartbeat_;
     std::vector<std::unique_ptr<Monitor>> custom_;
@@ -96,6 +114,7 @@ private:
     sigc::connection idle_counter_;  // 1s ticks while the heartbeat says idle
     sigc::connection suspend_timer_; // lock-before-suspend grace period
     sigc::connection locked_connection_; // lock screen confirmed → suspend
+    sigc::connection inhibit_release_;   // external activity hold → drop the inhibitor
     sigc::signal<void()> fade_changed_;
 };
 

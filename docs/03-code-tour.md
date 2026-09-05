@@ -147,7 +147,8 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `palette.hpp` | nothing (header-only) | `derive_palette(accent, dark)` → the 17 `m*` tokens as hex, `palette_css()` (`@define-color` lines), hex/HSL helpers; shared with the settings app, which uses it for libadwaita's accent. |
 | `theme` | Config | `Theme::get()`: palette + font + dark flag from `ui.*`, recomputed on config change (`signal_changed`); `rgba("mPrimary")` for cairo/GSK drawing, `css()` for the theme provider. |
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |
-| `idle` | `ext-idle-notify-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. |
+| `idle` | `ext-idle-notify-v1`, `idle-inhibit-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. `report_external_activity()` holds an idle inhibitor on a role-less `wl_surface` for 3 s so the compositor cancels a fade and restarts its timeouts. |
+| `gamepad` | `/dev/input/event*` (evdev), `Gio::FileMonitor` on `/dev/input` | Opens joystick / gamepad nodes (the only ones the seated user may read, via systemd's uaccess ACL; a node must advertise gamepad buttons), reads events on `Glib::signal_io`, emits `signal_activity()` on button presses and axis moves past a dead zone, at most every 250 ms; hotplug with ACL retries. Feeds `Idle`. |
 
 ## `src/settings/` — `main.cpp` (~3900 lines) + `search.cpp` + `about_page.cpp`
 
