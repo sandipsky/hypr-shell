@@ -1,5 +1,6 @@
 #include "bar/modules/active_window.hpp"
 
+#include "services/apps.hpp"
 #include "services/config.hpp"
 #include "services/hyprland.hpp"
 
@@ -12,12 +13,14 @@ namespace hyprshell {
 
 namespace {
 
-// Desktop entry for a Hyprland window class, matching the common id spellings.
-// Cached for the last class: update() asks twice per focus change and each
-// lookup parses a .desktop file from disk.
-Glib::RefPtr<Gio::DesktopAppInfo> desktop_entry(const std::string& klass) {
+// Desktop entry for a Hyprland window class: "<class>.desktop" (also
+// lowercased), else the app index's StartupWMClass / fuzzy lookup — the one
+// the taskbar uses, which finds e.g. hypr-shell-settings.desktop for
+// dev.hyprshell.Settings. Cached for the last class: update() asks twice per
+// focus change and each miss parses .desktop files from disk.
+Glib::RefPtr<Gio::AppInfo> desktop_entry(const std::string& klass) {
     static std::string cached_class;
-    static Glib::RefPtr<Gio::DesktopAppInfo> cached_info;
+    static Glib::RefPtr<Gio::AppInfo> cached_info;
     if (klass.empty())
         return {};
     if (klass == cached_class)
@@ -30,9 +33,11 @@ Glib::RefPtr<Gio::DesktopAppInfo> desktop_entry(const std::string& klass) {
     for (const auto& id : {klass, lower}) {
         if (auto info = Gio::DesktopAppInfo::create(id + ".desktop")) {
             cached_info = info;
-            break;
+            return cached_info;
         }
     }
+    if (const auto* entry = Apps::get().lookup_for_class(klass))
+        cached_info = entry->info;
     return cached_info;
 }
 
@@ -72,6 +77,11 @@ ActiveWindow::ActiveWindow() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 6) {
     });
 
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &ActiveWindow::update));
+    // installed / removed apps: re-resolve the current class
+    Apps::get().signal_changed().connect([this] {
+        desktop_entry("\x01"); // any other class evicts the cached one
+        update();
+    });
     update();
 }
 

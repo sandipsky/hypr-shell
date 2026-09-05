@@ -45,6 +45,8 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
 ```
 meson.build                    single meson file; include root is src/
 install.sh / uninstall.sh      Arch-only; deps via pacman, install via meson to ~/.local
+package.sh                     git-archives HEAD to dist/hypr-shell.tar.gz (gitignored) for the
+                               dotfiles repo's applications/hypr-shell/; commit first
 data/style.css                 default theme entry — @imports data/css/*, declares the
                                @define-color palette tokens + the text-font rule (GResource)
 data/css/*.css                 per-area theme files: bar, calendar, panels,
