@@ -238,6 +238,7 @@ void Config::load() {
             auto& n = notifications_;
             n.enabled = it->value("enabled", true);
             n.do_not_disturb = it->value("do_not_disturb", false);
+            n.battery_alerts = it->value("battery_alerts", true);
             if (it->value("density", "default") == std::string("compact"))
                 n.density = Notifications::Density::Compact;
             const std::string location = it->value("location", "top_right");

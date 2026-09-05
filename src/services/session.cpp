@@ -57,6 +57,34 @@ sigc::signal<void(bool)>& signal_session_locked() {
     return session_locked_signal;
 }
 
+void lock_and_suspend() {
+    static sigc::connection locked_connection;
+    static sigc::connection timeout;
+    const auto suspend = [] {
+        locked_connection.disconnect();
+        timeout.disconnect();
+        spawn_detached({"sh", "-c", "systemctl suspend || loginctl suspend"});
+    };
+    if (session_locked()) {
+        suspend();
+        return;
+    }
+    request_lock();
+    locked_connection.disconnect();
+    timeout.disconnect();
+    locked_connection = session_locked_signal.connect([suspend](bool locked) {
+        if (locked)
+            suspend();
+    });
+    timeout = Glib::signal_timeout().connect(
+        [suspend] {
+            g_warning("lock screen did not confirm the lock — suspending anyway");
+            suspend();
+            return false;
+        },
+        3000);
+}
+
 void spawn_detached(const std::vector<std::string>& argv) {
     if (argv.empty())
         return;

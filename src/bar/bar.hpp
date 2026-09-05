@@ -26,6 +26,7 @@ public:
 
     void toggle_app_menu();     // `hypr-shell --app-menu` / the "app-menu" action
     void toggle_session_menu(); // the "session" action in dropdown mode
+    void toggle_control_center(); // `hypr-shell --control-center`
 
 private:
     void apply_config();

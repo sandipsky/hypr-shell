@@ -7,8 +7,10 @@
 #include "bar/osd_window.hpp"
 #include "bar/session_window.hpp"
 #include "bar/wallpaper_window.hpp"
+#include "services/battery_alerts.hpp"
 #include "services/config.hpp"
 #include "services/theme.hpp"
+#include "services/wallpaper.hpp"
 #include "services/idle.hpp"
 #include "services/night_light.hpp"
 #include "services/osd.hpp"
@@ -75,20 +77,40 @@ protected:
         add_main_option_entry(Gtk::Application::OptionType::BOOL, "lock", 'k',
                               "Lock the screen in the running instance");
         add_action("lock", [] { request_lock(); });
+        // `hypr-shell --lock-and-suspend` for the lid switch
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "lock-and-suspend", 'S',
+                              "Lock the screen, then suspend");
+        add_action("lock-and-suspend", [] { lock_and_suspend(); });
+        // `hypr-shell --control-center` toggles the bar's control center popover
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "control-center", 'C',
+                              "Toggle the control center in the running instance");
+        add_action("control-center", [this] {
+            if (bar_)
+                bar_->toggle_control_center();
+        });
+        // `hypr-shell --wallpaper-next` picks the next wallpaper (slideshow order)
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "wallpaper-next", 'w',
+                              "Switch to the next wallpaper");
+        add_action("wallpaper-next", [] { Wallpaper::get().next(); });
     }
 
     // Runs in the *invoking* process before activate: forward --launcher to
     // the primary instance (GApplication uniqueness) and exit.
     int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
         bool launcher = false, app_menu = false, session = false, lock = false, clipboard = false;
+        bool lock_suspend = false, control_center = false, wallpaper_next = false;
         if (options) {
             options->lookup_value("launcher", launcher);
             options->lookup_value("clipboard", clipboard);
             options->lookup_value("app-menu", app_menu);
             options->lookup_value("session", session);
             options->lookup_value("lock", lock);
+            options->lookup_value("lock-and-suspend", lock_suspend);
+            options->lookup_value("control-center", control_center);
+            options->lookup_value("wallpaper-next", wallpaper_next);
         }
-        if (launcher || app_menu || session || lock || clipboard) {
+        if (launcher || app_menu || session || lock || clipboard || lock_suspend ||
+            control_center || wallpaper_next) {
             try {
                 register_application();
             } catch (const Glib::Error& e) {
@@ -106,6 +128,12 @@ protected:
                     activate_action("session");
                 if (lock)
                     activate_action("lock");
+                if (lock_suspend)
+                    activate_action("lock-and-suspend");
+                if (control_center)
+                    activate_action("control-center");
+                if (wallpaper_next)
+                    activate_action("wallpaper-next");
                 return 0; // handled — don't start a second shell
             }
             // no running instance: start up normally, then open what was asked
@@ -200,6 +228,8 @@ protected:
 
         // night light: hyprsunset scheduled by sunrise/sunset (or forced)
         NightLight::get();
+        // low / critical battery notifications
+        BatteryAlerts::get();
 
         // idle daemon (ext-idle-notify-v1) and its fade-to-black grace overlay
         Idle::get();

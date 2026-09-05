@@ -123,6 +123,7 @@ public:
         // Baseline DND from the settings app; the shell adopts it whenever the
         // value changes, but the bell's right click still toggles it at runtime.
         bool do_not_disturb = false;
+        bool battery_alerts = true; // low / critical battery notifications (Noctalia's enableBatteryToast)
         Density density = Density::Default;
         Location location = Location::TopRight;
         bool overlay_layer = true;         // overlay vs top layer for popups

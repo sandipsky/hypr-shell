@@ -61,6 +61,11 @@ public:
     // True while we own the bus name (we are THE notification daemon).
     bool available() const { return available_; }
 
+    // A notification from the shell itself (battery warnings): goes through
+    // the same rules / history / DND / popup flow as a Notify call.
+    void notify_local(const std::string& app_name, const std::string& summary,
+                      const std::string& body, int urgency, const std::string& icon = "");
+
     const std::vector<Notification>& history() const { return history_; }
 
     // Runtime toggle (the config value is adopted on change only); history
@@ -110,6 +115,8 @@ private:
                         const Glib::RefPtr<Gio::DBus::MethodInvocation>& invocation);
     void handle_notify(const Glib::VariantContainerBase& parameters,
                        const Glib::RefPtr<Gio::DBus::MethodInvocation>& invocation);
+    // Noctalia's handleNotification flow: rules → history → DND → popup
+    void dispatch(const Notification& n, gint32 expire_timeout_ms, bool transient);
 
     // image-data hint (iiibiiay) → downscaled PNG in image_dir_; "" on failure
     std::string decode_image_data(const Glib::VariantBase& value, const std::string& id);

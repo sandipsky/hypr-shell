@@ -350,6 +350,7 @@ struct Settings {
     GtkWidget* window = nullptr; // dialog/file-chooser parent
     AdwSwitchRow* nd_enabled = nullptr;
     AdwSwitchRow* nd_dnd = nullptr;
+    AdwSwitchRow* nd_battery = nullptr;
     AdwComboRow* nd_density = nullptr;
     AdwComboRow* nd_location = nullptr;
     AdwSwitchRow* nd_overlay = nullptr;
@@ -558,7 +559,7 @@ void populate(Settings* s) {
     }
 
     // Notifications page (top-level "notifications" object)
-    bool nd_enabled = true, nd_dnd = false, nd_overlay = true, nd_respect = false;
+    bool nd_enabled = true, nd_dnd = false, nd_battery = true, nd_overlay = true, nd_respect = false;
     bool nd_clear = true, nd_s_low = true, nd_s_normal = true, nd_s_critical = true;
     std::string nd_density = "default", nd_location = "top_right";
     double nd_opacity = 1.0;
@@ -571,6 +572,7 @@ void populate(Settings* s) {
         const json nd = s->root.value("notifications", json::object());
         nd_enabled = nd.value("enabled", true);
         nd_dnd = nd.value("do_not_disturb", false);
+        nd_battery = nd.value("battery_alerts", true);
         nd_density = nd.value("density", nd_density);
         nd_location = nd.value("location", nd_location);
         nd_overlay = nd.value("overlay_layer", true);
@@ -849,6 +851,7 @@ void populate(Settings* s) {
     adw_spin_row_set_value(s->idle_suspend, idle_suspend);
     adw_switch_row_set_active(s->nd_enabled, nd_enabled);
     adw_switch_row_set_active(s->nd_dnd, nd_dnd);
+    adw_switch_row_set_active(s->nd_battery, nd_battery);
     adw_combo_row_set_selected(s->nd_density, nd_density == "compact" ? 1 : 0);
     for (guint i = 0; i < 6; ++i)
         if (nd_location == kNdLocationKeys[i])
@@ -3907,6 +3910,15 @@ void on_activate(GtkApplication* app, gpointer) {
     s->nd_dnd = ADW_SWITCH_ROW(nd_dnd_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_dnd_row);
     g_signal_connect(nd_dnd_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
+
+    GtkWidget* nd_battery_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_battery_row), "Battery warnings");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(nd_battery_row),
+                                "Notify when the battery drops to 20% and again at 5%.");
+    g_object_set_data(G_OBJECT(nd_battery_row), "nd-key", const_cast<char*>("battery_alerts"));
+    s->nd_battery = ADW_SWITCH_ROW(nd_battery_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(nd_general), nd_battery_row);
+    g_signal_connect(nd_battery_row, "notify::active", G_CALLBACK(on_nd_toggled), s);
 
     GtkWidget* nd_overlay_row = adw_switch_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(nd_overlay_row), "Always on top");

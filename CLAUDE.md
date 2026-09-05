@@ -90,6 +90,7 @@ src/bar/notification_popup.{hpp,cpp}    toast popup stack (layer window)
 src/bar/notification_ui.{hpp,cpp}       shared icon/relative-time helpers
 src/services/lock_keys.{hpp,cpp}        Caps/Num/Scroll Lock via /sys/class/leds polling (200ms)
 src/services/osd.{hpp,cpp}              OSD trigger logic (Pulse/Brightness/LockKeys diffs + suppression)
+src/services/battery_alerts.{hpp,cpp}   low (20%) / critical (5%) battery notifications via the daemon
 src/bar/osd_window.{hpp,cpp}            on-screen display layer window (volume/mic/brightness/lock keys)
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
 src/bar/clipboard_window.{hpp,cpp}      clipboard history overlay (launcher design, cliphist entries)
@@ -1615,3 +1616,28 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   `Pss`/`Private_Dirty` from `/proc/<pid>/smaps_rollup` (~53 MB private)
   instead. Comment cleanup was limited to stale, wrong or code-restating
   comments; rationale ("why") comments stay.
+- 2026-09-05 — Noctalia replaced (user request). Everything the user's
+  keybinds and lid switch called through `qs -c noctalia-shell ipc call …`
+  now has a hypr-shell equivalent: `--control-center` (toggles the bar
+  popover), `--wallpaper-next` (`Wallpaper::next()`, the slideshow order),
+  `--lock-and-suspend` (`lock_and_suspend()` in services/session: lock, then
+  suspend once the lock screen confirms or after 3 s — Noctalia's
+  lockAndSuspend, used by the lid switch), and volume / brightness keys go
+  straight to `wpctl` / `brightnessctl` (5 % steps, Noctalia's defaults; the
+  OSD reacts to the resulting changes). Noctalia's "wallpaper toggle" (its
+  selector panel) maps to opening hypr-shell-settings on the Wallpaper page.
+  `services/battery_alerts` ports Noctalia's battery toasts (enableBatteryToast
+  was on): "Low battery" at ≤20 % and "Critical battery" at ≤5 % while
+  discharging, once per discharge cycle, delivered through
+  `NotificationService::notify_local()` (the same rules / history / DND /
+  popup flow as a DBus Notify); `notifications.battery_alerts` (default true)
+  has a "Battery warnings" switch on the Notifications page. In
+  ~/.config/hypr/conf, keybinds.lua and autostart.lua were rewritten (backups
+  `*.pre-hypr-shell`); autostart runs `/home/sandip/.local/bin/hypr-shell`
+  instead of Noctalia. Noctalia's process was stopped, its config and
+  package left in place for a fallback week. Known remaining gaps versus
+  Noctalia: no system tray (no SNI apps were running), no
+  org.freedesktop.ScreenSaver inhibit API (Wayland idle-inhibit still
+  works), no keyboard-layout toast. The real session lock was still
+  untested at switch time — the user tests `hypr-shell --lock` with a TTY
+  open; recovery from a stuck lock is `hyprctl dispatch exit` from a TTY.

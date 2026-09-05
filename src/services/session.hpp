@@ -24,6 +24,9 @@ void run_session_action(const SessionAction& action);
 // Ask the lock screen to lock (idle daemon, session menus, `hypr-shell --lock`,
 // logind's Lock signal). No-op until the lock screen connects.
 void request_lock();
+// Lock, then suspend once the lock screen confirms (3 s cap) — Noctalia's
+// lockAndSuspend, for the lid switch (`hypr-shell --lock-and-suspend`).
+void lock_and_suspend();
 sigc::signal<void()>& signal_lock_requested();
 // Lock screen → services: the session lock was acquired / released.
 void set_session_locked(bool locked);

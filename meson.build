@@ -75,6 +75,7 @@ sources = files(
   'src/bar/lock_screen.cpp',
   'src/bar/lock_surface.cpp',
   'src/services/apps.cpp',
+  'src/services/battery_alerts.cpp',
   'src/services/bluez.cpp',
   'src/services/brightness.cpp',
   'src/services/clipboard.cpp',

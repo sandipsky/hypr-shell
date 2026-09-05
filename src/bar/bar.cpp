@@ -137,6 +137,12 @@ void Bar::toggle_session_menu() {
     session_.toggle();
 }
 
+void Bar::toggle_control_center() {
+    if (hidden_)
+        peek();
+    control_center_.toggle();
+}
+
 void Bar::apply_config() {
     auto& cfg = Config::get();
     auto* window = GTK_WINDOW(gobj());

@@ -246,6 +246,7 @@ Exposed as `Config::get().notifications()` (struct `Config::Notifications`).
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `enabled` | bool | `true` | `false` releases the `org.freedesktop.Notifications` bus name so another daemon can take it. |
+| `battery_alerts` | bool | `true` | Low (≤20 %) and critical (≤5 %) battery notifications while discharging, one per threshold per discharge cycle (Noctalia's enableBatteryToast). |
 | `do_not_disturb` | bool | `false` | Baseline DND. The shell adopts it only when the value *changes*; the bell's right click toggles DND at runtime without writing the file. DND suppresses popups only; history still records. |
 | `density` | `"default"` \| `"compact"` | `"default"` | Compact = small single-line toast cards. |
 | `location` | `"top"` \| `"top_left"` \| `"top_right"` \| `"bottom"` \| `"bottom_left"` \| `"bottom_right"` | `"top_right"` | Toast anchor. |

@@ -418,6 +418,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Paste on click", "Clipboard", "clipboard_page"},
         {"Clipboard position", "Clipboard", "clipboard_page"},
         {"Do not disturb", "Notifications", "notifications_page"},
+        {"Battery warnings", "Notifications", "notifications_page"},
         {"Notifications always on top", "Notifications", "notifications_page"},
         {"Notification position", "Notifications", "notifications_page"},
         {"Wi-Fi hotspot", "Hotspot", "hotspot_page"},

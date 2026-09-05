@@ -441,7 +441,11 @@ void NotificationService::handle_notify(
         n.image = path; // absolute file path or themed icon name; "" = none
     }
 
-    // Noctalia's handleNotification flow: rules → history → DND → popup.
+    dispatch(n, expire_timeout, transient);
+}
+
+void NotificationService::dispatch(const Notification& n, gint32 expire_timeout_ms,
+                                   bool transient) {
     const auto& nc = Config::get().notifications();
     const std::string rule_action = evaluate_rules(n);
     if (rule_action == "block")
@@ -457,7 +461,24 @@ void NotificationService::handle_notify(
     if (do_not_disturb_)
         return; // history recorded above, like Noctalia
 
-    show_popup(n, expire_timeout, /*muted=*/rule_action == "mute");
+    show_popup(n, expire_timeout_ms, /*muted=*/rule_action == "mute");
+}
+
+void NotificationService::notify_local(const std::string& app_name, const std::string& summary,
+                                       const std::string& body, int urgency,
+                                       const std::string& icon) {
+    if (!Config::get().notifications().enabled)
+        return;
+    Notification n;
+    n.original_id = next_id_++;
+    n.timestamp_ms = g_get_real_time() / 1000;
+    n.app_name = app_name;
+    n.summary = sanitize_notification_text(summary);
+    n.body = sanitize_notification_text(body);
+    n.urgency = std::clamp(urgency, 0, 2);
+    n.image = icon;
+    n.id = content_id(n.summary, n.body, n.app_name, n.timestamp_ms);
+    dispatch(n, -1, /*transient=*/false);
 }
 
 // -- popups --------------------------------------------------------------------
