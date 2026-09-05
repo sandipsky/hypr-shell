@@ -31,6 +31,47 @@ constexpr int kScrollbarFallbackWidth = 8; // if the scrollbar can't be measured
 constexpr int kIconSizes[] = {56, 48, 44, 40, 34, 30};
 constexpr int kMinColumns = 3;
 constexpr int kMaxColumns = 8;
+constexpr int kListMaxRows = 8;  // list view: rows before scrolling
+constexpr int kListIconPx = 32;
+
+// Windows 11 start-menu grouping: the upper-cased first letter; digits and
+// symbols share "#", which the alphabetical sort already puts first.
+std::string letter_for(const std::string& name) {
+    const gunichar c = g_utf8_get_char_validated(name.c_str(), -1);
+    if (c == static_cast<gunichar>(-1) || c == static_cast<gunichar>(-2) || c == 0 ||
+        !g_unichar_isalpha(c))
+        return "#";
+    char buf[8];
+    const int n = g_unichar_to_utf8(g_unichar_toupper(c), buf);
+    return std::string(buf, static_cast<std::size_t>(n));
+}
+
+// Grid rows a list of names occupies: tiles `cols` per row, a header row
+// (and a fresh tile row) at every letter change when grouped.
+struct RowCount {
+    int tile_rows = 0;
+    int header_rows = 0;
+};
+RowCount count_rows(const std::vector<std::string>& names, bool grouped, int cols) {
+    RowCount out;
+    int col = 0;
+    std::string letter;
+    for (const auto& name : names) {
+        if (grouped) {
+            const std::string l = letter_for(name);
+            if (l != letter) {
+                letter = l;
+                ++out.header_rows;
+                col = 0;
+            }
+        }
+        if (col == 0)
+            ++out.tile_rows;
+        if (++col == cols)
+            col = 0;
+    }
+    return out;
+}
 
 std::string trimmed(const std::string& text) {
     const auto begin = text.find_first_not_of(" \t\n");
@@ -209,13 +250,10 @@ void AppMenuPanel::set_open(bool open) {
 
     // Grid area height for this open: up to kGridMaxRows rows of tiles (it
     // must not change while the popover shows — more rows scroll).
-    const int cols = std::max(1, columns_);
-    const int rows = (static_cast<int>(results_.size()) + cols - 1) / cols;
-    int height = kGridMinHeight;
-    if (rows > 0) {
-        const int shown = std::min(rows, kGridMaxRows);
-        height = std::max(kGridMinHeight, shown * tile_height_ + (shown - 1) * kGridSpacing);
-    }
+    const int max_rows = list_view_ ? kListMaxRows : kGridMaxRows;
+    const int cap = max_rows * tile_height_ + (max_rows - 1) * kGridSpacing;
+    const int height = results_.empty() ? kGridMinHeight
+                                        : std::max(kGridMinHeight, std::min(content_height_, cap));
     content_stack_.set_size_request(-1, height);
 }
 
@@ -246,9 +284,13 @@ void AppMenuPanel::apply_config() {
     header_.set_visible(show_search_ || cfg.show_settings_button || cfg.show_session_button);
     header_.set_halign(show_search_ ? Gtk::Align::FILL : Gtk::Align::END);
     const int columns = std::clamp(cfg.columns, kMinColumns, kMaxColumns);
-    if (columns != columns_ || cfg.multiline_labels != multiline_) {
+    if (columns != columns_ || cfg.multiline_labels != multiline_ || cfg.list_view != list_view_ ||
+        cfg.show_description != show_description_ || cfg.group_by_letter != group_by_letter_) {
         columns_ = columns;
         multiline_ = cfg.multiline_labels;
+        list_view_ = cfg.list_view;
+        show_description_ = cfg.show_description;
+        group_by_letter_ = cfg.group_by_letter;
         if (open_)
             rebuild_grid();
         else
@@ -302,11 +344,17 @@ void AppMenuPanel::rebuild_grid() {
         grid_.remove(*child);
     tiles_.clear();
     tile_icons_.clear();
+    item_row_.clear();
+    item_col_.clear();
     selected_ = -1;
 
-    const int cols = std::clamp(columns_, kMinColumns, kMaxColumns);
-    const int icon_px = kIconSizes[cols - kMinColumns];
+    const bool list = list_view_;
+    const int cols = list ? 1 : std::clamp(columns_, kMinColumns, kMaxColumns);
+    const int icon_px = list ? kListIconPx : kIconSizes[std::clamp(columns_, kMinColumns, kMaxColumns) - kMinColumns];
     const int lines = multiline_ ? 2 : 1;
+    const int max_rows = list ? kListMaxRows : kGridMaxRows;
+    // headers only while browsing: a search result list is sorted by score
+    const bool grouped = group_by_letter_ && trimmed(search_.get_text()).empty();
 
     // Every tile gets the same fixed size. Width: the panel split into `cols`
     // columns. A scrollbar is only ever needed when the WHOLE app list
@@ -315,9 +363,12 @@ void AppMenuPanel::rebuild_grid() {
     // otherwise tiles span the full width with no gap on the right. Height:
     // a probe tile whose label holds `lines` lines — whatever a real name
     // needs.
-    const int total_rows =
-        (static_cast<int>(Apps::get().entries().size()) + cols - 1) / cols;
-    const bool scrolls = total_rows > kGridMaxRows;
+    std::vector<std::string> all_names;
+    for (const auto& app : Apps::get().entries())
+        all_names.push_back(lowercase(app.name));
+    std::sort(all_names.begin(), all_names.end());
+    const RowCount all_rows = count_rows(all_names, group_by_letter_, cols);
+    const bool scrolls = all_rows.tile_rows + all_rows.header_rows > max_rows;
     scroller_.set_policy(Gtk::PolicyType::NEVER,
                          scrolls ? Gtk::PolicyType::ALWAYS : Gtk::PolicyType::AUTOMATIC);
     int scrollbar_w = 0;
@@ -332,8 +383,46 @@ void AppMenuPanel::rebuild_grid() {
     }
     const int tile_w = (kPanelWidth - scrollbar_w - (cols - 1) * kGridSpacing) / cols;
 
+    // list view: icon at the left, name (and description) beside it — one
+    // full-width row per app, Windows 11's "All apps" look
+    auto build_row = [&](const Apps::Entry* app, const char* probe_text) {
+        auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
+        row->add_css_class("am-row");
+        auto* icon = Gtk::make_managed<Gtk::Image>();
+        if (app && app->icon)
+            icon->set(app->icon);
+        else
+            icon->set_from_icon_name("application-x-executable");
+        icon->set_pixel_size(icon_px);
+        icon->set_valign(Gtk::Align::CENTER);
+        row->append(*icon);
+        auto* texts = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
+        texts->set_valign(Gtk::Align::CENTER);
+        texts->set_hexpand(true);
+        auto* name = Gtk::make_managed<Gtk::Label>(app ? app->name : probe_text);
+        name->add_css_class("am-row-name");
+        name->set_xalign(0.0f);
+        name->set_max_width_chars(1);
+        name->set_hexpand(true);
+        name->set_ellipsize(Pango::EllipsizeMode::END);
+        texts->append(*name);
+        if (show_description_ && (app == nullptr || !app->description.empty())) {
+            auto* desc = Gtk::make_managed<Gtk::Label>(app ? app->description : probe_text);
+            desc->add_css_class("am-row-desc");
+            desc->set_xalign(0.0f);
+            desc->set_max_width_chars(1);
+            desc->set_hexpand(true);
+            desc->set_ellipsize(Pango::EllipsizeMode::END);
+            texts->append(*desc);
+        }
+        row->append(*texts);
+        return row;
+    };
+
     // `app` null builds the measuring probe with `probe_text` as its label
     auto build_tile = [&](const Apps::Entry* app, const char* probe_text) {
+        if (list)
+            return build_row(app, probe_text);
         auto* tile = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
         tile->add_css_class("am-tile");
 
@@ -373,10 +462,38 @@ void AppMenuPanel::rebuild_grid() {
     int min_h = 0, nat_h = 0, min_b = 0, nat_b = 0;
     probe->measure(Gtk::Orientation::VERTICAL, tile_w, min_h, nat_h, min_b, nat_b);
     grid_.remove(*probe);
-    tile_height_ = std::max(nat_h, icon_px + 30);
+    tile_height_ = list ? std::max(nat_h, icon_px + 8) : std::max(nat_h, icon_px + 30);
+    header_height_ = 0;
+    if (grouped) {
+        auto* header_probe = Gtk::make_managed<Gtk::Label>("X");
+        header_probe->add_css_class("am-letter");
+        grid_.attach(*header_probe, 0, 0);
+        header_probe->measure(Gtk::Orientation::VERTICAL, -1, min_h, nat_h, min_b, nat_b);
+        grid_.remove(*header_probe);
+        header_height_ = nat_h;
+    }
 
+    int grid_row = 0, col = 0, tile_rows = 0, header_rows = 0;
+    std::string letter;
     for (std::size_t i = 0; i < results_.size(); ++i) {
         const auto& app = results_[i];
+        if (grouped) {
+            const std::string l = letter_for(app.name);
+            if (l != letter) {
+                letter = l;
+                if (col != 0) {
+                    col = 0;
+                    ++grid_row;
+                }
+                auto* header = Gtk::make_managed<Gtk::Label>(l);
+                header->add_css_class("am-letter");
+                header->set_xalign(0.0f);
+                header->set_halign(Gtk::Align::FILL);
+                grid_.attach(*header, 0, grid_row, cols, 1);
+                ++grid_row;
+                ++header_rows;
+            }
+        }
 
         auto* tile = build_tile(&app, nullptr);
         tile->set_size_request(tile_w, tile_height_);
@@ -404,9 +521,20 @@ void AppMenuPanel::rebuild_grid() {
         });
         tile->add_controller(hover);
 
-        grid_.attach(*tile, index % cols, index / cols);
+        if (col == 0)
+            ++tile_rows;
+        grid_.attach(*tile, col, grid_row);
+        item_row_.push_back(grid_row);
+        item_col_.push_back(col);
         tiles_.push_back(tile);
+        if (++col == cols) {
+            col = 0;
+            ++grid_row;
+        }
     }
+    const int rows_total = tile_rows + header_rows;
+    content_height_ = tile_rows * tile_height_ + header_rows * header_height_ +
+                      std::max(0, rows_total - 1) * kGridSpacing;
 
     const bool empty = results_.empty();
     content_stack_.set_visible_child(empty ? static_cast<Gtk::Widget&>(empty_label_)
@@ -469,7 +597,8 @@ void AppMenuPanel::open_pin_menu(int index) {
     // edge, END off its right — keeps the menu inside the panel instead of
     // centring it past the edge on the outer columns
     const int cols = std::clamp(columns_, kMinColumns, kMaxColumns);
-    pin_popover_.set_halign(index % cols < cols / 2 ? Gtk::Align::START : Gtk::Align::END);
+    pin_popover_.set_halign(list_view_ || index % cols < cols / 2 ? Gtk::Align::START
+                                                                   : Gtk::Align::END);
     pin_popover_.set_parent(*tile_icons_[static_cast<std::size_t>(index)]);
     pin_popover_.popup();
 }
@@ -488,12 +617,49 @@ void AppMenuPanel::focus_default() {
         grab_focus();
 }
 
+// The item in the next (dir > 0) or previous row, wrapping: the same column
+// when that row has it, else the row's last item before that column (a
+// partial last row lands on its end). Letter headers occupy rows of their
+// own, so the walk goes by laid-out rows, not by index arithmetic.
+int AppMenuPanel::vertical_neighbor(int index, int dir) const {
+    const int count = static_cast<int>(tiles_.size());
+    if (count == 0)
+        return -1;
+    index = std::clamp(index, 0, count - 1);
+    const int row = item_row_[static_cast<std::size_t>(index)];
+    const int col = item_col_[static_cast<std::size_t>(index)];
+    int target_row = -1;
+    if (dir > 0) {
+        for (int i = index + 1; i < count && target_row < 0; ++i)
+            if (item_row_[static_cast<std::size_t>(i)] != row)
+                target_row = item_row_[static_cast<std::size_t>(i)];
+        if (target_row < 0)
+            target_row = item_row_.front(); // wrap to the first row
+    } else {
+        for (int i = index - 1; i >= 0 && target_row < 0; --i)
+            if (item_row_[static_cast<std::size_t>(i)] != row)
+                target_row = item_row_[static_cast<std::size_t>(i)];
+        if (target_row < 0)
+            target_row = item_row_.back(); // wrap to the last row
+    }
+    int best = -1;
+    for (int i = 0; i < count; ++i) {
+        if (item_row_[static_cast<std::size_t>(i)] != target_row)
+            continue;
+        if (best < 0 || item_col_[static_cast<std::size_t>(i)] <= col)
+            best = i;
+        if (item_col_[static_cast<std::size_t>(i)] == col)
+            return i;
+    }
+    return best;
+}
+
 bool AppMenuPanel::on_key_pressed(guint keyval, guint, Gdk::ModifierType) {
     if (session_popover_.get_visible() || pin_popover_.get_visible())
         return false; // GTK navigates the dropdown itself (Esc closes just it)
 
     const int count = static_cast<int>(tiles_.size());
-    const int cols = std::max(1, columns_);
+    const int cols = list_view_ ? 1 : std::max(1, columns_);
     const int page = cols * 3;
     auto wrap = [count](int index) { return ((index % count) + count) % count; };
 
@@ -516,23 +682,12 @@ bool AppMenuPanel::on_key_pressed(guint keyval, guint, Gdk::ModifierType) {
             select(wrap(selected_ - 1), true);
         return true;
     case GDK_KEY_Down:
-        if (count > 0) {
-            if (selected_ + cols < count)
-                select(selected_ + cols, true);
-            else if (selected_ / cols < (count - 1) / cols)
-                select(count - 1, true); // partial last row: land on its end
-            else
-                select(selected_ % cols, true); // wrap to the first row
-        }
+        if (count > 0)
+            select(vertical_neighbor(selected_, +1), true);
         return true;
     case GDK_KEY_Up:
-        if (count > 0) {
-            if (selected_ - cols >= 0)
-                select(selected_ - cols, true);
-            else
-                select(std::min(((count - 1) / cols) * cols + selected_ % cols, count - 1),
-                       true); // wrap to the last row
-        }
+        if (count > 0)
+            select(vertical_neighbor(selected_, -1), true);
         return true;
     case GDK_KEY_Home:
         select(0, true);

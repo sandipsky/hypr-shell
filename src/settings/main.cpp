@@ -286,6 +286,9 @@ struct Settings {
     AdwSwitchRow* am_session_btn = nullptr;
     AdwSwitchRow* am_multiline = nullptr;
     AdwSwitchRow* am_show_search = nullptr;
+    AdwComboRow* am_view = nullptr;          // grid / list
+    AdwSwitchRow* am_show_desc = nullptr;    // list view only
+    AdwSwitchRow* am_group = nullptr;        // letter headers
 
     // Session menu sidebar page (top-level "session" object in config.json)
     AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
@@ -567,8 +570,12 @@ void populate(Settings* s, PopulateStage stage) {
     int am_columns = 5;
     bool am_settings_btn = true, am_session_btn = true, am_multiline = false;
     bool am_show_search = true;
+    bool am_list = false, am_show_desc = true, am_group = false;
     try {
         const json am = s->root.value("bar", json::object()).value("app_menu", json::object());
+        am_list = am.value("view", "grid") == std::string("list");
+        am_show_desc = am.value("show_description", true);
+        am_group = am.value("group_by_letter", false);
         am_display = am.value("display", am_display);
         am_icon = am.value("icon", am_icon);
         am_custom = am.value("custom_icon", "");
@@ -806,6 +813,9 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->am_session_btn, am_session_btn);
     adw_switch_row_set_active(s->am_multiline, am_multiline);
     adw_switch_row_set_active(s->am_show_search, am_show_search);
+    adw_combo_row_set_selected(s->am_view, am_list ? 1 : 0);
+    adw_switch_row_set_active(s->am_show_desc, am_show_desc);
+    adw_switch_row_set_active(s->am_group, am_group);
     update_am_rows(s);
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
@@ -1080,6 +1090,20 @@ void update_am_rows(Settings* s) {
     gtk_widget_set_visible(GTK_WIDGET(s->am_custom_icon),
                            show_icon &&
                                adw_combo_row_get_selected(s->am_icon) == kAmIconCustomIndex);
+    // grid-only rows vs the list-only description toggle
+    const bool list = adw_combo_row_get_selected(s->am_view) == 1;
+    gtk_widget_set_visible(GTK_WIDGET(s->am_columns), !list);
+    gtk_widget_set_visible(GTK_WIDGET(s->am_multiline), !list);
+    gtk_widget_set_visible(GTK_WIDGET(s->am_show_desc), list);
+}
+
+void on_am_view_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_am_rows(s);
+    if (s->loading)
+        return;
+    app_menu_object(s)["view"] = adw_combo_row_get_selected(s->am_view) == 1 ? "list" : "grid";
+    save(s);
 }
 
 void on_am_display_changed(GObject*, GParamSpec*, gpointer data) {
@@ -4421,6 +4445,17 @@ void on_activate(GtkApplication* app, gpointer) {
         "or a Hyprland keybind, e.g. the Super key alone:\n"
         "bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu");
 
+    GtkWidget* am_view_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_view_row), "View");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(am_view_row),
+                                "Tiles in a grid, or one row per application with its description.");
+    const char* am_view_options[] = {"Grid", "List", nullptr};
+    GtkStringList* am_view_model = gtk_string_list_new(am_view_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(am_view_row), G_LIST_MODEL(am_view_model));
+    g_object_unref(am_view_model);
+    s->am_view = ADW_COMBO_ROW(am_view_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_panel_group), am_view_row);
+
     GtkWidget* am_columns_row = adw_spin_row_new_with_range(3, 8, 1);
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_columns_row), "Grid columns");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(am_columns_row),
@@ -4440,6 +4475,12 @@ void on_activate(GtkApplication* app, gpointer) {
          "Wrap long application names onto a second line instead of cutting "
          "them short.",
          &s->am_multiline},
+        {"show_description", "App descriptions",
+         "List view: show each application's description under its name.", &s->am_show_desc},
+        {"group_by_letter", "Group by letter",
+         "Letter headers above the applications while browsing, like the Windows 11 "
+         "start menu.",
+         &s->am_group},
         {"show_settings_button", "Settings button",
          "Button next to the search box that opens these settings.", &s->am_settings_btn},
         {"show_session_button", "Session button",
@@ -4554,6 +4595,7 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(am_icon_row, "notify::selected", G_CALLBACK(on_am_icon_changed), s);
     g_signal_connect(am_custom_row, "changed", G_CALLBACK(on_am_entry_changed), s);
     g_signal_connect(am_columns_row, "notify::value", G_CALLBACK(on_am_columns_changed), s);
+    g_signal_connect(s->am_view, "notify::selected", G_CALLBACK(on_am_view_changed), s);
 
     hs_mark("pages built");
     // -- Navigation: main page + module subpages -----------------------------

@@ -1777,4 +1777,19 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   "Memory: 4.0 GB / 15.5 GB (26%)" (`SystemStats::mem_total_gb()`). The app
   menu's equivalents (`show_search`, `show_settings_button`,
   `show_session_button`) already existed on its subpage since 2026-09-03.
+- 2026-09-05 — App menu list view + letter groups (user request). `bar.app_menu.view`
+  grid (default) / list: list rows are full-width (32px icon, name, and the
+  description under it while `show_description`, default on), 8 rows before
+  scrolling (grid: 5), `.am-row` styling; `group_by_letter` (default off)
+  inserts Windows-11-style letter headers ("#" for digits / symbols, which the
+  alphabetical sort already puts first) as grid rows spanning all columns —
+  only while browsing (empty query; search results stay score-sorted). The
+  grid area height is now the exact content height (tile rows × tile height
+  + header rows × header height + gaps) capped at the max rows, and the
+  scrollbar decision counts the whole app list's rows the same way. Up/Down
+  no longer use index arithmetic: each result records its (row, col) and
+  `vertical_neighbor()` walks laid-out rows (same column, else the row's last
+  item before it, wrapping), which also skips header rows. Settings: a
+  "View" dropdown on the App menu subpage; Grid columns / Two-line names show
+  only for grid, App descriptions only for list; "Group by letter" always.
 

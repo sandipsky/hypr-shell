@@ -236,6 +236,9 @@ void Config::load() {
             a.show_session_button = it->value("show_session_button", true);
             a.columns = std::clamp(it->value("columns", 5), 3, 8);
             a.multiline_labels = it->value("multiline_labels", false);
+            a.list_view = it->value("view", "grid") == std::string("list");
+            a.show_description = it->value("show_description", true);
+            a.group_by_letter = it->value("group_by_letter", false);
         }
         if (auto it = bar.find("clock"); it != bar.end() && it->is_object()) {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);

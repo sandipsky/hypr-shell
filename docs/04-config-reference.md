@@ -212,6 +212,28 @@ directly on the bar without Noctalia's capsule background.
 
 The settings subpage exposes the first four rows only (per user).
 
+## `bar.app_menu`
+
+The app menu bar button and its popover (Noctalia's Launcher widget + the
+launcher's grid view). `hypr-shell --app-menu` toggles it for keybinds.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `display` | `icon` / `icon_text` / `text` | `icon` | Bar button contents (icon only on vertical bars). |
+| `icon` | preset key / `distro` / `custom` | `rocket` | Bar button glyph (`services/app_menu_icons.hpp`). |
+| `custom_icon` | string | `""` | Icon theme name or image path for `custom`. |
+| `text` | string | `"Apps"` | Bar button label. |
+| `show_search` | bool | `true` | Search box at the top of the panel. |
+| `show_settings_button` | bool | `true` | Settings button beside the search box. |
+| `show_session_button` | bool | `true` | Power button opening the session menu. |
+| `view` | `grid` / `list` | `grid` | Tiles in a grid, or one full-width row per app (icon, name, description). |
+| `columns` | int 3..8 | `5` | Grid columns (grid view). |
+| `multiline_labels` | bool | `false` | Tile names wrap to two lines (grid view). |
+| `show_description` | bool | `true` | List view: description line under each name. |
+| `group_by_letter` | bool | `false` | Letter headers ("#", "A", "B", …) above the apps while browsing with an empty search, Windows 11 style; search results stay score-sorted without headers. |
+
+Dev hook: `HS_OPEN_APP_MENU=1` (`=2` also opens the session dropdown, `=3` the pin context menu).
+
 ## `bar.control_center`
 
 The control center bar button (Noctalia's ControlCenter widget: the noctalia

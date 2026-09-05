@@ -92,6 +92,39 @@ button.am-icon-btn.active .am-btn-glyph {
   color: @mOnHover;
 }
 
+/* list view rows (Windows 11 "All apps"): flat, mHover when selected */
+.am-row {
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.am-row.selected {
+  background: @mHover;
+}
+
+.am-row-name {
+  font-size: 14px;
+  color: @mOnSurface;
+}
+
+.am-row-desc {
+  font-size: 12px;
+  color: @mOnSurfaceVariant;
+}
+
+.am-row.selected .am-row-name,
+.am-row.selected .am-row-desc {
+  color: @mOnHover;
+}
+
+/* letter headers while browsing (bar.app_menu.group_by_letter) */
+.am-letter {
+  font-size: 13px;
+  font-weight: 600;
+  color: @mOnSurfaceVariant;
+  padding: 8px 8px 2px 8px;
+}
+
 .am-empty {
   font-size: 14px;
   color: @mOnSurfaceVariant; /* mOnSurfaceVariant */

@@ -37,6 +37,7 @@ private:
     void activate_index(int index);
     void close_pin_menu();
     bool on_key_pressed(guint keyval, guint keycode, Gdk::ModifierType state);
+    int vertical_neighbor(int index, int dir) const; // Up / Down over the laid-out rows
     void run_after_close(std::function<void()> action);
     void focus_default(); // the search box, or the panel itself when it is hidden
 
@@ -45,7 +46,13 @@ private:
     int columns_ = 5;
     bool multiline_ = false;
     bool show_search_ = true;
-    int tile_height_ = 0; // measured in rebuild_grid — every tile shares it
+    bool list_view_ = false;       // one full-width row per app instead of tiles
+    bool show_description_ = true; // list view: description line under the name
+    bool group_by_letter_ = false; // letter headers while browsing (empty query)
+    int tile_height_ = 0;   // measured in rebuild_grid — every tile / row shares it
+    int header_height_ = 0; // a letter header row
+    int content_height_ = 0; // tiles + headers + gaps of the current results
+    std::vector<int> item_row_, item_col_; // grid position per result (headers skip rows)
 
     Gtk::Box header_{Gtk::Orientation::HORIZONTAL, 6};
     Gtk::Entry search_;

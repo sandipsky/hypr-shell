@@ -189,6 +189,9 @@ public:
         bool show_session_button = true;  // panel dropdown: lock/suspend/reboot/logout/shutdown
         int columns = 5;                  // grid columns, 3..8
         bool multiline_labels = false;    // tile names wrap to two lines instead of one
+        bool list_view = false;           // view: "grid" (default) or "list"
+        bool show_description = true;     // list view: description under the name
+        bool group_by_letter = false;     // letter headers while browsing (Windows 11 style)
     };
     const AppMenu& app_menu() const { return app_menu_; }
 
