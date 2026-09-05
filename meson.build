@@ -61,7 +61,6 @@ sources = files(
   'src/bar/osd_window.cpp',
   'src/bar/session_menu.cpp',
   'src/bar/session_window.cpp',
-  'src/bar/vpn_panel.cpp',
   'src/bar/control_center_panel.cpp',
   'src/bar/wallpaper_window.cpp',
   'src/bar/calendar.cpp',
@@ -85,7 +84,6 @@ sources = files(
   'src/bar/modules/session.cpp',
   'src/bar/modules/taskbar.cpp',
   'src/bar/modules/volume.cpp',
-  'src/bar/modules/vpn.cpp',
   'src/bar/modules/control_center.cpp',
   'src/bar/modules/workspaces.cpp',
   'src/services/hyprland.cpp',
@@ -103,7 +101,6 @@ sources = files(
   'src/services/pulse.cpp',
   'src/services/session.cpp',
   'src/services/upower.cpp',
-  'src/services/vpn.cpp',
   'src/services/wallpaper.cpp',
 )
 
@@ -146,6 +143,9 @@ executable(
   files(
     'src/settings/main.cpp',
     'src/settings/about_page.cpp',
+    'src/settings/hotspot_page.cpp',
+    'src/settings/vpn_page.cpp',
+    'src/settings/command.cpp',
     'src/settings/search.cpp',
   ),
   cpp_args: ['-DHS_VERSION="' + meson.project_version() + '"'],

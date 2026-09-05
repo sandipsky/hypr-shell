@@ -113,9 +113,12 @@ pages the user listed in `todo.txt`:
   `background_opacity` rule is the pattern, scaled up). Do the token
   refactor first, then the page.
 - **Wallpaper**, **Display**, **On-Screen Display**, **Lock Screen**,
-  **Idle**, **VPN**, **Hotspot**, **Session Menu**: each is a top-level
-  config object + a sidebar page + (usually) a service. Follow the
+  **Idle**, **Session Menu**: each is a top-level config object + a sidebar
+  page + (usually) a service. Follow the
   [settings app](07-settings-app.md#adding-a-sidebar-page) recipe.
+  **VPN** and **Hotspot** landed differently: NetworkManager holds their
+  state, so they are settings pages over `nmcli` with no config object and
+  no shell service (`vpn_page.cpp`, `hotspot_page.cpp`).
 - **Clock**: AD/BS date type in the calendar, tooltip format.
 - A search entry over row titles would round out the GNOME-Settings feel.
 

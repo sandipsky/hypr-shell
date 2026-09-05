@@ -156,18 +156,6 @@ window.bar.right .battery .icon {
   border: 1px solid #11111b;
 }
 
-/* vpn pill: icon + (revealed) profile name; bar.vpn.icon_color / text_color
- * pick a Noctalia palette colour, default inherits the module colour */
-.vpn .pill-text {
-  font-family: monospace; /* Noctalia renders pill text in fontFixed */
-  font-size: 12px;
-  padding: 0 4px;
-}
-.vpn .color-primary { color: #bfc2ff; }
-.vpn .color-secondary { color: #c5c4dd; }
-.vpn .color-tertiary { color: #e8b9d5; }
-.vpn .color-error { color: #ffb4ab; }
-
 /* taskbar (Noctalia's Taskbar widget) — app icons with a 4px indicator bar
  * under each: mPrimary when focused, mHover while hovered. No capsule
  * background (per user). */

@@ -12,7 +12,9 @@
 #include "services/session_actions.hpp"
 #include "services/wallpaper_files.hpp"
 #include "settings/about_page.hpp"
+#include "settings/hotspot_page.hpp"
 #include "settings/search.hpp"
+#include "settings/vpn_page.hpp"
 
 #include <sys/stat.h>
 
@@ -43,7 +45,6 @@ constexpr ModuleInfo kModules[] = {
     {"active_window", "Active window", "Focused window title",        1},
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
-    {"vpn",           "VPN",           "VPN profiles pill",            2},
     {"control_center", "Control center", "Media, audio, brightness and system monitor panel", 2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
@@ -69,6 +70,8 @@ constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"bar", "Bar", "focus-top-bar-symbolic"},
     {"wallpaper_page", "Wallpaper", "preferences-desktop-wallpaper-symbolic"},
     {"night_light_page", "Night light", "night-light-symbolic"},
+    {"hotspot_page", "Hotspot", "glyph:\uED1B"}, // tabler access-point
+    {"vpn_page", "VPN", "glyph:\uED58"},         // tabler shield-lock
     {"launcher_page", "Launcher", "glyph:\uEC45"}, // tabler rocket, the app menu's default
     {"session_page", "Session menu", "system-shutdown-symbolic"},
     {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
@@ -3807,6 +3810,26 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
     gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
+
+    // -- Hotspot: NetworkManager AP mode (state lives in NM, not config.json) --
+    GtkWidget* hs_view = adw_toolbar_view_new();
+    GtkWidget* hs_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(hs_header),
+                                    adw_window_title_new("Hotspot", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(hs_view), hs_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(hs_view),
+                                 hyprshell::settings::build_hotspot_page(GTK_WINDOW(win)));
+    gtk_stack_add_named(GTK_STACK(stack), hs_view, "hotspot_page");
+
+    // -- VPN: NetworkManager profiles (was the bar's vpn module + panel) ------
+    GtkWidget* vpn_view = adw_toolbar_view_new();
+    GtkWidget* vpn_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(vpn_header),
+                                    adw_window_title_new("VPN", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(vpn_view), vpn_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(vpn_view),
+                                 hyprshell::settings::build_vpn_page(GTK_WINDOW(win)));
+    gtk_stack_add_named(GTK_STACK(stack), vpn_view, "vpn_page");
 
     // -- About: hardware + software facts (GNOME Settings' About panel) -----
     GtkWidget* about_view = adw_toolbar_view_new();

@@ -5,9 +5,3 @@
     - accent color selection 
     - dark mode toggle (By default on)
 
-- Hotspot
-
-- icon for settings item in hypr settings 
-- about section with system specs (no logo of distro or any sorts)
-- more like gnome settings
-

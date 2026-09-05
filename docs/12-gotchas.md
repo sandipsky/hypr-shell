@@ -58,7 +58,9 @@ Wayland protocol error, and the compositor drops the connection ("Lost
 connection to Wayland compositor": the whole shell exits). Pass a null
 parent; the dialog then opens through the desktop portal on its own. Pop the
 originating popover down first so its grab does not fight the dialog. The
-VPN panel's import button shipped with this crash for one build.
+VPN panel's import button shipped with this crash for one build (that panel
+is gone — VPN lives in the settings app now, whose window is a normal
+toplevel and may parent dialogs).
 
 **A `Gtk::Picture` grows to the image's natural size** — `set_size_request`
 is a minimum. For a fixed avatar, pre-scale and crop the pixbuf to the target

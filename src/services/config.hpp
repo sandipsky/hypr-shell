@@ -88,16 +88,6 @@ public:
     bool battery_show_brightness() const { return battery_show_brightness_; }
     bool battery_show_refresh_rate() const { return battery_show_refresh_; }
 
-    // bar.vpn.* — Noctalia's VPN bar widget settings (BarPill display mode
-    // and the icon / text colour keys)
-    struct Vpn {
-        enum class DisplayMode { OnHover, AlwaysShow, AlwaysHide };
-        DisplayMode display_mode = DisplayMode::OnHover;
-        std::string icon_color = "none"; // none | primary | secondary | tertiary | error
-        std::string text_color = "none";
-    };
-    const Vpn& vpn() const { return vpn_; }
-
     // bar.control_center.* — which cards the control center panel shows
     // (Noctalia's controlCenter.cards, reduced to these four; defaults are
     // Noctalia's: brightness off)
@@ -313,7 +303,6 @@ private:
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
     bool bt_auto_connect_ = false;
-    Vpn vpn_;
     Taskbar taskbar_;
     ControlCenter control_center_;
     bool notif_show_badge_ = true;

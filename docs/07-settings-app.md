@@ -47,6 +47,8 @@ AdwNavigationSplitView
      ├─ "wallpaper_page", "night_light_page", "launcher_page", "session_page",
      │  "lock_page", "idle_page", "osd_page", "notifications_page":
      │  one AdwPreferencesPage each for a top-level config object
+     ├─ "hotspot_page": build_hotspot_page() — NetworkManager state, no config.json
+     ├─ "vpn_page": build_vpn_page() — NetworkManager profiles, no config.json
      └─ "about_page": build_about_page() — read-only system facts
 ```
 
@@ -75,6 +77,33 @@ plain graphic keys open the search and are forwarded to the entry, unless a
 `GtkEditable` / `GtkText` has focus. `GtkSearchBar`'s built-in key capture
 is deliberately not used — it would type into the search while the user is
 editing an entry row.
+
+### Hotspot (`hotspot_page.cpp`)
+
+The one page that does not edit config.json: a Wi-Fi hotspot is live
+network state, so NetworkManager's "Hotspot" profile is the single source
+of truth. Every widget change is debounced 600 ms into `nmcli connection
+modify` (the profile is created on the first edit, owned by the user so
+its password reads back without a polkit prompt), the enable switch runs
+`nmcli connection up/down`, and a 3 s poll while the page is mapped keeps
+the switch and the status row honest — without touching a row that has a
+pending save or keyboard focus. "Keep Wi-Fi connected" puts the hotspot on
+a virtual `<adapter>-ap` interface created with `pkexec iw … interface add
+… type __ap`; whether the adapter can do that comes from `iw phy … info`,
+so the switch stays off with a hint when `iw` is not installed. All process
+calls go through `run_cmd()` (GSubprocess, async) with a weak "alive"
+guard so callbacks after the page is destroyed are dropped.
+
+### VPN (`vpn_page.cpp`)
+
+Same model as the hotspot: NetworkManager owns the state. The page lists
+`vpn` / `wireguard` profiles from `nmcli -t -f NAME,UUID,TYPE,DEVICE
+connection show` (parsed from the right — names may contain ':'), one
+`AdwSwitchRow` each; the switch runs `connection up/down uuid …`, the trash
+suffix asks with an `AdwAlertDialog` before `connection delete`, and the
+group's header button imports a `.conf` (WireGuard) or `.ovpn` (OpenVPN)
+file through `GtkFileDialog`. Rows are rebuilt on every refresh (map + 3 s
+poll), so there is no per-row state to keep in sync.
 
 ### About (`about_page.cpp`)
 

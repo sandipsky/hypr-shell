@@ -87,7 +87,6 @@ is missing.
 | `notifications` | `Gtk::Box` with `Gtk::Overlay` (icon + badge) | NotificationService | Bell / bell-off (DND), unread dot. Click → `NotificationPanel`; right click toggles DND. `bar.notifications.*` hide rules. |
 | `clock` | `Gtk::Label` | none | strftime formats from config. Click → `Calendar`. |
 | `control_center` | `Gtk::Box` (icon label) | none | Noctalia glyph button; click toggles `ControlCenterPanel`. |
-| `vpn` | `Gtk::Box` (icon label + `Gtk::Revealer` text) | VpnService | Noctalia's BarPill: profile name slides in on hover / always / never (`bar.vpn.display_mode`), icon-only on vertical bars, colour classes from `icon_color` / `text_color`. Click → `VpnPanel`. |
 
 ### Panels and other windows
 
@@ -95,7 +94,6 @@ is missing.
 |------|-----------|---------|
 | `control_center_panel.{hpp,cpp}` (~560 lines) | control_center | Noctalia's ControlCenterPanel: profile row (avatar, name, uptime every 60 s, settings + session buttons), then the cards: audio (Pulse), brightness (Brightness), media (Mpris; `MediaBackground` draws blurred art with a GSK blur node under a 65% scrim), system monitor (`CircleStat` cairo gauges, 240° arc, 300ms eased). Fixed card heights 60 / 60 / 220 / 84, cards toggled by `bar.control_center.*`. |
 | `app_menu_panel.{hpp,cpp}` | app_menu | Noctalia's launcher grid as a 480px bar popover: search entry, settings + session buttons, fixed-size app tiles (`columns`, one or two-line names), keyboard navigation. Right-clicking a tile opens a one-entry popover: Pin to / Unpin from taskbar (`Apps::toggle_pinned`). |
-| `vpn_panel.{hpp,cpp}` | vpn | Noctalia's VPNPanel: header (shield, VPN, import button), one card per profile (switch + state text + delete with inline confirm) or the empty state with an import button; `Gtk::FileDialog` for `.conf` / `.ovpn`. Fixed 440x500. |
 | `avatar.{hpp,cpp}` | lock surface, control center | `load_avatar_texture(path, size)`: centre-cropped square texture, bundled `avatar-fallback.svg` when the path is empty/unreadable. |
 | `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
@@ -140,7 +138,6 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `pam_auth` | Linux-PAM | `PamAuth`: one worker thread per attempt (the project's only thread), conversation prompts handed to the main loop via `Glib::Dispatcher`, `respond()` wakes the waiting conversation. |
 | `wallpaper` | the wallpaper folder + `~/.cache/hypr-shell/wallpaper.json` | Async folder scan (`Gio::FileEnumerator`, rescans on `Gio::FileMonitor` changes), current image persisted with the random shuffle bag, slideshow timer, config `current` adopted on value-change edges. `signal_current_changed(previous, animate)` drives the windows. |
 | `night_light` | `hyprsunset` (Gio::Subprocess), logind `PrepareForSleep` | Noctalia's NightLightService: runs `hyprsunset -t <K>` during the night phase or when forced, boundary timer to the next configured sunrise/sunset, crash restart, resume re-apply; every start first kills a stale hyprsunset/wlsunset and waits for it to be gone (one CTM manager per compositor). |
-| `vpn` | `nmcli` (Gio::Subprocess) + `NetworkManager::signal_changed` | Noctalia's VPNService: `connection show` parsed from the right for `vpn` / `wireguard` types (active = has a device), `up` / `down` / `delete` / `import type <wireguard|openvpn>` with Noctalia's success-text checks, busy flags per operation, `last_error()` from stderr's first line; refresh 1 s after NM changes + 60 s poll. |
 | `mpris` | `org.mpris.MediaPlayer2.*` on the session bus | One `Gio::DBus::Proxy` pair per player (NameOwnerChanged adds/removes), metadata / status / capabilities from PropertiesChanged, Position polled every second while playing (+ Seeked), `active()` = playing else most recent; PlayPause / Next / Previous / SetPosition / Volume. |
 | `system_stats` | `/proc/stat`, `/proc/meminfo`, hwmon / thermal zones, `statvfs` | Noctalia's SystemStatService subset: CPU usage + temperature every 1 s, memory 5 s, disk 30 s — only while a consumer is registered (the sysmon card while its panel is open). |
 | `user_info.hpp` | GLib user info (header-only) | `user_display_name()` (GECOS, else login) and `user_avatar_path()` (`~/.face`, `HS_LOCK_AVATAR` override). |
@@ -178,6 +175,9 @@ Two companions sit next to it:
 | File | Role |
 |---|---|
 | `search.{hpp,cpp}` | The sidebar search (GNOME-Settings style): toggle button + `GtkSearchBar`, Ctrl+F, type-to-search. `install_search()` takes over the sidebar content and, on every query, walks the widget tree of each stack child collecting `AdwPreferencesRow`s with a page › subpage › group breadcrumb. Activating a hit selects the page, pushes the module subpage, expands enclosing expanders, scrolls to the row (deferred one frame, see gotchas) and flashes it. Also defines `SidebarPage {name, title, icon}`, the table type behind `kSidebarPages`. |
+| `command.{hpp,cpp}` | `run_command(argv, done)`: async GSubprocess wrapper (stdout/stderr captured, `ok` = exit 0) plus `trim` / `first_line` / `split_lines`, shared by the hotspot and VPN pages. |
+| `vpn_page.{hpp,cpp}` | `build_vpn_page()`: NetworkManager `vpn` / `wireguard` profiles as switch rows (connect/disconnect via `nmcli connection up/down uuid`, Noctalia's success-text check), Import header button (`GtkFileDialog`, `.conf` → wireguard, `.ovpn` → openvpn), delete with `AdwAlertDialog`; refresh on map + 3 s poll. Replaced the bar's VPN module on 2026-09-05. |
+| `hotspot_page.{hpp,cpp}` | `build_hotspot_page()`: Wi-Fi hotspot over NetworkManager's AP mode, all through async `nmcli` (`run_cmd` GSubprocess helper). Reads/writes the user-owned "Hotspot" profile (name, WPA2/WPA3/open, password, band, hidden, autoconnect, interface), optional virtual AP interface via `pkexec iw` for hotspot + Wi-Fi at once (support parsed from `iw phy … info`), 3 s status poll while mapped. No config.json involvement. |
 | `about_page.{hpp,cpp}` | `build_about_page()`: hardware (device name, model, memory, processor, graphics, disk) and software (firmware, OS name/type, kernel, windowing system, Hyprland and hypr-shell versions) as `.property` rows, all read from sysfs, `/proc` and `os-release`; only the Hyprland version is an async `hyprctl -j version`. |
 
 See [the settings app](07-settings-app.md) for how to extend it.

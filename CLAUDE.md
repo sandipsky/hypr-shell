@@ -60,7 +60,7 @@ src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, taskbar, active_window, clock, network,
-                               volume, battery, bluetooth, vpn, control_center,
+                               volume, battery, bluetooth, control_center,
                                notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/hyprland.{hpp,cpp}         Hyprland IPC singleton
@@ -74,8 +74,6 @@ src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
 src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectManager)
 src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
-src/services/vpn.{hpp,cpp}              VPN profiles via nmcli (list/up/down/delete/import)
-src/bar/vpn_panel.{hpp,cpp}             VPN click panel (profile toggles, import, delete)
 src/services/mpris.{hpp,cpp}            MPRIS players on the session bus (metadata, position, controls)
 src/services/system_stats.{hpp,cpp}     CPU / temperature / memory / disk sampling while a card is open
 src/bar/control_center_panel.{hpp,cpp}  control center cards: audio, brightness, media, system monitor
@@ -121,6 +119,13 @@ src/settings/search.{hpp,cpp}           settings search: sidebar toggle + search
                                         index of every preferences row, navigate/scroll/highlight
 src/settings/about_page.{hpp,cpp}       "About" page: hardware + software facts (sysfs, /proc,
                                         os-release, hyprctl version), GNOME Settings layout
+src/settings/hotspot_page.{hpp,cpp}     "Hotspot" page: NetworkManager AP mode over nmcli (profile
+                                        "Hotspot"; name/security/password/band/hidden, virtual
+                                        AP interface for Wi-Fi + hotspot, autostart, live status)
+src/settings/vpn_page.{hpp,cpp}         "VPN" page: NetworkManager vpn/wireguard profiles over
+                                        nmcli (connect switches, import .conf/.ovpn, delete)
+src/settings/command.{hpp,cpp}          run_command(): async GSubprocess helper + string utils
+                                        shared by the hotspot and VPN pages
 docs/                                   long-form developer docs (start at docs/README.md)
 ```
 
@@ -160,7 +165,10 @@ Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
 subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
 `HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
 startup (navigates, scrolls to and flashes the row) — screenshots need no
-scripted key presses.
+scripted key presses. `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
+settings to the NM profile 2s after startup (creates "Hotspot" from the
+defaults, never activates it). **Never activate the hotspot from the tool
+shell on the single adapter: it disconnects the user's Wi-Fi.**
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
 renders the first monitor's frames offscreen (frame-25/50/75.png as the first
 transition passes those marks, frame-final.png after 4s) and
@@ -236,7 +244,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       keyboard layout, system stats.
       *(pulled forward 2026-08-30: battery + network + audio status icons landed;
       2026-09-01: bluetooth (BlueZ) icon + click panel landed; 2026-09-04: VPN
-      pill + panel (Noctalia's VPN widget over nmcli) landed; 2026-09-04:
+      pill + panel (Noctalia's VPN widget over nmcli) landed, then moved to a
+      settings page and removed from the bar 2026-09-05; 2026-09-04:
       taskbar (Noctalia's Taskbar widget — running + pinned apps) landed;
       tray, keyboard layout, stats remain)*
 - [x] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
@@ -1056,7 +1065,9 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   config-only (the "VPN" module row has no cog). Not ported: Noctalia's
   toasts on connect/disconnect/import/delete (no toast UI). Tested with a
   temporary `nmcli connection add type wireguard` profile (deleted
-  afterwards); the machine has no real VPN profiles. The import dialog is
+  afterwards); the machine has no real VPN profiles. **Superseded 2026-09-05:
+  the whole module was removed in favour of the settings page (see below).**
+  The import dialog is
   opened with a **null parent**: parenting it to the bar (a layer surface)
   was a Wayland protocol error that closed the whole shell ("Lost connection
   to Wayland compositor") — shipped that way for one build. Dev hooks:
@@ -1177,6 +1188,75 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   (`-DHS_VERSION` from meson's project version). Dev hooks:
   `HS_SETTINGS_SEARCH=<q>`, `HS_SETTINGS_SEARCH_OPEN=1`,
   `HS_SETTINGS_PAGE=about_page`.
+- 2026-09-05 — Hotspot page (todo.txt item; no Noctalia counterpart, GNOME's
+  Wi-Fi hotspot dialog + Windows' Mobile hotspot as the model).
+  **State lives in NetworkManager, not config.json**: the hotspot is a live
+  network action (like the Wi-Fi list in the network panel), NM already
+  persists the profile, and a config-driven on/off would drift the moment
+  activation fails — so the shell is not involved at all and the page
+  (`settings/hotspot_page.cpp`) talks to `nmcli` itself, async through
+  GSubprocess (`run_cmd` + a weak "alive" guard). One profile, id
+  "Hotspot" (nmcli's own hotspot name — an existing one is adopted),
+  created on the first edit with `type wifi … 802-11-wireless.mode ap
+  ipv4.method shared ipv6.method ignore connection.permissions
+  user:<name>` — user-owned so `--show-secrets` reads the PSK back without
+  a polkit prompt (verified: a system-owned profile would prompt). Fields:
+  SSID (1–32 bytes), Security None / WPA2 (`key-mgmt wpa-psk`, rsn/ccmp) /
+  WPA3 (`key-mgmt sae`, `pmf 3`) — None is `modify … remove
+  802-11-wireless-security`; Password (AdwPasswordEntryRow, 8–63, refresh
+  button generates 12 unambiguous chars; the enable switch is insensitive
+  with an explanatory subtitle while invalid, rows get `.error`); Band
+  Automatic / 2.4 GHz / 5 GHz = `802-11-wireless.band` "" / bg / a — a
+  single AP interface broadcasts on one channel, so "both" (the user's
+  wording) maps to Automatic like Windows' "Any available"; Hidden
+  (`802-11-wireless.hidden`); Wi-Fi adapter combo (physical wifi devices =
+  `/sys/class/net/<dev>/device` exists; row hidden with one adapter);
+  **Keep Wi-Fi connected** = the hotspot runs on a virtual AP interface
+  "<adapter>-ap" (name encodes the parent; "ap0" if too long) with
+  `cloned-mac-address stable` (a virtual AP must not share the parent's
+  MAC), created on enable via `pkexec iw dev <adapter> interface add
+  <name> type __ap` (CAP_NET_ADMIN; the polkit agent prompts; it does not
+  survive a reboot, so autostart in this mode only works once the
+  interface exists), then `nmcli device set <name> managed yes` 1.2s after
+  it appears and `connection up`. Support is read from `iw phy <phy>
+  info`'s "valid interface combinations" (a combination with managed + AP
+  and total ≥ 2; `#channels <= 1` adds "same band, use Automatic" to the
+  subtitle); **iw is not installed here**, so the switch shows "Install the
+  iw package…" and the whole concurrent path is UNTESTED (the adapter is
+  iwlwifi AX201, which normally allows AP+STA on one channel). Start
+  automatically = `connection.autoconnect`. Edits save debounced 600ms via
+  `connection modify`; NM only applies AP changes on activation, so a
+  running hotspot is re-`up`ed after each save ("restarts briefly", said on
+  the page). Status row (`.property`): Off / Starting… / "Active on <dev> ·
+  <gateway from ip -4 addr> · N devices connected" (`iw dev station dump`,
+  else reachable `ip -4 neigh` entries) / errors in `.error`; the page
+  polls `connection show Hotspot` every 3s while mapped, and never rewrites
+  a row that has a pending save or keyboard focus (the poll would move the
+  cursor). Tested: create/modify/read-back (nmcli-modified profile shows
+  correctly), not activation — enabling on the single adapter would drop
+  the user's Wi-Fi. NOT ported/added: GNOME's QR code (needs a QR encoder),
+  "share from" interface choice (NM picks the default route), client list
+  with names, data usage.
+- 2026-09-05 — VPN moved out of the bar into hypr-shell-settings (user
+  request): `bar/modules/vpn`, `bar/vpn_panel`, `services/vpn`, the
+  `bar.vpn.*` config keys (`Config::Vpn`), the `vpn` module row/default
+  section, the `.vpn` / `.vp-*` CSS and the `HS_OPEN_VPN` hook are gone; a
+  `vpn` name left in an old config's `bar.modules` / `bar.layout` is dropped
+  by the layout resolver. Replacement: `settings/vpn_page.cpp`, a sidebar
+  page after Hotspot (tabler shield-lock glyph) — Status row ("Connected to
+  X and N more"), a Profiles group with an Import header button
+  (GtkFileDialog, *.conf / *.ovpn, ~/Downloads; parented to the settings
+  window — a normal toplevel, so the layer-shell parenting crash does not
+  apply) and one AdwSwitchRow per `vpn` / `wireguard` profile (subtitle
+  WireGuard / VPN plugin + "connected on <dev>", trash suffix → AdwAlertDialog
+  confirm, disabled while connected). nmcli grammar and Noctalia's
+  success-text checks are the VpnService's, now in the settings binary;
+  `run_command()` + `first_line` / `trim` / `split_lines` were factored out
+  of the hotspot page into `settings/command.{hpp,cpp}` for both. Refresh on
+  map + every 3 s while mapped (no NM DBus signal in the settings app),
+  rows rebuilt from `connection show` parsed from the right. Tested with a
+  throwaway WireGuard profile (deleted afterwards); the machine still has no
+  real VPN profile.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

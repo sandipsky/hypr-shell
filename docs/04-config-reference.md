@@ -209,21 +209,6 @@ directly on the bar without Noctalia's capsule background.
 
 The settings subpage exposes the first four rows only (per user).
 
-## `bar.vpn`
-
-The VPN pill (Noctalia's VPN bar widget). Shield icon, shield-lock while a
-profile is active, with the first active profile's name (+ N more) as pill
-text. Profiles are NetworkManager's `vpn` / `wireguard` connections.
-
-| Key | Type | Default | Meaning |
-|-----|------|---------|---------|
-| `display_mode` | `on_hover` / `always_show` / `always_hide` | `on_hover` | When the name shows next to the icon (Noctalia's BarPill: revealed 500 ms after hover, always, never). Vertical bars are always icon-only. |
-| `icon_color` / `text_color` | `none` / `primary` / `secondary` / `tertiary` / `error` | `none` | Noctalia palette colour for the icon / text; `none` inherits the module colour. |
-
-These keys are config-only: the settings app has no VPN subpage (per user).
-Click opens the VPN panel (toggle, import `.conf` / `.ovpn`, delete with
-confirmation); there is no right-click menu. Dev hook: `HS_OPEN_VPN=1`.
-
 ## `bar.control_center`
 
 The control center bar button (Noctalia's ControlCenter widget: the noctalia
