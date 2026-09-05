@@ -29,7 +29,26 @@ inline constexpr int kBarPopoverGap = 6;
 // on screen regardless of the compositor's slide constraint, which Hyprland
 // does not always apply to layer-shell popups (the 440px control-center
 // popover was seen cut off at the screen's right edge).
+// GTK keeps the popover's parent chain in :hover while the popup holds the
+// grab, and a click outside dismisses the popup without a leave event ever
+// reaching the bar — the module kept its hover pill until the pointer next
+// crossed the bar (user report, app menu). Clear the flag on close; a pointer
+// that really is over the module re-sets it on its next motion.
+inline void clear_hover_on_close(Gtk::Popover& popover) {
+    if (g_object_get_data(G_OBJECT(popover.gobj()), "hs-hover-reset") != nullptr)
+        return;
+    g_object_set_data(G_OBJECT(popover.gobj()), "hs-hover-reset", GINT_TO_POINTER(1));
+    popover.signal_closed().connect([&popover] {
+        for (auto* w = popover.get_parent(); w != nullptr; w = w->get_parent()) {
+            w->unset_state_flags(Gtk::StateFlags::PRELIGHT);
+            if (w->has_css_class("module"))
+                break;
+        }
+    });
+}
+
 inline void place_bar_popover(Gtk::Popover& popover) {
+    clear_hover_on_close(popover);
     const auto position = Config::get().bar_position();
     const bool vertical =
         position == Config::BarPosition::Left || position == Config::BarPosition::Right;

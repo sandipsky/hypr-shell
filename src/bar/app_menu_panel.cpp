@@ -283,6 +283,10 @@ void AppMenuPanel::apply_config() {
     session_button_.set_visible(cfg.show_session_button);
     header_.set_visible(show_search_ || cfg.show_settings_button || cfg.show_session_button);
     header_.set_halign(show_search_ ? Gtk::Align::FILL : Gtk::Align::END);
+    if (cfg.tile_background)
+        remove_css_class("flat-tiles");
+    else
+        add_css_class("flat-tiles");
     const int columns = std::clamp(cfg.columns, kMinColumns, kMaxColumns);
     if (columns != columns_ || cfg.multiline_labels != multiline_ || cfg.list_view != list_view_ ||
         cfg.show_description != show_description_ || cfg.group_by_letter != group_by_letter_) {

@@ -78,6 +78,16 @@ button.am-icon-btn.active .am-btn-glyph {
   padding: 10px 6px 8px 6px;
 }
 
+/* bar.app_menu.tile_background = false: icons on the panel itself, the
+ * selected one still gets the mHover card */
+.app-menu-panel.flat-tiles .am-tile {
+  background: transparent;
+}
+
+.app-menu-panel.flat-tiles .am-tile.selected {
+  background: @mHover; /* hover / keyboard selection keeps its card */
+}
+
 .am-tile.selected {
   background: @mHover;
 }
@@ -95,7 +105,7 @@ button.am-icon-btn.active .am-btn-glyph {
 /* list view rows (Windows 11 "All apps"): flat, mHover when selected */
 .am-row {
   border-radius: 10px;
-  padding: 6px 10px;
+  padding: 8px 12px;
 }
 
 .am-row.selected {

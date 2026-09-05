@@ -289,6 +289,7 @@ struct Settings {
     AdwComboRow* am_view = nullptr;          // grid / list
     AdwSwitchRow* am_show_desc = nullptr;    // list view only
     AdwSwitchRow* am_group = nullptr;        // letter headers
+    AdwSwitchRow* am_tile_bg = nullptr;      // grid tile cards
 
     // Session menu sidebar page (top-level "session" object in config.json)
     AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
@@ -570,12 +571,13 @@ void populate(Settings* s, PopulateStage stage) {
     int am_columns = 5;
     bool am_settings_btn = true, am_session_btn = true, am_multiline = false;
     bool am_show_search = true;
-    bool am_list = false, am_show_desc = true, am_group = false;
+    bool am_list = false, am_show_desc = true, am_group = false, am_tile_bg = true;
     try {
         const json am = s->root.value("bar", json::object()).value("app_menu", json::object());
         am_list = am.value("view", "grid") == std::string("list");
         am_show_desc = am.value("show_description", true);
         am_group = am.value("group_by_letter", false);
+        am_tile_bg = am.value("tile_background", true);
         am_display = am.value("display", am_display);
         am_icon = am.value("icon", am_icon);
         am_custom = am.value("custom_icon", "");
@@ -816,6 +818,7 @@ void populate(Settings* s, PopulateStage stage) {
     adw_combo_row_set_selected(s->am_view, am_list ? 1 : 0);
     adw_switch_row_set_active(s->am_show_desc, am_show_desc);
     adw_switch_row_set_active(s->am_group, am_group);
+    adw_switch_row_set_active(s->am_tile_bg, am_tile_bg);
     update_am_rows(s);
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
@@ -1094,6 +1097,7 @@ void update_am_rows(Settings* s) {
     const bool list = adw_combo_row_get_selected(s->am_view) == 1;
     gtk_widget_set_visible(GTK_WIDGET(s->am_columns), !list);
     gtk_widget_set_visible(GTK_WIDGET(s->am_multiline), !list);
+    gtk_widget_set_visible(GTK_WIDGET(s->am_tile_bg), !list);
     gtk_widget_set_visible(GTK_WIDGET(s->am_show_desc), list);
 }
 
@@ -4475,6 +4479,9 @@ void on_activate(GtkApplication* app, gpointer) {
          "Wrap long application names onto a second line instead of cutting "
          "them short.",
          &s->am_multiline},
+        {"tile_background", "App item background",
+         "Grid view: draw each application on a card; off leaves the icons on the panel.",
+         &s->am_tile_bg},
         {"show_description", "App descriptions",
          "List view: show each application's description under its name.", &s->am_show_desc},
         {"group_by_letter", "Group by letter",

@@ -1792,4 +1792,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   item before it, wrapping), which also skips header rows. Settings: a
   "View" dropdown on the App menu subpage; Grid columns / Two-line names show
   only for grid, App descriptions only for list; "Group by letter" always.
+- 2026-09-05 — App menu: `bar.app_menu.tile_background` (default on, "App
+  item background" switch, grid only) drops the mSurfaceVariant cards via a
+  `flat-tiles` class on the panel; list rows got 8px/12px padding. Bug fix
+  for every module popover: a click outside dismissed the popup without a
+  leave event reaching the bar, so the module kept its hover pill until the
+  pointer next crossed the bar — `clear_hover_on_close()` (bar_popover.hpp,
+  hooked from `place_bar_popover`) unsets PRELIGHT on the anchor chain up to
+  the module when the popover closes.
 

@@ -82,8 +82,14 @@ Bar::Bar() {
     trigger_.set_child(trigger_fill_);
 
     auto bar_motion = Gtk::EventControllerMotion::create();
-    bar_motion->signal_enter().connect([this](double, double) { set_hovered(true); });
-    bar_motion->signal_leave().connect([this] { set_hovered(false); });
+    bar_motion->signal_enter().connect([this](double x, double y) {
+        g_debug("bar: pointer enter at %.0f,%.0f", x, y);
+        set_hovered(true);
+    });
+    bar_motion->signal_leave().connect([this] {
+        g_debug("bar: pointer leave");
+        set_hovered(false);
+    });
     add_controller(bar_motion);
     auto trigger_motion = Gtk::EventControllerMotion::create();
     trigger_motion->signal_enter().connect([this](double, double) { set_hovered(true); });

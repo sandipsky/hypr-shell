@@ -229,6 +229,7 @@ launcher's grid view). `hypr-shell --app-menu` toggles it for keybinds.
 | `view` | `grid` / `list` | `grid` | Tiles in a grid, or one full-width row per app (icon, name, description). |
 | `columns` | int 3..8 | `5` | Grid columns (grid view). |
 | `multiline_labels` | bool | `false` | Tile names wrap to two lines (grid view). |
+| `tile_background` | bool | `true` | Grid view: tiles on cards; `false` leaves the icons on the panel (the selected one still gets the hover card). |
 | `show_description` | bool | `true` | List view: description line under each name. |
 | `group_by_letter` | bool | `false` | Letter headers ("#", "A", "B", …) above the apps while browsing with an empty search, Windows 11 style; search results stay score-sorted without headers. |
 
