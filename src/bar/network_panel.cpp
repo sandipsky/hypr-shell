@@ -8,6 +8,7 @@ namespace {
 constexpr const char* kIconWifi = "\uEB52";
 constexpr const char* kIconWifiOff = "\uECFA";
 constexpr const char* kIconLock = "\uEAE2";
+constexpr const char* kIconRefresh = "\uEB13";
 // signal buckets: >=80, >=60, >=35, >=15, below (Noctalia thresholds)
 constexpr const char* kSignalLevels[] = {"\uEB52", "\uEBFC", "\uEBA5", "\uEBA4", "\uEBA3"};
 
@@ -35,6 +36,21 @@ NetworkPanel::NetworkPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     title->set_halign(Gtk::Align::START);
     title->set_hexpand(true);
     header->append(*title);
+    // refresh: the glyph swaps for a spinner while a scan is running
+    refresh_icon_.set_text(kIconRefresh);
+    refresh_icon_.add_css_class("np-refresh-icon");
+    refresh_spinner_.add_css_class("np-spinner");
+    refresh_stack_.add(refresh_icon_, "icon");
+    refresh_stack_.add(refresh_spinner_, "spinner");
+    refresh_btn_.set_child(refresh_stack_);
+    refresh_btn_.add_css_class("np-refresh");
+    refresh_btn_.set_valign(Gtk::Align::CENTER);
+    refresh_btn_.set_tooltip_text("Scan for networks");
+    refresh_btn_.signal_clicked().connect([this] {
+        if (NetworkManager::get().wifi_enabled())
+            NetworkManager::get().scan(); // no-op while a scan is running
+    });
+    header->append(refresh_btn_);
     wifi_switch_.set_valign(Gtk::Align::CENTER);
     wifi_switch_.property_active().signal_changed().connect([this] {
         if (updating_)
@@ -73,9 +89,15 @@ NetworkPanel::NetworkPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     disconnect_.add_css_class("np-disconnect");
     disconnect_.set_valign(Gtk::Align::CENTER);
     disconnect_.signal_clicked().connect([this] {
+        disconnecting_ = true;
+        update_busy();
         NetworkManager::get().wifi_disconnect(connected_ssid_.get_text());
     });
-    connected_card_.append(disconnect_);
+    disconnect_spinner_.add_css_class("np-spinner-on-primary");
+    disconnect_stack_.add(disconnect_, "button");
+    disconnect_stack_.add(disconnect_spinner_, "spinner");
+    disconnect_stack_.set_valign(Gtk::Align::CENTER);
+    connected_card_.append(disconnect_stack_);
     connected_section_.append(connected_card_);
     append(connected_section_);
 
@@ -127,16 +149,10 @@ NetworkPanel::NetworkPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     append(disabled_card_);
 
     // -- available networks -----------------------------------------------------
-    auto* available_header = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
     auto* available_title = Gtk::make_managed<Gtk::Label>("Available networks");
     available_title->add_css_class("np-section");
     available_title->set_halign(Gtk::Align::START);
-    available_title->set_hexpand(true);
-    available_header->append(*available_title);
-    scan_status_.add_css_class("bp-value");
-    scan_status_.set_halign(Gtk::Align::END);
-    available_header->append(scan_status_);
-    available_section_.append(*available_header);
+    available_section_.append(*available_title);
     status_.add_css_class("bp-value");
     status_.set_halign(Gtk::Align::START);
     status_.set_wrap(true);
@@ -155,9 +171,11 @@ NetworkPanel::NetworkPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     nm.signal_networks_changed().connect(
         sigc::mem_fun(*this, &NetworkPanel::rebuild_networks));
     nm.signal_action_done().connect([this](bool ok, const std::string& out) {
-        scan_status_.set_text("");
+        connecting_ssid_.clear();
+        disconnecting_ = false;
         status_.set_text(ok ? "" : out);
         status_.set_visible(!ok);
+        rebuild_networks(); // drop the row spinner right away
     });
 
     update_state();
@@ -171,6 +189,25 @@ void NetworkPanel::refresh() {
     update_state();
     if (NetworkManager::get().wifi_enabled())
         NetworkManager::get().scan();
+    update_busy();
+}
+
+// header spinner while scanning (the refresh glyph otherwise), Disconnect
+// button ↔ spinner while a disconnect is in flight
+void NetworkPanel::update_busy() {
+    auto& nm = NetworkManager::get();
+    const bool scanning = nm.wifi_enabled() && nm.scanning();
+    refresh_stack_.set_visible_child(scanning ? "spinner" : "icon");
+    refresh_spinner_.set_running(scanning);
+    refresh_btn_.set_sensitive(nm.wifi_enabled());
+    disconnect_stack_.set_visible_child(disconnecting_ ? "spinner" : "button");
+    disconnect_spinner_.set_running(disconnecting_);
+}
+
+void NetworkPanel::start_connect(const std::string& ssid, const std::string& password) {
+    connecting_ssid_ = ssid;
+    NetworkManager::get().wifi_connect(ssid, password);
+    rebuild_networks(); // swap that row's Connect button for the spinner
 }
 
 void NetworkPanel::update_state() {
@@ -183,6 +220,7 @@ void NetworkPanel::update_state() {
         rebuild_networks(); // swap between the list and the disabled card
     }
     update_connected();
+    update_busy();
 }
 
 // The scan list refreshes slowly (a rescan takes seconds); NM's primary
@@ -223,12 +261,12 @@ void NetworkPanel::rebuild_networks() {
     disabled_card_.set_visible(!enabled);
     available_section_.set_visible(enabled);
     if (!enabled) {
-        scan_status_.set_text("");
         connected_section_.set_visible(false);
+        update_busy();
         return;
     }
     status_.set_visible(false);
-    scan_status_.set_text(nm.scanning() ? "Scanning…" : "");
+    update_busy();
 
     for (const auto& net : nm.networks()) {
         if (net.in_use || net.ssid == connected_ssid.raw())
@@ -254,20 +292,26 @@ void NetworkPanel::rebuild_networks() {
             text->append(*sec);
         }
         row->append(*text);
-        auto* connect = Gtk::make_managed<Gtk::Button>("Connect");
-        connect->add_css_class("np-connect");
-        connect->set_valign(Gtk::Align::CENTER);
-        const std::string net_ssid = net.ssid;
-        const bool needs_password = !net.security.empty() && !net.saved;
-        connect->signal_clicked().connect([this, net_ssid, needs_password] {
-            if (needs_password) {
-                ask_password(net_ssid);
-            } else {
-                scan_status_.set_text("Connecting…");
-                NetworkManager::get().wifi_connect(net_ssid);
-            }
-        });
-        row->append(*connect);
+        if (net.ssid == connecting_ssid_) {
+            // Noctalia shows NBusyIndicator on the busy row instead of text
+            auto* spinner = Gtk::make_managed<BusyIndicator>();
+            spinner->add_css_class("np-spinner");
+            spinner->set_margin_end(6);
+            row->append(*spinner);
+        } else {
+            auto* connect = Gtk::make_managed<Gtk::Button>("Connect");
+            connect->add_css_class("np-connect");
+            connect->set_valign(Gtk::Align::CENTER);
+            const std::string net_ssid = net.ssid;
+            const bool needs_password = !net.security.empty() && !net.saved;
+            connect->signal_clicked().connect([this, net_ssid, needs_password] {
+                if (needs_password)
+                    ask_password(net_ssid);
+                else
+                    start_connect(net_ssid);
+            });
+            row->append(*connect);
+        }
         list_.append(*row);
     }
 }
@@ -284,8 +328,7 @@ void NetworkPanel::submit_password() {
     if (password_ssid_.empty())
         return;
     password_card_.set_visible(false);
-    scan_status_.set_text("Connecting…");
-    NetworkManager::get().wifi_connect(password_ssid_, password_entry_.get_text());
+    start_connect(password_ssid_, password_entry_.get_text());
     password_entry_.set_text("");
 }
 

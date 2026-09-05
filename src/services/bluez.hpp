@@ -44,6 +44,9 @@ public:
 
     void set_enabled(bool enabled);   // rfkill unblock + Adapter1.Powered
     void set_scanning(bool active);   // Adapter1.Start/StopDiscovery
+    // Panel refresh button: forget cached unpaired devices (they come back as
+    // discovery finds them again) and restart discovery if it is wanted.
+    void refresh_devices();
     void pair_device(const std::string& path); // bluetoothctl pair, then connect
     void connect_device(const std::string& path); // trusts first, like Noctalia
     void disconnect_device(const std::string& path);
@@ -76,6 +79,7 @@ private:
     bool prev_enabled_ = false;  // power-on edge triggers auto-connect
     bool last_auto_connect_ = false;
     bool resume_scan_ = false;   // discovery paused during pairing
+    bool want_scanning_ = false; // last set_scanning() request (panel open)
     std::set<std::string> busy_; // device paths with an in-flight call
     std::vector<Device> devices_;
     sigc::connection auto_connect_timer_;

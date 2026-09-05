@@ -99,8 +99,9 @@ is missing.
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
 | `battery_panel.{hpp,cpp}` | battery | Charge card, power-profile slider, brightness slider, refresh-rate buttons; cards hide per backend / `bar.battery`. |
 | `audio_panel.{hpp,cpp}` | volume | Output and Input cards: device, slider, percent, mute. |
-| `network_panel.{hpp,cpp}` | network | Wi-Fi switch, Connected card, scrolled Available list, inline password. Fixed 330×440. |
-| `bluetooth_panel.{hpp,cpp}` | bluetooth | Power switch, disabled card, Connected / Paired / Available lists; discovery runs while open (`set_open`). Pair, connect, disconnect. Fixed 330×400. |
+| `network_panel.{hpp,cpp}` | network | Wi-Fi switch, header refresh button (spinner while scanning), Connected card, scrolled Available list (the connecting row shows a spinner), inline password. Fixed 330×440. |
+| `bluetooth_panel.{hpp,cpp}` | bluetooth | Power switch, header refresh button (`Bluez::refresh_devices`, spinner while discovering), disabled card, Connected / Paired / Available lists; discovery runs while open (`set_open`). Pair, connect, disconnect. Fixed 330×400. |
+| `busy_indicator.{hpp,cpp}` | network + bluetooth panels | `BusyIndicator`: Noctalia's NBusyIndicator spinner — cairo arc rotating once per 900 ms, colour from CSS `color`, tick callback only while mapped. |
 | `notification_panel.{hpp,cpp}` | notifications | History list with cards (icon, urgency dot, app, time, summary, body, actions, expand, delete), "Clear All". Rebuilds only while open; `signal_request_close`. Fixed 380×480. |
 | `notification_popup.{hpp,cpp}` | `App` (always exists) | Toast stack as a layer window: up to 5 cards, per-urgency countdown bars, hover pauses, click/close/right-click actions, compact density. |
 | `notification_ui.{hpp,cpp}` | shared | Relative-time formatter and the rounded notification icon widget (image > themed icon > desktop icon > bell). |

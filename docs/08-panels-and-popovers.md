@@ -77,9 +77,12 @@ Content that shrinks leaves dead space; content that grows is clipped. So:
 - Panels that only change *values* (sliders, labels) can size naturally,
   but reserve space for the widest value (`set_width_chars(4)` on a percent
   label) so the width doesn't want to change.
-- Transient status text ("Scanning…") goes into an existing row (the
-  network panel puts it at the right of a section header) rather than in a
-  new row that appears and disappears.
+- Transient "busy" state must not add or remove rows. The network and
+  bluetooth panels show it in place: the header refresh button's child is a
+  `Gtk::Stack` that swaps the glyph for a `BusyIndicator` spinner while a
+  scan runs, and a row being connected swaps its Connect button for a
+  spinner of the same height. If text is unavoidable, put it in an existing
+  row rather than in a new one that appears and disappears.
 
 ## Panels that need to know when they are open
 

@@ -79,6 +79,8 @@ src/bar/audio_panel.{hpp,cpp}           volume click panel (output/input levels)
 src/bar/network_panel.{hpp,cpp}         network click panel (Wi-Fi selector)
 src/services/bluez.{hpp,cpp}            BlueZ adapter/devices (Gio::DBus ObjectManager)
 src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connect/pair)
+src/bar/busy_indicator.{hpp,cpp}        BusyIndicator: Noctalia's NBusyIndicator spinner (cairo arc,
+                                        tick callback only while mapped; colour from CSS `color`)
 src/services/mpris.{hpp,cpp}            MPRIS players on the session bus (metadata, position, controls)
 src/services/system_stats.{hpp,cpp}     CPU / temperature / memory / disk sampling while a card is open
 src/bar/control_center_panel.{hpp,cpp}  control center cards: audio, brightness, media, system monitor
@@ -166,6 +168,10 @@ hyprsunset can hold Hyprland's CTM: two night light daemons fight (each
 restarts 2s after being killed), so Noctalia's nightLight.enabled was set to
 false in ~/.config/noctalia/settings.json on 2026-09-04 (backup:
 settings.json.pre-hypr-shell-nightlight).
+Panel dev hooks: `HS_OPEN_<PANEL>=1` pops a panel 800ms after startup; for
+`HS_OPEN_NETWORK` / `HS_OPEN_BLUETOOTH` a value above 1 is the delay in ms
+(`=3000`) — the main loop can stall for ~1s during startup and a popup issued
+meanwhile is dismissed at once (the HS_OPEN_AUDIO freeze noted in memory).
 Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
 subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
 `HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
@@ -1354,6 +1360,30 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   rows rebuilt from `connection show` parsed from the right. Tested with a
   throwaway WireGuard profile (deleted afterwards); the machine still has no
   real VPN profile.
+- 2026-09-05 — Wi-Fi / Bluetooth panels gained a header **refresh button**
+  (tabler refresh U+EB13, transparent 28px round `button.np-refresh` left of
+  the switch, insensitive while the radio is off) and lost their
+  "Scanning…"/"Connecting…" text in favour of a spinner (user request):
+  `bar/busy_indicator` is Noctalia's NBusyIndicator — a 270° round-capped
+  arc rotating once per 900 ms (animationSlow × 2), cairo in a DrawingArea,
+  colour from the widget's CSS `color` (`.np-spinner` mOnSurface,
+  `.np-spinner-on-primary` on the connected card), tick callback only while
+  mapped and running. The refresh button's child is a Gtk::Stack glyph ↔
+  spinner, so scanning shows in place. Wi-Fi: click = `NetworkManager::
+  scan()` (no-op while a scan runs); the row being connected swaps its
+  Connect button for a spinner (Noctalia's per-row busy indicator, tracked
+  as `connecting_ssid_` in the panel and cleared on `signal_action_done`)
+  and Disconnect swaps for one too. Bluetooth: click = new
+  `Bluez::refresh_devices()` — `Adapter1.RemoveDevice` on every unpaired /
+  untrusted / unconnected / idle device (BlueZ's in-memory discovery cache
+  only; they reappear as discovery finds them, which makes the list visibly
+  repopulate) then StopDiscovery, restarting via `set_scanning(true)` in the
+  stop callback if still wanted (`want_scanning_`) and not already re-armed
+  by the panel's rebuild; the spinner stays on throughout since `scanning_`
+  is left optimistic. "No devices found" still shows when idle with an
+  empty list. Live-tested: Wi-Fi scan spinner + refresh; the Bluetooth
+  adapter was off (disabled state verified; discovery refresh untested
+  live).
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

@@ -5,6 +5,9 @@
 #include "services/bluez.hpp"
 #include "services/config.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -41,14 +44,17 @@ Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_controller(click);
     popover_.signal_closed().connect([this] { panel_->set_open(false); });
 
-    // dev hook: HS_OPEN_BLUETOOTH=1 pops the panel shortly after startup
-    if (g_getenv("HS_OPEN_BLUETOOTH") != nullptr) {
+    // dev hook: HS_OPEN_BLUETOOTH=1 pops the panel 800ms after startup; a value above 1
+    // is the delay in ms (the main loop can stall briefly during startup and a
+    // popup issued meanwhile is dismissed at once)
+    if (const char* hook = g_getenv("HS_OPEN_BLUETOOTH")) {
+        const int delay = std::max(800, std::atoi(hook));
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->set_open(true);
                 popover_.popup();
             },
-            800);
+            delay);
     }
 
     Bluez::get().signal_changed().connect(sigc::mem_fun(*this, &Bluetooth::update));

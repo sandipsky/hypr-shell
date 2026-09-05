@@ -54,6 +54,7 @@ sources = files(
   'src/bar/audio_panel.cpp',
   'src/bar/battery_panel.cpp',
   'src/bar/bluetooth_panel.cpp',
+  'src/bar/busy_indicator.cpp',
   'src/bar/network_panel.cpp',
   'src/bar/notification_panel.cpp',
   'src/bar/notification_popup.cpp',

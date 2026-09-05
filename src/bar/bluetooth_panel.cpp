@@ -12,6 +12,7 @@ namespace {
 // tabler glyphs, \u escapes so the PUA codepoints survive every tool
 constexpr const char* kIconBluetooth = "\uEA37";
 constexpr const char* kIconBluetoothOff = "\uECEB";
+constexpr const char* kIconRefresh = "\uEB13";
 
 // Noctalia's BluetoothUtils.deviceIcon: keyword tests over the lowercased
 // device name + BlueZ icon hint, display hints on the icon checked first so
@@ -78,6 +79,22 @@ BluetoothPanel::BluetoothPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     title->set_halign(Gtk::Align::START);
     title->set_hexpand(true);
     header->append(*title);
+    // refresh: the glyph swaps for a spinner while discovery runs
+    refresh_icon_.set_text(kIconRefresh);
+    refresh_icon_.add_css_class("np-refresh-icon");
+    refresh_spinner_.add_css_class("np-spinner");
+    refresh_stack_.add(refresh_icon_, "icon");
+    refresh_stack_.add(refresh_spinner_, "spinner");
+    refresh_btn_.set_child(refresh_stack_);
+    refresh_btn_.add_css_class("np-refresh");
+    refresh_btn_.set_valign(Gtk::Align::CENTER);
+    refresh_btn_.set_tooltip_text("Search for devices again");
+    refresh_btn_.signal_clicked().connect([this] {
+        status_.set_text("");
+        status_.set_visible(false);
+        Bluez::get().refresh_devices();
+    });
+    header->append(refresh_btn_);
     power_switch_.set_valign(Gtk::Align::CENTER);
     power_switch_.property_active().signal_changed().connect([this] {
         if (updating_)
@@ -159,6 +176,7 @@ void BluetoothPanel::rebuild() {
     disabled_card_.set_visible(!bt.enabled());
     scroller_.set_visible(bt.enabled());
     if (!bt.enabled()) {
+        update_busy();
         return;
     }
 
@@ -180,16 +198,13 @@ void BluetoothPanel::rebuild() {
     }
     if (open_ && !bt.scanning() && !any_busy)
         bt.set_scanning(true); // e.g. the switch was just turned on
+    update_busy();             // after the possible restart above
 
-    auto add_section = [this](const char* text) -> Gtk::Box* {
-        auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+    auto add_section = [this](const char* text) {
         auto* label = Gtk::make_managed<Gtk::Label>(text);
         label->add_css_class("np-section");
         label->set_halign(Gtk::Align::START);
-        label->set_hexpand(true);
-        row->append(*label);
-        list_.append(*row);
-        return row;
+        list_.append(*label);
     };
 
     if (!connected.empty()) {
@@ -275,11 +290,7 @@ void BluetoothPanel::rebuild() {
         }
     }
 
-    auto* available_header = add_section("Available devices");
-    auto* scan_status = Gtk::make_managed<Gtk::Label>(bt.scanning() ? "Scanning…" : "");
-    scan_status->add_css_class("bp-value");
-    scan_status->set_halign(Gtk::Align::END);
-    available_header->append(*scan_status);
+    add_section("Available devices"); // the header spinner says "scanning"
     if (available.empty()) {
         if (!bt.scanning()) {
             auto* none = Gtk::make_managed<Gtk::Label>("No devices found");
@@ -291,6 +302,14 @@ void BluetoothPanel::rebuild() {
         for (const auto* dev : available)
             add_row(*dev, dev->busy ? "Pairing…" : "", "Pair", &Bluez::pair_device);
     }
+}
+
+void BluetoothPanel::update_busy() {
+    auto& bt = Bluez::get();
+    const bool scanning = bt.enabled() && bt.scanning();
+    refresh_stack_.set_visible_child(scanning ? "spinner" : "icon");
+    refresh_spinner_.set_running(scanning);
+    refresh_btn_.set_sensitive(bt.enabled());
 }
 
 } // namespace hyprshell

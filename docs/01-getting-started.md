@@ -137,8 +137,8 @@ opt-in hooks that open them about 0.8 s after startup:
 | `HS_OPEN_CALENDAR=1` | Opens the calendar popover |
 | `HS_OPEN_BATTERY=1` | Opens the battery panel |
 | `HS_OPEN_AUDIO=1` | Opens the audio panel |
-| `HS_OPEN_NETWORK=1` | Opens the Wi-Fi panel |
-| `HS_OPEN_BLUETOOTH=1` | Opens the Bluetooth panel |
+| `HS_OPEN_NETWORK=1` | Opens the Wi-Fi panel (a value above 1 = delay in ms, e.g. `3000`) |
+| `HS_OPEN_BLUETOOTH=1` | Opens the Bluetooth panel (a value above 1 = delay in ms) |
 | `HS_OPEN_NOTIFICATIONS=1` | Opens the notification history panel |
 | `HS_OPEN_LAUNCHER=1` | Opens the app launcher |
 | `HS_LAUNCHER_QUERY=<text>` | Pre-fills the launcher search every time it opens |

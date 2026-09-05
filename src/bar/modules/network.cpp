@@ -5,6 +5,9 @@
 #include "services/config.hpp"
 #include "services/network_manager.hpp"
 
+#include <algorithm>
+#include <cstdlib>
+
 namespace hyprshell {
 
 namespace {
@@ -73,14 +76,17 @@ Network::Network() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     });
     add_controller(click);
 
-    // dev hook: HS_OPEN_NETWORK=1 pops the panel shortly after startup
-    if (g_getenv("HS_OPEN_NETWORK") != nullptr) {
+    // dev hook: HS_OPEN_NETWORK=1 pops the panel 800ms after startup; a value above 1
+    // is the delay in ms (the main loop can stall briefly during startup and a
+    // popup issued meanwhile is dismissed at once)
+    if (const char* hook = g_getenv("HS_OPEN_NETWORK")) {
+        const int delay = std::max(800, std::atoi(hook));
         Glib::signal_timeout().connect_once(
             [this] {
                 panel_->refresh();
                 popover_.popup();
             },
-            800);
+            delay);
     }
 
     NetworkManager::get().signal_changed().connect(sigc::mem_fun(*this, &Network::update));

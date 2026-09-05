@@ -219,6 +219,42 @@ button.np-connect:hover {
   background: @mPrimaryHover;
 }
 
+/* header refresh button (wifi + bluetooth): transparent round button whose
+ * tabler glyph swaps for the spinner (BusyIndicator, drawn in `color`) while
+ * a scan / discovery runs */
+button.np-refresh {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  color: @mOnSurface;
+}
+
+button.np-refresh:hover {
+  background: alpha(@mOnSurface, 0.08);
+}
+
+button.np-refresh:disabled {
+  color: @mOnSurfaceVariant;
+}
+
+.np-refresh-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 15px;
+}
+
+.np-spinner {
+  color: @mOnSurface;
+}
+
+.np-spinner-on-primary {
+  color: @mOnPrimary; /* spinner on the mPrimary connected card */
+  margin: 0 14px; /* roughly the Disconnect pill's footprint */
+}
+
 /* radio off: centered wifi-off glyph + explanation, like Noctalia */
 .np-disabled {
   background: @mSurfaceVariant; /* mSurfaceVariant */

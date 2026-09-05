@@ -246,6 +246,7 @@ void Bluez::set_enabled(bool enabled) {
 }
 
 void Bluez::set_scanning(bool active) {
+    want_scanning_ = active;
     if (!manager_ || adapter_path_.empty() || active == scanning_) {
         return;
     }
@@ -266,6 +267,48 @@ void Bluez::set_scanning(bool active) {
                                   active ? "start" : "stop", e.what());
                       }
                   });
+}
+
+void Bluez::refresh_devices() {
+    if (!manager_ || adapter_path_.empty() || !enabled_) {
+        return;
+    }
+    auto object = manager_->get_object(adapter_path_);
+    auto adapter = object ? iface_proxy(object, kAdapterIface) : nullptr;
+    if (!adapter) {
+        return;
+    }
+    // Unpaired devices are only BlueZ's in-memory discovery cache; dropping
+    // them makes the Available list repopulate from what is really in range.
+    for (const auto& dev : devices_) {
+        if (dev.paired || dev.trusted || dev.connected || busy_.count(dev.path)) {
+            continue;
+        }
+        adapter->call("RemoveDevice",
+                      [adapter](Glib::RefPtr<Gio::AsyncResult>& result) {
+                          try {
+                              adapter->call_finish(result);
+                          } catch (const Glib::Error& e) {
+                              g_debug("bluetooth RemoveDevice: %s", e.what());
+                          }
+                      },
+                      Glib::Variant<std::tuple<Glib::DBusObjectPathString>>::create(
+                          {Glib::DBusObjectPathString(dev.path)}));
+    }
+    // Restart discovery so the adapter runs a fresh inquiry; StartDiscovery
+    // only goes out once BlueZ confirmed the stop (and only if still wanted —
+    // the popover may have closed meanwhile). A rebuild seeing Discovering
+    // false may already have re-armed it through the panel; then skip.
+    adapter->call("StopDiscovery", [this, adapter](Glib::RefPtr<Gio::AsyncResult>& result) {
+        try {
+            adapter->call_finish(result);
+        } catch (const Glib::Error& e) {
+            g_debug("bluetooth refresh stop discovery: %s", e.what());
+        }
+        if (want_scanning_ && !scanning_) {
+            set_scanning(true);
+        }
+    });
 }
 
 void Bluez::finish_action(const std::string& path, bool ok, const std::string& message) {
