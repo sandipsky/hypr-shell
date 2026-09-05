@@ -32,8 +32,7 @@ Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     overlay_.add_overlay(badge_);
     append(overlay_);
 
-    // click opens the history panel; anchored to the overlay because a
-    // Gtk::Box parent allocates an open popover inline (see battery module)
+    // anchored to the overlay, never the module Box (see battery.cpp)
     panel_ = Gtk::make_managed<NotificationPanel>();
     popover_.set_child(*panel_);
     popover_.set_parent(overlay_);

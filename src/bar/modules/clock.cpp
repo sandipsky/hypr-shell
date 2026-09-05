@@ -19,7 +19,6 @@ Clock::Clock() {
     schedule_next_minute();
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &Clock::update));
 
-    // click opens the Noctalia-style calendar popover
     calendar_ = Gtk::make_managed<Calendar>();
     popover_.set_child(*calendar_);
     popover_.set_parent(*this);
@@ -30,6 +29,7 @@ Clock::Clock() {
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {
         calendar_->reset_to_today();
+        place_bar_popover(popover_);
         popover_.popup();
     });
     add_controller(click);
@@ -84,9 +84,6 @@ void Clock::update() {
     }
     set_tooltip_text(tooltip);
     set_has_tooltip(!tooltip.empty());
-
-    // keep the calendar on the free side of the bar
-    place_bar_popover(popover_);
 }
 
 void Clock::schedule_next_minute() {

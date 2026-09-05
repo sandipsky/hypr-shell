@@ -113,7 +113,10 @@ Bar::Bar() {
     refresh_workspace_empty();
 
     apply_config(); // anchors the top/bottom edge — still before mapping
-    Config::get().signal_changed().connect(sigc::mem_fun(*this, &Bar::apply_config));
+    Config::get().signal_changed().connect([this] {
+        apply_config();
+        refresh_workspace_empty();
+    });
 }
 
 Bar::~Bar() {
@@ -307,7 +310,9 @@ void Bar::apply_slide() {
 
 void Bar::refresh_workspace_empty() {
     auto& hypr = Hyprland::get();
-    if (!hypr.available())
+    auto& cfg = Config::get();
+    if (!hypr.available() || cfg.bar_visibility() != Config::BarVisibility::AutoHide ||
+        !cfg.bar_show_when_workspace_empty())
         return;
     const unsigned serial = ++ws_serial_;
     hypr.request("j/activeworkspace", [this, serial](const std::string& reply) {
@@ -322,10 +327,6 @@ void Bar::refresh_workspace_empty() {
         if (empty == workspace_empty_)
             return;
         workspace_empty_ = empty;
-        auto& cfg = Config::get();
-        if (cfg.bar_visibility() != Config::BarVisibility::AutoHide ||
-            !cfg.bar_show_when_workspace_empty())
-            return;
         if (empty)
             set_hidden(false); // hide_timer keeps polling and waits this out
         else if (!hovered_)

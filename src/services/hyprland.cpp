@@ -6,6 +6,10 @@
 
 namespace hyprshell {
 
+namespace {
+constexpr int kMaxInFlight = 4;
+}
+
 Hyprland& Hyprland::get() {
     static Hyprland instance;
     return instance;
@@ -27,6 +31,25 @@ void Hyprland::request(const std::string& command, ReplyHandler on_reply) {
     if (!available_) {
         return;
     }
+    queued_requests_.emplace_back(command, std::move(on_reply));
+    pump_requests();
+}
+
+void Hyprland::pump_requests() {
+    while (in_flight_ < kMaxInFlight && !queued_requests_.empty()) {
+        auto [command, on_reply] = std::move(queued_requests_.front());
+        queued_requests_.pop_front();
+        ++in_flight_;
+        start_request(command, std::move(on_reply));
+    }
+}
+
+void Hyprland::finish_request() {
+    --in_flight_;
+    pump_requests();
+}
+
+void Hyprland::start_request(const std::string& command, ReplyHandler on_reply) {
     auto client = Gio::SocketClient::create();
     auto address = Gio::UnixSocketAddress::create(socket_dir_ + "/.socket.sock");
     client->connect_async(address, [this, client, command, on_reply](Glib::RefPtr<Gio::AsyncResult>& result) {
@@ -43,10 +66,12 @@ void Hyprland::request(const std::string& command, ReplyHandler on_reply) {
                         read_reply(conn, std::make_shared<std::string>(), on_reply);
                     } catch (const Glib::Error& e) {
                         g_warning("Hyprland request write failed: %s", e.what());
+                        finish_request();
                     }
                 });
         } catch (const Glib::Error& e) {
             g_warning("Hyprland request connect failed: %s", e.what());
+            finish_request();
         }
     });
 }
@@ -65,11 +90,13 @@ void Hyprland::read_reply(const Glib::RefPtr<Gio::SocketConnection>& conn,
                 return;
             }
             conn->close();
+            finish_request();
             if (on_reply) {
                 on_reply(*accumulated);
             }
         } catch (const Glib::Error& e) {
             g_warning("Hyprland request read failed: %s", e.what());
+            finish_request();
         }
     });
 }

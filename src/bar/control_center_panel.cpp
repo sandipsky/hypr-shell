@@ -11,8 +11,6 @@
 #include "services/system_stats.hpp"
 #include "services/user_info.hpp"
 
-#include <fstream>
-
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
 #include <algorithm>
@@ -41,8 +39,6 @@ constexpr const char* kFlame = "";
 constexpr const char* kMemory = "";
 constexpr const char* kStorage = "";
 
-// Noctalia colour snapshot (the user's colors.json, like the other panels)
-// palette lookups (theme-dependent, so functions rather than constants).
 // Gauges are neutral (mOnSurface) rather than accent-coloured, per user;
 // warning / critical keep their semantic colours.
 Gdk::RGBA kPrimary() { return Theme::get().rgba("mOnSurface"); }
@@ -245,7 +241,8 @@ void MediaBackground::snapshot_vfunc(const Glib::RefPtr<Gtk::Snapshot>& snapshot
     GskRoundedRect rounded;
     gsk_rounded_rect_init_from_rect(&rounded, &full, 16);
     gtk_snapshot_push_rounded_clip(gs, &rounded);
-    const GdkRGBA surface{0x13 / 255.0f, 0x13 / 255.0f, 0x16 / 255.0f, 1.0f};
+    const Gdk::RGBA surface_rgba = kSurface();
+    GdkRGBA surface = *surface_rgba.gobj();
     gtk_snapshot_append_color(gs, &surface, &full);
     if (texture_) {
         // Noctalia: MultiEffect blurMax 8 × blur 0.33
@@ -257,8 +254,8 @@ void MediaBackground::snapshot_vfunc(const Glib::RefPtr<Gtk::Snapshot>& snapshot
             static_cast<float>(tw * f), static_cast<float>(th * f));
         gtk_snapshot_append_scaled_texture(gs, texture_->gobj(), GSK_SCALING_FILTER_TRILINEAR, &rect);
         gtk_snapshot_pop(gs);
-        const GdkRGBA scrim{0x13 / 255.0f, 0x13 / 255.0f, 0x16 / 255.0f, 0.65f};
-        gtk_snapshot_append_color(gs, &scrim, &full);
+        surface.alpha = 0.65f;
+        gtk_snapshot_append_color(gs, &surface, &full);
     }
     gtk_snapshot_pop(gs);
 }
@@ -277,32 +274,55 @@ ControlCenterPanel::ControlCenterPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 
     build_media();
     build_sysmon();
 
-    Pulse::get().signal_changed().connect(sigc::mem_fun(*this, &ControlCenterPanel::update_audio));
-    Brightness::get().signal_changed().connect(sigc::mem_fun(*this, &ControlCenterPanel::update_brightness));
-    Mpris::get().signal_changed().connect(sigc::mem_fun(*this, &ControlCenterPanel::update_media));
-    SystemStats::get().signal_changed().connect(sigc::mem_fun(*this, &ControlCenterPanel::update_sysmon));
+    // the services keep emitting while the popover is closed — nothing to
+    // show then (the media card would even fetch album art), so set_open()
+    // refreshes everything when the panel appears
+    Pulse::get().signal_changed().connect([this] {
+        if (open_)
+            update_audio();
+    });
+    Brightness::get().signal_changed().connect([this] {
+        if (open_)
+            update_brightness();
+    });
+    Mpris::get().signal_changed().connect([this] {
+        if (open_)
+            update_media();
+    });
+    SystemStats::get().signal_changed().connect([this] {
+        if (open_)
+            update_sysmon();
+    });
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &ControlCenterPanel::apply_config));
     apply_config();
-    update_audio();
-    update_brightness();
-    update_media();
 }
 
 ControlCenterPanel::~ControlCenterPanel() {
     if (stats_registered_)
         SystemStats::get().unregister_consumer();
+    if (media_registered_)
+        Mpris::get().unregister_consumer();
     player_menu_.unparent();
 }
 
 void ControlCenterPanel::set_open(bool open) {
     open_ = open;
-    const bool want_stats = open && Config::get().control_center().show_sysmon;
+    const auto& cfg = Config::get().control_center();
+    const bool want_stats = open && cfg.show_sysmon;
     if (want_stats && !stats_registered_) {
         SystemStats::get().register_consumer();
         stats_registered_ = true;
     } else if (!want_stats && stats_registered_) {
         SystemStats::get().unregister_consumer();
         stats_registered_ = false;
+    }
+    const bool want_media = open && cfg.show_media;
+    if (want_media && !media_registered_) {
+        Mpris::get().register_consumer();
+        media_registered_ = true;
+    } else if (!want_media && media_registered_) {
+        Mpris::get().unregister_consumer();
+        media_registered_ = false;
     }
     uptime_timer_.disconnect();
     if (open) {
@@ -315,6 +335,7 @@ void ControlCenterPanel::set_open(bool open) {
             },
             60); // Noctalia refreshes the uptime every minute
         update_audio();
+        update_brightness();
         update_media();
         update_sysmon();
     }
@@ -387,10 +408,11 @@ void ControlCenterPanel::build_profile() {
 }
 
 void ControlCenterPanel::update_uptime() {
-    std::ifstream in("/proc/uptime");
-    double seconds = 0;
-    if (in >> seconds)
+    try {
+        const double seconds = g_ascii_strtod(Glib::file_get_contents("/proc/uptime").c_str(), nullptr);
         uptime_.set_text("Uptime: " + vague_duration(static_cast<long>(seconds)));
+    } catch (const Glib::Error&) {
+    }
 }
 
 void ControlCenterPanel::apply_config() {
@@ -400,7 +422,7 @@ void ControlCenterPanel::apply_config() {
     media_card_.set_visible(cfg.show_media);
     sysmon_card_.set_visible(cfg.show_sysmon);
     if (open_)
-        set_open(true); // re-evaluates the stats registration
+        set_open(true); // re-evaluates the service registrations
 }
 
 // -- audio card (Noctalia's AudioCard, but output ABOVE input — user request —

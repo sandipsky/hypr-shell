@@ -4,6 +4,7 @@
 #include <giomm/unixsocketaddress.h>
 #include <sigc++/sigc++.h>
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -27,7 +28,10 @@ public:
     bool available() const { return available_; }
 
     // Send one command; on_reply runs on the main loop with the raw reply.
-    // Prefix "j/" for JSON output.
+    // Prefix "j/" for JSON output. At most a few requests are in flight at a
+    // time — an event burst (window open + focus + title …) used to open a
+    // dozen connections at once and Hyprland's listen backlog refused some
+    // with EAGAIN, leaving whichever module lost the race with stale state.
     void request(const std::string& command, ReplyHandler on_reply);
 
     // Fire-and-forget dispatcher. Hyprland >= 0.56 evaluates socket commands as
@@ -76,12 +80,17 @@ private:
     void connect_event_stream();
     void read_events();
     void handle_event_line(const std::string& line);
+    void pump_requests();
+    void start_request(const std::string& command, ReplyHandler on_reply);
+    void finish_request();
     void read_reply(const Glib::RefPtr<Gio::SocketConnection>& conn,
                     const std::shared_ptr<std::string>& accumulated,
                     const ReplyHandler& on_reply);
 
     bool available_ = false;
     std::string socket_dir_;
+    std::deque<std::pair<std::string, ReplyHandler>> queued_requests_;
+    int in_flight_ = 0;
     Glib::RefPtr<Gio::SocketConnection> event_conn_;
     std::string event_buffer_;
     sigc::signal<void(const std::string&, const std::string&)> event_signal_;

@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <regex>
 
 using json = nlohmann::json;
 
@@ -247,9 +246,12 @@ NotificationService::NotificationService()
     node_info_ = Gio::DBus::NodeInfo::create_for_xml(kIntrospectionXml);
     config_dnd_ = Config::get().notifications().do_not_disturb;
     do_not_disturb_ = config_dnd_;
+    compile_rules();
     apply_enabled();
-    Config::get().signal_changed().connect(
-        sigc::mem_fun(*this, &NotificationService::apply_enabled));
+    Config::get().signal_changed().connect([this] {
+        compile_rules();
+        apply_enabled();
+    });
 }
 
 // notifications.enabled, like Noctalia's updateNotificationServer(): disabling
@@ -628,57 +630,52 @@ void NotificationService::play_sound(const Notification& n) {
     }
 }
 
-// Noctalia's NotificationRulesService.evaluate: first matching rule wins;
-// pattern is /regex/, a *glob* (case-insensitive) or a plain substring
-// (case-insensitive), matched against "app summary body".
+// Noctalia's NotificationRulesService: a pattern is /regex/, a *glob*
+// (case-insensitive) or a plain substring (case-insensitive). Compiled once
+// per config change; an invalid regex falls back to the substring match.
+void NotificationService::compile_rules() {
+    rules_.clear();
+    for (const auto& rule : Config::get().notifications().rules) {
+        if (rule.pattern.empty())
+            continue;
+        CompiledRule compiled;
+        const std::string action = ascii_lower(rule.action);
+        compiled.action = action == "mute" ? "mute"
+                          : action == "hide" || action == "silence" ? "hide"
+                                                                    : "block";
+        compiled.substring_lc = ascii_lower(rule.pattern);
+        try {
+            if (rule.pattern.size() >= 3 && rule.pattern.front() == '/' &&
+                rule.pattern.back() == '/') {
+                compiled.regex =
+                    Glib::Regex::create(rule.pattern.substr(1, rule.pattern.size() - 2).c_str());
+            } else if (rule.pattern.find('*') != std::string::npos) {
+                std::string expr;
+                std::size_t start = 0;
+                for (std::size_t star; (star = rule.pattern.find('*', start)) != std::string::npos;
+                     start = star + 1)
+                    expr += Glib::Regex::escape_string(rule.pattern.substr(start, star - start).c_str()) + ".*";
+                expr += Glib::Regex::escape_string(rule.pattern.substr(start).c_str());
+                compiled.regex = Glib::Regex::create(expr.c_str(), Glib::Regex::CompileFlags::CASELESS);
+            }
+        } catch (const Glib::Error& e) {
+            g_warning("notifications: invalid rule pattern %s: %s", rule.pattern.c_str(), e.what());
+        }
+        rules_.push_back(std::move(compiled));
+    }
+}
+
+// first matching rule wins, matched against "app summary body"
 std::string NotificationService::evaluate_rules(const Notification& n) const {
-    const auto& rules = Config::get().notifications().rules;
-    if (rules.empty())
+    if (rules_.empty())
         return "";
     const std::string haystack = n.app_name + " " + n.summary + " " + n.body;
     const std::string lower_haystack = ascii_lower(haystack);
-    for (const auto& rule : rules) {
-        if (rule.pattern.empty())
-            continue;
-        bool matched = false;
-        if (rule.pattern.size() >= 3 && rule.pattern.front() == '/' &&
-            rule.pattern.back() == '/') {
-            try {
-                matched = std::regex_search(
-                    haystack,
-                    std::regex(rule.pattern.substr(1, rule.pattern.size() - 2)));
-            } catch (const std::regex_error&) {
-                g_warning("notifications: invalid rule regex %s", rule.pattern.c_str());
-            }
-        } else if (rule.pattern.find('*') != std::string::npos) {
-            std::string expr;
-            for (const char c : rule.pattern) {
-                if (c == '*')
-                    expr += ".*";
-                else if (strchr(".+?^${}()|[]\\", c) != nullptr)
-                    expr += std::string("\\") + c;
-                else
-                    expr += c;
-            }
-            try {
-                matched = std::regex_search(haystack,
-                                            std::regex(expr, std::regex::icase));
-            } catch (const std::regex_error&) {
-                matched = lower_haystack.find(ascii_lower(rule.pattern)) !=
-                          std::string::npos;
-            }
-        } else {
-            matched =
-                lower_haystack.find(ascii_lower(rule.pattern)) != std::string::npos;
-        }
-        if (matched) {
-            const std::string action = ascii_lower(rule.action);
-            if (action == "mute")
-                return "mute";
-            if (action == "hide" || action == "silence")
-                return "hide";
-            return "block";
-        }
+    for (const auto& rule : rules_) {
+        const bool matched = rule.regex ? rule.regex->match(haystack.c_str())
+                                        : lower_haystack.find(rule.substring_lc) != std::string::npos;
+        if (matched)
+            return rule.action;
     }
     return "";
 }

@@ -319,13 +319,10 @@ void LockSurface::build_login() {
     });
     password_field_.append(eye_button_);
 
-    // (Noctalia's arrow submit button was dropped per user — Enter submits)
-    login_box_.append(password_field_);
+    login_box_.append(password_field_); // no submit button: Enter submits
     root_.add_overlay(login_box_);
 }
 
-// PreserveAspectCrop at `size` px: scale so the shorter side is `size`, then
-// cut the centered square. Small file, read synchronously at lock time.
 void LockSurface::build_pills() {
     auto setup_pill = [this](Gtk::Box& pill, const char* kind) {
         pill.add_css_class("lock-pill");

@@ -136,7 +136,8 @@ void Config::load() {
     }
 
     try {
-        const json bar = j.value("bar", json::object());
+        static const json kEmpty = json::object();
+        const json& bar = j.contains("bar") && j["bar"].is_object() ? j["bar"] : kEmpty;
         const std::string position = bar.value("position", "top");
         if (position == "bottom")
             bar_position_ = BarPosition::Bottom;

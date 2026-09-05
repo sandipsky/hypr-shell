@@ -20,7 +20,9 @@ namespace hyprshell {
 // needed). Both are prepared at startup and on every config change, so a
 // lock surface's very first frame paints the finished wallpaper instead of
 // black followed by a late decode + a full-screen blur on the animation's
-// first frames.
+// first frames. A full-screen texture is 8–33 MB, so retain() drops every
+// entry the current config no longer draws — including the unblurred decode
+// once its blurred version exists.
 class LockWallpaperCache {
 public:
     static LockWallpaperCache& get();
@@ -33,6 +35,10 @@ public:
     Glib::RefPtr<Gdk::Texture> texture(const std::string& path, int width, int height, int scale);
     GdkTexture* blurred(const std::string& path, int width, int height, int scale, double blur);
 
+    // Free everything that is not `path` at `blur` (all monitor sizes kept);
+    // an empty path clears the cache.
+    void retain(const std::string& path, double blur);
+
     sigc::signal<void()>& signal_changed() { return changed_; }
 
     static double blur_radius(double blur); // 0..1 → px (Noctalia's blurMax 48)
@@ -40,10 +46,18 @@ public:
 private:
     struct Entry {
         Glib::RefPtr<Gdk::Texture> texture;
-        std::map<double, GdkTexture*> blurred; // by radius
+        std::map<double, GdkTexture*> blurred; // by radius, owned
         std::set<double> wanted;               // radii to render once decoded
         Glib::RefPtr<Gio::Cancellable> cancellable;
         bool loading = false;
+
+        Entry() = default;
+        Entry(Entry&&) noexcept;
+        Entry& operator=(Entry&&) noexcept;
+        Entry(const Entry&) = delete;
+        Entry& operator=(const Entry&) = delete;
+        ~Entry();
+        void drop_blurred(double radius);
     };
     using Key = std::tuple<std::string, int, int, int>; // path, width, height, scale
     struct Pending;

@@ -13,19 +13,27 @@ namespace hyprshell {
 namespace {
 
 // Desktop entry for a Hyprland window class, matching the common id spellings.
+// Cached for the last class: update() asks twice per focus change and each
+// lookup parses a .desktop file from disk.
 Glib::RefPtr<Gio::DesktopAppInfo> desktop_entry(const std::string& klass) {
-    if (klass.empty()) {
+    static std::string cached_class;
+    static Glib::RefPtr<Gio::DesktopAppInfo> cached_info;
+    if (klass.empty())
         return {};
-    }
+    if (klass == cached_class)
+        return cached_info;
+    cached_class = klass;
+    cached_info.reset();
     std::string lower = klass;
     std::transform(lower.begin(), lower.end(), lower.begin(),
                    [](unsigned char c) { return std::tolower(c); });
     for (const auto& id : {klass, lower}) {
         if (auto info = Gio::DesktopAppInfo::create(id + ".desktop")) {
-            return info;
+            cached_info = info;
+            break;
         }
     }
-    return {};
+    return cached_info;
 }
 
 } // namespace
@@ -59,7 +67,6 @@ ActiveWindow::ActiveWindow() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 6) {
             klass_ = json.value("class", "");
             title_ = json.value("title", "");
         } catch (const std::exception&) {
-            // no active window at startup
         }
         update();
     });

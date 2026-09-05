@@ -24,8 +24,7 @@ Session::Session() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     set_tooltip_text("Session");
     set_cursor(Gdk::Cursor::create("pointer"));
 
-    // dropdown popover, anchored to the icon label (a Gtk::Box parent
-    // allocates an open popover inline — see the battery module)
+    // anchored to the icon label, never the module Box (see battery.cpp)
     list_ = Gtk::make_managed<SessionMenuList>();
     popover_.set_child(*list_);
     popover_.set_parent(icon_);

@@ -258,7 +258,6 @@ void populate_from_profile(Hotspot* h, const std::string& out) {
     }
 
     h->exists = true;
-    const bool was_active = h->active;
     h->active = state == "activated" || state == "activating";
     h->active_device = h->active ? device : "";
     if (!h->active) {
@@ -315,7 +314,6 @@ void populate_from_profile(Hotspot* h, const std::string& out) {
         }
         adw_switch_row_set_active(h->enabled, h->active);
     }
-    (void)was_active;
 
     if (h->active)
         fetch_active_details(h); // address once, station count on every poll

@@ -257,6 +257,16 @@ run a command asynchronously with `Gio::Subprocess`
 
 `NetworkManager::run_nmcli()` is the helper to copy.
 
+### Polling only while a consumer is registered (SystemStats, Mpris)
+
+A value that needs a timer to stay fresh must not cost anything while
+nothing shows it. Expose `register_consumer()` / `unregister_consumer()`,
+start the timer when the count goes 0 → 1 and stop it at 1 → 0; the widget
+registers in `set_open(true)` and unregisters in `set_open(false)` and its
+destructor. `Mpris` also refreshes immediately on registration so the panel
+never shows a stale position, and `Mpris::position()` extrapolates from the
+last known value so nothing is lost while no one polls.
+
 ## Where to add a service
 
 1. `src/services/<name>.{hpp,cpp}`, listed in `meson.build`.

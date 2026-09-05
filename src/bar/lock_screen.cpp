@@ -53,6 +53,8 @@ LockScreen::LockScreen() {
 
 void LockScreen::prepare_wallpapers() {
     const auto& cfg = Config::get().lock_screen();
+    auto& cache = LockWallpaperCache::get();
+    cache.retain(cfg.background, cfg.blur); // frees textures of a previous image / blur
     if (cfg.background.empty())
         return;
     auto monitors = Gdk::Display::get_default()->get_monitors();
@@ -64,9 +66,8 @@ void LockScreen::prepare_wallpapers() {
             continue;
         Gdk::Rectangle geometry;
         monitor->get_geometry(geometry);
-        LockWallpaperCache::get().prepare(cfg.background, geometry.get_width(),
-                                          geometry.get_height(),
-                                          std::max(1, monitor->get_scale_factor()), cfg.blur);
+        cache.prepare(cfg.background, geometry.get_width(), geometry.get_height(),
+                      std::max(1, monitor->get_scale_factor()), cfg.blur);
     }
 }
 

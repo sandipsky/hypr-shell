@@ -29,8 +29,7 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     icon_.add_css_class("icon");
     append(icon_);
 
-    // left click opens the audio panel; anchored to the icon label because a
-    // Gtk::Box parent allocates an open popover inline (see battery module)
+    // anchored to the icon label, never the module Box (see battery.cpp)
     panel_ = Gtk::make_managed<AudioPanel>();
     popover_.set_child(*panel_);
     popover_.set_parent(icon_);

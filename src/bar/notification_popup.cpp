@@ -12,15 +12,8 @@ namespace {
 
 constexpr const char* kIconClose = "\uEB55"; // tabler x
 
-// popup card colors (the shared Noctalia color snapshot)
-struct Rgb {
-    double r, g, b;
-};
-Rgb urgency_color(int urgency) {
-    const Gdk::RGBA c = Theme::get().rgba(urgency == 2 ? "mError"        // critical
-                                          : urgency == 0 ? "mOnSurface" // low
-                                                         : "mPrimary");
-    return {c.get_red(), c.get_green(), c.get_blue()};
+Gdk::RGBA urgency_color(int urgency) {
+    return Theme::get().rgba(urgency == 2 ? "mError" : urgency == 0 ? "mOnSurface" : "mPrimary");
 }
 
 } // namespace
@@ -80,8 +73,8 @@ void NotificationPopups::apply_config() {
     char buf[G_ASCII_DTOSTR_BUF_SIZE];
     g_ascii_dtostr(buf, sizeof buf, nc.background_opacity);
     opacity_provider_->load_from_data(Glib::ustring::compose(
-        ".notif-popup { background-color: alpha(#131316, %1); "
-        "border-color: alpha(#46464f, %1); }",
+        ".notif-popup { background-color: alpha(@mSurface, %1); "
+        "border-color: alpha(@mOutline, %1); }",
         buf));
 }
 
@@ -129,8 +122,8 @@ void NotificationPopups::add_card(const NotificationService::Popup& popup) {
                 value = p.duration_ms < 0 ? 1.0 : p.progress;
         constexpr double radius = 20.0; // matches the card's border radius
         const double full = std::max(0.0, width - 2 * radius);
-        const auto [r, g, b] = urgency_color(urgency);
-        cr->set_source_rgb(r, g, b);
+        const Gdk::RGBA color = urgency_color(urgency);
+        cr->set_source_rgb(color.get_red(), color.get_green(), color.get_blue());
         cr->rectangle(radius + full * (1.0 - value) / 2.0, 0, full * value, height);
         cr->fill();
     });

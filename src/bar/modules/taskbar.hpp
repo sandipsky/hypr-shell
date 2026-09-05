@@ -37,7 +37,8 @@ private:
         int window = -1; // index into windows_, -1 for pinned-only
         std::string app_id;
         std::string title;
-        Gtk::Widget* root = nullptr; // built by rebuild()
+        Gtk::Widget* root = nullptr;       // built by rebuild()
+        Gtk::Label* title_label = nullptr; // with show_title
     };
 
     // data
@@ -53,8 +54,10 @@ private:
     std::string bar_output();
     int screen_width();
 
-    // ui
-    void rebuild();
+    // ui: a full rebuild only when the item structure or layout changed;
+    // otherwise (title / focus changes) the existing widgets are refreshed
+    void rebuild(const std::vector<Item>& previous);
+    void refresh_item(std::size_t index);
     Gtk::Widget* build_item(std::size_t index, int item_size, int title_width);
     void apply_hide_mode();
     void animate_opacity(double target);
@@ -71,6 +74,7 @@ private:
     std::vector<int> active_workspaces_;
     std::string active_address_;
     std::vector<Item> items_;
+    std::string layout_key_;                 // vertical / gap / sizes of the built widgets
     std::vector<std::string> session_order_; // transient running-app order
     std::string hovered_id_;
     uint64_t serial_ = 0;

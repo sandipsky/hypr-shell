@@ -151,12 +151,6 @@ ClipboardWindow::ClipboardWindow() {
                                       false);
     add_controller(key);
 
-    signal_map().connect([this] {
-        g_debug("clipboard window: mapped");
-        Glib::signal_timeout().connect_once(
-            [this] { g_debug("clipboard window: keyboard focus %d", is_active()); }, 300);
-    });
-    signal_unmap().connect([] { g_debug("clipboard window: unmapped"); });
     Clipboard::get().signal_changed().connect([this] {
         if (get_visible())
             update_results();
@@ -173,7 +167,6 @@ ClipboardWindow::~ClipboardWindow() {
 }
 
 void ClipboardWindow::toggle() {
-    g_debug("clipboard window: toggle (visible %d, mapped %d)", get_visible(), get_mapped());
     if (get_visible())
         close_window();
     else
@@ -207,7 +200,6 @@ void ClipboardWindow::open() {
 }
 
 void ClipboardWindow::close_window() {
-    g_debug("clipboard window: close");
     set_visible(false);
 }
 

@@ -1,12 +1,12 @@
 #include "services/apps.hpp"
 
 #include <giomm/desktopappinfo.h>
+#include <glibmm/regex.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
 #include <map>
-#include <regex>
 #include <string_view>
 
 using json = nlohmann::json;
@@ -159,17 +159,17 @@ const std::map<std::string, std::string> kSubstitutions = {
     {"footclient", "foot"},
 };
 
-// ThemeIcons.regexSubstitutions (ECMAScript regex syntax, like QML's)
+// ThemeIcons.regexSubstitutions
 struct RegexSubstitution {
-    std::regex regex;
+    Glib::RefPtr<Glib::Regex> regex;
     const char* replace;
 };
 const std::vector<RegexSubstitution>& regex_substitutions() {
     static const std::vector<RegexSubstitution> subs = {
-        {std::regex("^steam_app_(\\d+)$"), "steam_icon_$1"},
-        {std::regex("Minecraft.*"), "minecraft-launcher"},
-        {std::regex(".*polkit.*"), "system-lock-screen"},
-        {std::regex("gcr.prompter"), "system-lock-screen"},
+        {Glib::Regex::create("^steam_app_(\\d+)$"), "steam_icon_\\1"},
+        {Glib::Regex::create("Minecraft.*"), "minecraft-launcher"},
+        {Glib::Regex::create(".*polkit.*"), "system-lock-screen"},
+        {Glib::Regex::create("gcr.prompter"), "system-lock-screen"},
     };
     return subs;
 }
@@ -240,7 +240,8 @@ const Apps::Entry* Apps::find_app_entry(const std::string& str, int depth) {
 
     // checkRegex
     for (const auto& sub : regex_substitutions()) {
-        const std::string replaced = std::regex_replace(str, sub.regex, sub.replace);
+        const std::string replaced =
+            sub.regex->replace(str.c_str(), 0, sub.replace, Glib::Regex::MatchFlags::DEFAULT);
         if (replaced != str)
             if (const Entry* e = find_app_entry(replaced, depth + 1))
                 return e;

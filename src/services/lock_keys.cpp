@@ -1,5 +1,10 @@
 #include "services/lock_keys.hpp"
 
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <string>
+
 namespace hyprshell {
 
 namespace {
@@ -15,7 +20,6 @@ LockKeys& LockKeys::get() {
 }
 
 LockKeys::LockKeys() {
-    // enumerate once (sync, tiny directory — like the backlight service)
     try {
         Glib::Dir dir(kLedsDir);
         for (const auto& name : dir) {
@@ -34,11 +38,18 @@ LockKeys::LockKeys() {
                 key = Key::Scroll;
             else
                 continue;
-            leds_.push_back({key, std::string(kLedsDir) + "/" + name + "/brightness"});
+            const std::string path = std::string(kLedsDir) + "/" + name + "/brightness";
+            const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+            if (fd >= 0)
+                leds_.push_back({key, fd});
         }
     } catch (const Glib::Error&) {
-        // no sysfs leds — available() stays false
     }
+}
+
+LockKeys::~LockKeys() {
+    for (const auto& led : leds_)
+        close(led.fd);
 }
 
 const char* LockKeys::key_name(Key key) {
@@ -71,20 +82,16 @@ bool LockKeys::poll() {
     bool next[3] = {false, false, false};
     bool seen[3] = {false, false, false};
     for (const auto& led : leds_) {
-        std::string raw;
-        try {
-            raw = Glib::file_get_contents(led.path);
-        } catch (const Glib::Error&) {
+        char buf[16];
+        const ssize_t n = pread(led.fd, buf, sizeof buf - 1, 0);
+        if (n <= 0 || buf[0] < '0' || buf[0] > '9')
             continue; // transient sysfs failure (e.g. resume) — skip this LED
-        }
-        // digits only; anything else is not a valid reading
-        const auto end = raw.find_first_not_of("0123456789");
-        const std::string digits = raw.substr(0, end);
-        if (digits.empty())
-            continue;
+        bool on = false;
+        for (ssize_t i = 0; i < n && buf[i] >= '0' && buf[i] <= '9'; ++i)
+            on = on || buf[i] != '0';
         const int index = static_cast<int>(led.key);
         seen[index] = true;
-        next[index] = next[index] || digits != "0";
+        next[index] = next[index] || on;
     }
     for (int i = 0; i < 3; ++i) {
         if (!seen[i])

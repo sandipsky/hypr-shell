@@ -123,6 +123,7 @@ private:
     CircleStat* mem_stat_ = nullptr;
     CircleStat* disk_stat_ = nullptr;
     bool stats_registered_ = false;
+    bool media_registered_ = false;
 };
 
 } // namespace hyprshell

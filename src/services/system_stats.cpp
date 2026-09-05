@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <fstream>
 #include <sstream>
 
 namespace hyprshell {
@@ -14,13 +13,12 @@ namespace hyprshell {
 namespace {
 
 bool read_file(const std::string& path, std::string& out) {
-    std::ifstream in(path);
-    if (!in)
+    try {
+        out = Glib::file_get_contents(path);
+        return true;
+    } catch (const Glib::Error&) {
         return false;
-    std::stringstream ss;
-    ss << in.rdbuf();
-    out = ss.str();
-    return true;
+    }
 }
 
 bool starts_with(const std::string& s, const char* prefix) {
@@ -119,7 +117,6 @@ void SystemStats::sample_memory() {
     std::istringstream in(meminfo);
     std::string line;
     while (std::getline(in, line)) {
-        unsigned long long value = 0;
         if (starts_with(line, "MemTotal:"))
             total = std::stoull(line.substr(9));
         else if (starts_with(line, "MemAvailable:"))

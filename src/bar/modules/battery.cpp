@@ -38,12 +38,11 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     overlay_.set_valign(Gtk::Align::CENTER);
     append(overlay_);
 
-    // click opens the battery panel (power profile / brightness / refresh rate).
-    // Parented to the overlay, NOT the module box and NOT the fill label: the
-    // box allocates an open popover child inline (module blows up by the
-    // popover's width and slides out of its bar section), and on the fill
-    // label — covered by the frame_ overlay child — the popover unmaps
-    // immediately after popup(). The overlay anchor shows neither problem.
+    // Popover-anchor gotcha (all modules): a popover parented to the module's
+    // Gtk::Box is allocated inline while open (the module grows by the
+    // popover's width and slides out of its section); parented to the fill
+    // label — covered by the frame_ overlay child — it unmaps right after
+    // popup(). Anchor to a Label or an Overlay instead.
     panel_ = Gtk::make_managed<BatteryPanel>();
     popover_.set_child(*panel_);
     popover_.set_parent(overlay_);

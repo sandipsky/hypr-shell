@@ -1,6 +1,7 @@
 #pragma once
 
 #include <giomm.h>
+#include <glibmm/regex.h>
 #include <sigc++/sigc++.h>
 
 #include <string>
@@ -62,8 +63,8 @@ public:
 
     const std::vector<Notification>& history() const { return history_; }
 
-    // Runtime-only, like Noctalia's doNotDisturb: history still records while
-    // enabled; it will gate popups once those exist.
+    // Runtime toggle (the config value is adopted on change only); history
+    // still records while enabled, only popups are suppressed.
     bool do_not_disturb() const { return do_not_disturb_; }
     void set_do_not_disturb(bool dnd);
 
@@ -127,7 +128,15 @@ private:
 
     // notifications.enabled: release / (re)acquire the bus name
     void apply_enabled();
+    void compile_rules(); // notifications.rules → rules_, once per config change
     std::string evaluate_rules(const Notification& n) const; // ""/block/hide/mute
+
+    struct CompiledRule {
+        std::string action;             // block / hide / mute
+        Glib::RefPtr<Glib::Regex> regex; // /regex/ or *glob*; null = substring
+        std::string substring_lc;        // lowercased plain pattern
+    };
+    std::vector<CompiledRule> rules_;
 
     bool available_ = false;
     bool do_not_disturb_ = false;

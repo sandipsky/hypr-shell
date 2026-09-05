@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace hyprshell {
 
@@ -33,6 +34,38 @@ struct LockWallpaperCache::Pending {
     Key key;
 };
 
+LockWallpaperCache::Entry::Entry(Entry&& other) noexcept
+    : texture(std::move(other.texture)), blurred(std::exchange(other.blurred, {})),
+      wanted(std::move(other.wanted)), cancellable(std::move(other.cancellable)),
+      loading(other.loading) {}
+
+LockWallpaperCache::Entry& LockWallpaperCache::Entry::operator=(Entry&& other) noexcept {
+    if (this != &other) {
+        for (auto& [radius, tex] : blurred)
+            g_object_unref(tex);
+        texture = std::move(other.texture);
+        blurred = std::exchange(other.blurred, {});
+        wanted = std::move(other.wanted);
+        cancellable = std::move(other.cancellable);
+        loading = other.loading;
+    }
+    return *this;
+}
+
+LockWallpaperCache::Entry::~Entry() {
+    if (cancellable)
+        cancellable->cancel();
+    for (auto& [radius, tex] : blurred)
+        g_object_unref(tex);
+}
+
+void LockWallpaperCache::Entry::drop_blurred(double radius) {
+    if (auto it = blurred.find(radius); it != blurred.end()) {
+        g_object_unref(it->second);
+        blurred.erase(it);
+    }
+}
+
 LockWallpaperCache& LockWallpaperCache::get() {
     static LockWallpaperCache instance;
     return instance;
@@ -49,14 +82,42 @@ void LockWallpaperCache::prepare(const std::string& path, int width, int height,
         return;
     const Key key{path, width, height, std::max(1, scale)};
     Entry& entry = entries_[key];
-    if (!entry.texture && !entry.loading)
-        load(key, entry);
     const double radius = blur_radius(blur);
+    // the decode is only needed while there is no finished blur to draw
+    const bool have_blur = radius > 0.0 && entry.blurred.count(radius) > 0;
+    if (!entry.texture && !entry.loading && !have_blur)
+        load(key, entry);
     if (radius <= 0.0)
         return;
     entry.wanted.insert(radius);
-    if (entry.texture && !entry.blurred.count(radius))
+    if (entry.texture && !have_blur)
         render_blur(key, entry, radius);
+}
+
+void LockWallpaperCache::retain(const std::string& path, double blur) {
+    const double radius = blur_radius(blur);
+    for (auto it = entries_.begin(); it != entries_.end();) {
+        if (path.empty() || std::get<0>(it->first) != path) {
+            it = entries_.erase(it);
+            continue;
+        }
+        Entry& entry = it->second;
+        for (auto b = entry.blurred.begin(); b != entry.blurred.end();) {
+            if (b->first != radius) {
+                g_object_unref(b->second);
+                b = entry.blurred.erase(b);
+            } else {
+                ++b;
+            }
+        }
+        entry.wanted.clear();
+        if (radius > 0.0) {
+            entry.wanted.insert(radius);
+            if (entry.blurred.count(radius))
+                entry.texture.reset(); // the blurred copy is all the lock UI draws
+        }
+        ++it;
+    }
 }
 
 Glib::RefPtr<Gdk::Texture> LockWallpaperCache::texture(const std::string& path, int width,
@@ -156,6 +217,9 @@ void LockWallpaperCache::load(const Key& key, Entry& entry) {
                     g_object_unref(pixbuf);
                     for (double radius : it->second.wanted)
                         cache.render_blur(it->first, it->second, radius);
+                    if (!it->second.wanted.empty() &&
+                        it->second.blurred.size() == it->second.wanted.size())
+                        it->second.texture.reset(); // only the blurred copies are drawn
                     cache.changed_.emit(); // surfaces redraw
                 },
                 pending);
@@ -208,6 +272,7 @@ void LockWallpaperCache::render_blur(const Key& key, Entry& entry, double radius
         g_warning("lock screen: blur render failed");
         return;
     }
+    entry.drop_blurred(radius);
     entry.blurred[radius] = blurred;
     changed_.emit();
 }

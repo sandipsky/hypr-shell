@@ -12,8 +12,10 @@ namespace hyprshell {
 
 // MPRIS media players on the session bus (org.mpris.MediaPlayer2.*): one
 // proxy pair per player, metadata / playback status / capabilities from
-// PropertiesChanged, position polled once a second while playing (plus the
-// Seeked signal). `active()` is the player the control center shows.
+// PropertiesChanged, plus the Seeked signal. Position has no change
+// notification, so it is polled once a second — but only while a consumer
+// (the control center's media card) is registered; position() extrapolates
+// from the last known value in between. `active()` is the player shown.
 class Mpris {
 public:
     struct Player {
@@ -53,6 +55,10 @@ public:
     // current playback position (extrapolated while playing)
     gint64 position(const std::string& bus_name) const;
 
+    // something shows positions: poll them while at least one consumer is registered
+    void register_consumer();
+    void unregister_consumer();
+
     sigc::signal<void()>& signal_changed() { return changed_; }
 
 private:
@@ -71,6 +77,7 @@ private:
     void read_app_properties(Entry& entry);
     void apply_property(Entry& entry, const Glib::ustring& key, const Glib::VariantBase& value);
     void poll_position();
+    void fetch_positions();
     void call(const std::string& bus_name, const char* method, const Glib::VariantContainerBase& params = {});
 
     Glib::RefPtr<Gio::DBus::Connection> bus_;
@@ -78,6 +85,7 @@ private:
     std::map<std::string, std::unique_ptr<Entry>> players_;
     std::vector<std::string> order_; // insertion order
     std::string active_;             // user pick or auto
+    int consumers_ = 0;
     sigc::connection poll_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     sigc::signal<void()> changed_;

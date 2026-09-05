@@ -3,7 +3,6 @@
 #include <glibmm.h>
 #include <sigc++/sigc++.h>
 
-#include <string>
 #include <vector>
 
 namespace hyprshell {
@@ -11,9 +10,10 @@ namespace hyprshell {
 // Caps / Num / Scroll Lock state — Noctalia's LockKeysService: the kernel's
 // keyboard LEDs under /sys/class/leds/input*::{capslock,numlock,scrolllock}
 // are polled every 200ms while enabled (LED state is driven by the kernel, so
-// inotify never fires for these files). The first read after enabling only
-// syncs the state; later changes emit signal_changed(key, on). Several
-// keyboards are OR-ed together.
+// inotify never fires for these files). The LED files stay open and are
+// re-read with pread(), so a poll is three tiny syscalls and no allocation.
+// The first read after enabling only syncs the state; later changes emit
+// signal_changed(key, on). Several keyboards are OR-ed together.
 class LockKeys {
 public:
     enum class Key { Caps, Num, Scroll };
@@ -38,12 +38,13 @@ public:
 
 private:
     LockKeys();
+    ~LockKeys();
 
     bool poll();
 
     struct Led {
         Key key;
-        std::string path; // .../brightness
+        int fd; // .../brightness, kept open
     };
     std::vector<Led> leds_;
     bool state_[3] = {false, false, false};

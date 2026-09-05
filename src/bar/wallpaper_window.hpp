@@ -23,8 +23,8 @@ public:
     // start decoding (idempotent); signal_ready fires when a texture lands
     void prepare(const std::string& path, int pixel_w, int pixel_h, Fit fit);
     Glib::RefPtr<Gdk::Texture> texture(const std::string& path, int pixel_w, int pixel_h, Fit fit);
-    // drop every texture except the given paths (previous + current)
-    void retain(const std::vector<std::string>& paths);
+    // drop every texture except the given paths at `fit` (previous + current)
+    void retain(const std::vector<std::string>& paths, Fit fit);
 
     sigc::signal<void()>& signal_ready() { return ready_; }
 
@@ -73,6 +73,7 @@ protected:
     void snapshot_vfunc(const Glib::RefPtr<Gtk::Snapshot>& snapshot) override;
 
 private:
+    WallpaperTextureCache::Fit current_fit() const;
     void prepare(const std::string& path);
     Glib::RefPtr<Gdk::Texture> texture_for(const std::string& path);
     void draw_image(const Glib::RefPtr<Gtk::Snapshot>& snapshot,

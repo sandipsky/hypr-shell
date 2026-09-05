@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cctype>
 #include <memory>
-#include <regex>
 
 namespace hyprshell {
 
@@ -48,49 +47,52 @@ std::string trimmed(const std::string& text) {
     return text.substr(begin, end - begin + 1);
 }
 
+Glib::RefPtr<Glib::Regex> regex(const char* pattern, bool caseless = false) {
+    return Glib::Regex::create(pattern, caseless ? Glib::Regex::CompileFlags::CASELESS
+                                                 : Glib::Regex::CompileFlags::DEFAULT);
+}
+
 // Noctalia's "smart type detection" (ClipboardService list parsing)
 Clipboard::Item::Kind classify(const std::string& preview) {
     using Kind = Clipboard::Item::Kind;
-    static const std::regex color(R"(^#([a-f0-9]{3}|[a-f0-9]{6}|[a-f0-9]{8})$)");
-    static const std::regex link(R"(^https?://)", std::regex::icase);
-    static const std::regex file(R"(^(/|~/|file://))", std::regex::icase);
-    static const std::regex code_start(
+    static const auto color = regex(R"(^#([a-f0-9]{3}|[a-f0-9]{6}|[a-f0-9]{8})$)");
+    static const auto link = regex(R"(^https?://)", true);
+    static const auto file = regex(R"(^(/|~/|file://))", true);
+    static const auto code_start = regex(
         R"(^(const|let|var|function|class|struct|interface|type|enum|import|export|func|fn|pub|def|using|namespace|property|public|private|protected)\b)",
-        std::regex::icase);
-    static const std::regex code_prefix(R"(^(#include|#define|#\[|@|//|/\*|<\?|<html|<body|<!DOCTYPE))",
-                                        std::regex::icase);
-    static const std::regex code_node(R"(\b(require\(|module\.exports)\b)");
+        true);
+    static const auto code_prefix =
+        regex(R"(^(#include|#define|#\[|@|//|/\*|<\?|<html|<body|<!DOCTYPE))", true);
+    static const auto code_node = regex(R"(\b(require\(|module\.exports)\b)");
     const std::string t = trimmed(preview);
-    const std::string lower = lowercase(t);
-    if (std::regex_search(lower, color))
+    if (color->match(lowercase(t).c_str()))
         return Kind::Color;
-    if (std::regex_search(t, link))
+    if (link->match(t.c_str()))
         return Kind::Link;
-    if (std::regex_search(t, file) && t.rfind("//", 0) != 0 && t.find('\n') == std::string::npos)
+    if (file->match(t.c_str()) && t.rfind("//", 0) != 0 && t.find('\n') == std::string::npos)
         return Kind::File;
     auto has = [&t](const char* needle) { return t.find(needle) != std::string::npos; };
     if ((has("{") && has("}") && (has(";") || has("="))) || has("</") || has("/>") || has("=>") ||
-        has("===") || has("!==") || has("::") || has("->") || std::regex_search(t, code_start) ||
-        std::regex_search(t, code_prefix) || std::regex_search(t, code_node))
+        has("===") || has("!==") || has("::") || has("->") || code_start->match(t.c_str()) ||
+        code_prefix->match(t.c_str()) || code_node->match(t.c_str()))
         return Kind::Code;
     return Kind::Text;
 }
 
 // "[[ binary data 1.2 MiB png 1920x1080 ]]" (Noctalia's parseImageMeta)
 void parse_image_meta(Clipboard::Item& item) {
-    static const std::regex meta(
-        R"(\[\[\s*binary data\s+([\d\.]+\s*(?:KiB|MiB|GiB|B))\s+(\w+)\s+(\d+)x(\d+)\s*\]\])",
-        std::regex::icase);
-    std::smatch m;
-    if (!std::regex_search(item.preview, m, meta))
+    static const auto meta = regex(
+        R"(\[\[\s*binary data\s+([\d\.]+\s*(?:KiB|MiB|GiB|B))\s+(\w+)\s+(\d+)x(\d+)\s*\]\])", true);
+    Glib::MatchInfo m;
+    if (!meta->match(item.preview.c_str(), m))
         return;
-    item.size_text = m[1];
-    item.format = lowercase(m[2]);
-    item.width = std::atoi(m[3].str().c_str());
-    item.height = std::atoi(m[4].str().c_str());
+    item.size_text = m.fetch(1);
+    item.format = m.fetch(2);
+    item.width = std::atoi(m.fetch(3).c_str());
+    item.height = std::atoi(m.fetch(4).c_str());
+    const std::string fmt = lowercase(item.format);
     std::transform(item.format.begin(), item.format.end(), item.format.begin(),
                    [](unsigned char c) { return std::toupper(c); });
-    const std::string fmt = lowercase(item.format);
     item.mime = fmt == "png"                    ? "image/png"
                 : fmt == "jpg" || fmt == "jpeg" ? "image/jpeg"
                 : fmt == "webp"                 ? "image/webp"

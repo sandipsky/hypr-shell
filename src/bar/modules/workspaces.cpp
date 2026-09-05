@@ -11,6 +11,17 @@ namespace hyprshell {
 
 using nlohmann::json;
 
+namespace {
+
+void set_class(Gtk::Widget& widget, const char* name, bool on) {
+    if (on)
+        widget.add_css_class(name);
+    else
+        widget.remove_css_class(name);
+}
+
+} // namespace
+
 Workspaces::Workspaces() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("workspaces");
@@ -76,10 +87,21 @@ void Workspaces::on_event(const std::string& name, const std::string& /*data*/) 
     };
     for (const auto* candidate : interesting) {
         if (name == candidate) {
-            refresh();
+            schedule_refresh();
             return;
         }
     }
+}
+
+void Workspaces::schedule_refresh() {
+    if (refresh_timer_.connected())
+        return;
+    refresh_timer_ = Glib::signal_timeout().connect(
+        [this] {
+            refresh();
+            return false;
+        },
+        30);
 }
 
 void Workspaces::refresh() {
@@ -137,26 +159,32 @@ void Workspaces::rebuild(const std::vector<Entry>& entries, int active_id) {
     }
 
     shown_ids_.clear();
-    for (const auto& entry : shown) {
+    for (const auto& entry : shown)
         shown_ids_.push_back(entry.id);
-    }
     active_id_ = active_id;
 
-    while (auto* child = get_first_child()) {
-        remove(*child);
+    // Reuse the existing buttons: a workspace switch or a window open/close
+    // only flips classes and labels — no widget churn on every event.
+    while (buttons_.size() > shown.size()) {
+        remove(*buttons_.back());
+        buttons_.pop_back();
     }
-    for (const auto& entry : shown) {
-        auto* button = Gtk::make_managed<Gtk::Button>(entry.name);
-        if (entry.id == active_id) {
-            button->add_css_class("active");
-        }
-        if (entry.windows > 0) {
-            button->add_css_class("occupied");
-        }
-        button->signal_clicked().connect([id = entry.id] {
-            Hyprland::get().focus_workspace(id);
+    while (buttons_.size() < shown.size()) {
+        auto* button = Gtk::make_managed<Gtk::Button>();
+        button->signal_clicked().connect([this, button] {
+            const auto it = std::find(buttons_.begin(), buttons_.end(), button);
+            if (it != buttons_.end())
+                Hyprland::get().focus_workspace(shown_ids_[static_cast<std::size_t>(it - buttons_.begin())]);
         });
         append(*button);
+        buttons_.push_back(button);
+    }
+    for (std::size_t i = 0; i < shown.size(); ++i) {
+        auto* button = buttons_[i];
+        if (button->get_label().raw() != shown[i].name)
+            button->set_label(shown[i].name);
+        set_class(*button, "active", shown[i].id == active_id);
+        set_class(*button, "occupied", shown[i].windows > 0);
     }
 }
 

@@ -10,7 +10,7 @@ namespace hyprshell {
 
 namespace {
 
-// noctalia-tabler-icons glyphs (injected byte-exact, see repo tooling)
+// noctalia-tabler-icons glyphs
 constexpr const char* kChevronLeft = "";  // chevron-left  U+EA60
 constexpr const char* kChevronRight = ""; // chevron-right U+EA61
 constexpr const char* kCalendarIcon = ""; // calendar      U+EA53
@@ -20,8 +20,6 @@ constexpr const char* kMonths[] = {
     "JANUARY", "FEBRUARY", "MARCH",     "APRIL",   "MAY",      "JUNE",
     "JULY",    "AUGUST",   "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
 };
-
-// mOnPrimary from the user's Noctalia colors.json (#202578)
 
 Gtk::Button* make_icon_button(const char* glyph) {
     auto* button = Gtk::make_managed<Gtk::Button>(glyph);

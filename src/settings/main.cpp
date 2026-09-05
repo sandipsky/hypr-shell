@@ -234,7 +234,8 @@ struct Settings {
     AdwEntryRow* clock_fmt_v = nullptr;
     AdwEntryRow* clock_fmt_tip = nullptr; // bar.clock.tooltip_format
     AdwEntryRow* clock_fmt_target = nullptr;    // format guide inserts here (last focused)
-    GtkWidget* clock_guide = nullptr;            // the guide list (refresh only while mapped)
+    GtkWidget* clock_guide = nullptr;            // the guide list
+    guint clock_guide_source = 0;                // 1s example refresh while the list is mapped
     std::vector<GtkWidget*> clock_guide_examples; // live example labels, kFormatTokens order
 
     AdwSwitchRow* bt_auto = nullptr; // bluetooth panel: auto-connect
@@ -478,7 +479,6 @@ void populate(Settings* s) {
         ws_count = std::clamp(ws.value("fixed_count", ws_count), 1, 50);
         ws_wrap = ws.value("scroll_wrap", ws_wrap);
     } catch (const json::exception&) {
-        // defaults
     }
 
     bool bt_auto = false;
@@ -491,7 +491,6 @@ void populate(Settings* s) {
         const json bt = s->root.value("bar", json::object()).value("bluetooth", json::object());
         bt_auto = bt.value("auto_connect", false);
     } catch (const json::exception&) {
-        // defaults
     }
 
     try {
@@ -506,7 +505,6 @@ void populate(Settings* s) {
                                   tb.value("only_active_workspaces", true));
         adw_switch_row_set_active(s->tb_pinned, tb.value("show_pinned_apps", true));
     } catch (const json::exception&) {
-        // defaults
     }
 
     std::string am_display = "icon", am_icon = "rocket", am_custom, am_text = "Apps";
@@ -525,7 +523,6 @@ void populate(Settings* s) {
         am_multiline = am.value("multiline_labels", false);
         am_show_search = am.value("show_search", true);
     } catch (const json::exception&) {
-        // defaults
     }
 
     bool bat_profiles = true, bat_brightness = true, bat_refresh = true;
@@ -535,7 +532,6 @@ void populate(Settings* s) {
         bat_brightness = bat.value("show_brightness", true);
         bat_refresh = bat.value("show_refresh_rate", true);
     } catch (const json::exception&) {
-        // defaults
     }
 
     bool notif_badge = true, notif_hide_zero = false, notif_hide_zero_unread = false;
@@ -546,7 +542,6 @@ void populate(Settings* s) {
         notif_hide_zero = notif.value("hide_when_zero", false);
         notif_hide_zero_unread = notif.value("hide_when_zero_unread", false);
     } catch (const json::exception&) {
-        // defaults
     }
 
     std::string aw_hide = "hidden", aw_text = "title", aw_empty = "default";
@@ -560,7 +555,6 @@ void populate(Settings* s) {
         aw_empty = aw.value("no_window_text", aw_empty);
         aw_icon = aw.value("show_icon", true);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Notifications page (top-level "notifications" object)
@@ -599,7 +593,6 @@ void populate(Settings* s) {
         snd_critical = sounds.value("critical_sound_file", "");
         snd_excluded = sounds.value("excluded_apps", snd_excluded);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Session menu page (top-level "session" object)
@@ -615,7 +608,6 @@ void populate(Settings* s) {
         for (gsize i = 0; i < kSessionActionCount; ++i)
             sm_items[i] = items.value(hyprshell::kSessionActions[i].key, sm_items[i]);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Lock screen page (top-level "lock_screen" object)
@@ -626,7 +618,6 @@ void populate(Settings* s) {
         lock_background = lock.value("background", "");
         lock_blur = std::clamp(lock.value("blur", 0.0), 0.0, 1.0);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Night light page (top-level "night_light" object)
@@ -674,7 +665,6 @@ void populate(Settings* s) {
         osd_location = osd.value("location", osd_location);
         osd_orientation = osd.value("orientation", osd_orientation);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Idle page (top-level "idle" object)
@@ -685,7 +675,6 @@ void populate(Settings* s) {
         idle_lock = std::clamp(idle.value("lock_timeout", 660), 0, 86400);
         idle_suspend = std::clamp(idle.value("suspend_timeout", 1800), 0, 86400);
     } catch (const json::exception&) {
-        // defaults
     }
 
     // Launcher page (top-level "launcher" object)
@@ -699,7 +688,6 @@ void populate(Settings* s) {
         lp_count = lp.value("show_result_count", true);
         lp_all = lp.value("show_all_apps", true);
     } catch (const json::exception&) {
-        // defaults
     }
 
     int clock_fdow = 0;
@@ -713,7 +701,6 @@ void populate(Settings* s) {
         fmt_v = clock.value("format_vertical", fmt_v);
         fmt_tip = clock.value("tooltip_format", fmt_tip);
     } catch (const json::exception&) {
-        // defaults
     }
 
     s->loading = true;
@@ -788,7 +775,6 @@ void populate(Settings* s) {
             cb_paste = cb.value("paste_on_click", false);
             cb_position = cb.value("position", cb_position);
         } catch (const json::exception&) {
-            // defaults
         }
         adw_switch_row_set_active(s->cb_enabled, cb_enabled);
         adw_switch_row_set_active(s->cb_show_images, cb_images);
@@ -1386,7 +1372,9 @@ json& nl_object(Settings* s) {
 }
 
 std::string nl_time_option(guint index) {
-    return g_strdup_printf("%02u:%02u", index / 2, (index % 2) * 30);
+    char buf[8];
+    g_snprintf(buf, sizeof buf, "%02u:%02u", index / 2, (index % 2) * 30);
+    return buf;
 }
 
 // Noctalia: everything below the enable switch is greyed out while off; the
@@ -1554,7 +1542,7 @@ void on_nl_enabled_toggled(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
-void on_nl_temp_changed(GtkAdjustment* adjustment, gpointer data) {
+void on_nl_temp_changed(GtkAdjustment*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     if (s->loading)
         return;
@@ -1571,7 +1559,6 @@ void on_nl_temp_changed(GtkAdjustment* adjustment, gpointer data) {
             return G_SOURCE_REMOVE;
         },
         s);
-    (void)adjustment;
 }
 
 void on_nl_time_changed(GObject* row, GParamSpec*, gpointer data) {
@@ -2348,6 +2335,21 @@ gboolean on_clock_guide_tick(gpointer data) {
     return G_SOURCE_CONTINUE;
 }
 
+void on_clock_guide_map(GtkWidget*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    clock_guide_refresh(s);
+    if (s->clock_guide_source == 0)
+        s->clock_guide_source = g_timeout_add_seconds(1, on_clock_guide_tick, s);
+}
+
+void on_clock_guide_unmap(GtkWidget*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->clock_guide_source != 0) {
+        g_source_remove(s->clock_guide_source);
+        s->clock_guide_source = 0;
+    }
+}
+
 // clicking a guide row appends its token to the format field that was edited
 // last (Noctalia's tokenClicked inserts into its single field)
 void on_clock_token_activated(GtkListBox*, GtkListBoxRow* row, gpointer data) {
@@ -2665,8 +2667,15 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* win = adw_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(win), "Settings");
     gtk_window_set_default_size(GTK_WINDOW(win), 920, 660);
-    g_object_set_data_full(G_OBJECT(win), "settings-state", s,
-                           [](gpointer p) { delete static_cast<Settings*>(p); });
+    g_object_set_data_full(G_OBJECT(win), "settings-state", s, [](gpointer p) {
+        auto* s = static_cast<Settings*>(p);
+        for (guint source : {s->nl_temp_source, s->wp_rescan_source, s->clock_guide_source})
+            if (source != 0)
+                g_source_remove(source);
+        g_clear_object(&s->wp_dir_monitor);
+        g_clear_object(&s->wp_state_monitor);
+        delete s;
+    });
     s->window = win;
 
     GtkWidget* page = adw_preferences_page_new();
@@ -2923,11 +2932,8 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(guide_scroller), guide_list);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(guide_group), guide_scroller);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(clock_page), ADW_PREFERENCES_GROUP(guide_group));
-    g_signal_connect(guide_list, "map", G_CALLBACK(+[](GtkWidget*, gpointer data) {
-                         clock_guide_refresh(static_cast<Settings*>(data));
-                     }),
-                     s);
-    g_timeout_add_seconds(1, on_clock_guide_tick, s); // no-op while unmapped
+    g_signal_connect(guide_list, "map", G_CALLBACK(on_clock_guide_map), s);
+    g_signal_connect(guide_list, "unmap", G_CALLBACK(on_clock_guide_unmap), s);
 
     // -- Active window subpage ------------------------------------------------
     GtkWidget* aw_page = adw_preferences_page_new();
@@ -3638,6 +3644,7 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_action_row_set_subtitle(ADW_ACTION_ROW(nl_sunset_row), "Night light turns on.");
     adw_combo_row_set_model(ADW_COMBO_ROW(nl_sunset_row), G_LIST_MODEL(nl_times));
     adw_combo_row_set_selected(ADW_COMBO_ROW(nl_sunset_row), 37); // 18:30
+    g_object_unref(nl_times);
     s->nl_sunset = ADW_COMBO_ROW(nl_sunset_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(nl_sched), nl_sunset_row);
     g_signal_connect(nl_sunset_row, "notify::selected", G_CALLBACK(on_nl_time_changed), s);
@@ -3682,7 +3689,9 @@ void on_activate(GtkApplication* app, gpointer) {
                                 "How the image scales to the monitor's resolution.");
     const char* wp_fill_labels[] = {"Center", "Crop (Fill)", "Fit (Contain)", "Stretch",
                                     "Repeat (Tile)", nullptr};
-    adw_combo_row_set_model(ADW_COMBO_ROW(wp_fill_row), G_LIST_MODEL(gtk_string_list_new(wp_fill_labels)));
+    GtkStringList* wp_fill_model = gtk_string_list_new(wp_fill_labels);
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_fill_row), G_LIST_MODEL(wp_fill_model));
+    g_object_unref(wp_fill_model);
     s->wp_fill = ADW_COMBO_ROW(wp_fill_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_look), wp_fill_row);
     g_signal_connect(wp_fill_row, "notify::selected", G_CALLBACK(on_wp_fill_changed), s);
@@ -3745,8 +3754,9 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_action_row_set_subtitle(ADW_ACTION_ROW(wp_order_row),
                                 "Random shows every image once before repeating.");
     const char* wp_order_labels[] = {"Random", "Alphabetical", nullptr};
-    adw_combo_row_set_model(ADW_COMBO_ROW(wp_order_row),
-                            G_LIST_MODEL(gtk_string_list_new(wp_order_labels)));
+    GtkStringList* wp_order_model = gtk_string_list_new(wp_order_labels);
+    adw_combo_row_set_model(ADW_COMBO_ROW(wp_order_row), G_LIST_MODEL(wp_order_model));
+    g_object_unref(wp_order_model);
     s->wp_order = ADW_COMBO_ROW(wp_order_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(wp_auto), wp_order_row);
     g_signal_connect(wp_order_row, "notify::selected", G_CALLBACK(on_wp_order_changed), s);

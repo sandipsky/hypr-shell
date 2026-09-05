@@ -77,9 +77,10 @@ Glib::RefPtr<Gdk::Texture> WallpaperTextureCache::texture(const std::string& pat
     return it == entries_.end() ? Glib::RefPtr<Gdk::Texture>() : it->second.texture;
 }
 
-void WallpaperTextureCache::retain(const std::vector<std::string>& paths) {
+void WallpaperTextureCache::retain(const std::vector<std::string>& paths, Fit fit) {
     for (auto it = entries_.begin(); it != entries_.end();) {
-        const bool keep = std::find(paths.begin(), paths.end(), std::get<0>(it->first)) != paths.end();
+        const bool keep = std::get<3>(it->first) == fit &&
+                          std::find(paths.begin(), paths.end(), std::get<0>(it->first)) != paths.end();
         if (keep) {
             ++it;
             continue;
@@ -212,6 +213,9 @@ WallpaperView::WallpaperView() {
         if (waiting_for_texture_ && texture_for(current_)) {
             waiting_for_texture_ = false;
             start_animation();
+        } else if (!animating_ && texture_for(current_)) {
+            // a fill-mode re-decode landed: the old fit's texture can go
+            WallpaperTextureCache::get().retain({current_}, current_fit());
         }
         queue_draw();
     });
@@ -242,18 +246,20 @@ void WallpaperView::set_monitor_size(int width, int height, int scale) {
     queue_draw();
 }
 
+WallpaperTextureCache::Fit WallpaperView::current_fit() const {
+    return fit_for(Config::get().wallpaper().fill_mode);
+}
+
 void WallpaperView::prepare(const std::string& path) {
     if (path.empty() || width_ <= 0 || height_ <= 0)
         return;
-    WallpaperTextureCache::get().prepare(path, width_ * scale_, height_ * scale_,
-                                         fit_for(Config::get().wallpaper().fill_mode));
+    WallpaperTextureCache::get().prepare(path, width_ * scale_, height_ * scale_, current_fit());
 }
 
 Glib::RefPtr<Gdk::Texture> WallpaperView::texture_for(const std::string& path) {
     if (path.empty() || width_ <= 0 || height_ <= 0)
         return {};
-    return WallpaperTextureCache::get().texture(path, width_ * scale_, height_ * scale_,
-                                                fit_for(Config::get().wallpaper().fill_mode));
+    return WallpaperTextureCache::get().texture(path, width_ * scale_, height_ * scale_, current_fit());
 }
 
 void WallpaperView::show_image(const std::string& path, Transition transition, bool startup) {
@@ -315,7 +321,7 @@ void WallpaperView::start_animation() {
             return true;
         animating_ = false;
         previous_.clear();
-        WallpaperTextureCache::get().retain({current_});
+        WallpaperTextureCache::get().retain({current_}, current_fit());
         return false;
     });
 }

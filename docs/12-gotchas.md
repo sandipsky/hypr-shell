@@ -241,6 +241,25 @@ pair from the panel.
 **Optimistic updates**: writers set local state and emit *before* the
 round-trip; otherwise sliders bounce.
 
+**Hyprland IPC has a small listen backlog.** An event burst (a window opening
+fires openwindow + activewindow + windowtitle + focusedmon …) used to open a
+dozen `.socket.sock` connections at once and some failed with EAGAIN
+("Resource temporarily unavailable"), leaving the losing module with stale
+state. `Hyprland::request()` queues requests and keeps at most four in
+flight; modules coalesce bursts (30 ms timer) before asking.
+
+**Poll only while someone is looking.** Services that need a timer to keep
+a value fresh (`SystemStats`, MPRIS positions) expose
+`register_consumer()` / `unregister_consumer()`; the panel that shows the
+value registers in `set_open(true)`. Likewise a panel's `signal_changed`
+handlers should do nothing while its popover is closed — the media card
+was fetching album art on every track change with the panel hidden.
+
+**Full-screen textures are 8–33 MB each.** Anything that caches decoded
+images (`LockWallpaperCache`, `WallpaperTextureCache`) must prune: keep only
+what the current config draws, unref `GdkTexture*` you own, and drop the
+unblurred decode once its blurred copy exists.
+
 **PAM blocks and sleeps.** `pam_authenticate` runs the conversation
 synchronously and `pam_unix` delays a failed attempt by ~2s, so it must not
 run on the main loop: `PamAuth` runs it on a thread and posts events through
@@ -254,6 +273,20 @@ second way in.
 characters (they render as boxes and get mangled).
 
 **Every `.cpp` must be listed in `meson.build`.** Meson does not glob.
+
+**No `std::regex`.** Use `Glib::Regex` (PCRE2, already linked): compile
+once (static, or per config change), pass `.c_str()` — it takes
+`Glib::UStringView`, not `std::string` — and write backreferences as `\1`.
+`std::regex` compiled per call and its template instantiations bloat the
+binary.
+
+**Rebuild widgets only when the structure changed.** Events like
+`windowtitle` fire constantly; the taskbar and workspaces keep their
+widgets and refresh labels/classes in place when the item set is the same.
+
+**Measuring memory**: `ps` RSS of the shell is mostly shared GPU driver
+libraries; compare `Pss` / `Private_Dirty` from
+`/proc/<pid>/smaps_rollup` and `pmap -x <pid>` instead.
 
 **The Segoe font is proprietary.** Strip `data/fonts/SegoeIcons.ttf` (and
 its install line) before publishing the repository.

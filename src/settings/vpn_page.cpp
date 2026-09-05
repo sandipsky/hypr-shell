@@ -19,6 +19,7 @@ struct Profile {
     std::string type;   // "vpn" (OpenVPN & co.) or "wireguard"
     std::string device; // bound device while active
     bool active = false;
+    bool operator==(const Profile&) const = default;
 };
 
 struct Vpn {
@@ -312,7 +313,12 @@ void refresh(Vpn* v) {
                         render_status(v);
                         return;
                     }
-                    v->profiles = parse_profiles(out);
+                    auto profiles = parse_profiles(out);
+                    if (profiles == v->profiles && !v->rows.empty() == !profiles.empty()) {
+                        render_status(v); // the 3 s poll: nothing changed, keep the rows
+                        return;
+                    }
+                    v->profiles = std::move(profiles);
                     rebuild_rows(v);
                 }));
 }

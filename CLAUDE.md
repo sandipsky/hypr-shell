@@ -1572,3 +1572,46 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   authoritative charter; the docs are the long-form companion and must be
   updated alongside it (config reference for new keys, code tour for new files,
   gotchas for new traps).
+- 2026-09-05 — Resource pass over the whole tree (user request: less RAM/CPU,
+  leaks, dead code, comment noise). Findings that changed code: (1) the lock
+  screen's wallpaper cache never freed anything — every blur value the
+  settings slider passed through left an 8–33 MB blurred texture behind, and
+  the unblurred decode stayed next to the blurred one; `LockWallpaperCache::
+  retain(path, blur)` now runs from `prepare_wallpapers()` and keeps only the
+  current image/radius, dropping the unblurred decode once its blur exists
+  (`Entry` owns its GdkTextures). (2) `WallpaperTextureCache::retain` compares
+  the fill mode too, and a view prunes when a re-decode lands, so a fill
+  change no longer leaves the old texture around. (3) Hyprland IPC requests
+  go through a queue with at most 4 in flight: an event burst (a window
+  opening fires openwindow + activewindow + windowtitle + focusedmon …) opened
+  a dozen sockets at once and Hyprland's listen backlog refused some with
+  EAGAIN, so whichever module lost the race kept stale state (seen live:
+  10 "Resource temporarily unavailable" warnings when the settings window
+  opened). Workspaces coalesce events 30 ms like the taskbar and reuse their
+  buttons; the taskbar keeps its widgets and only refreshes focus / tooltip
+  / title text when the item set and layout are unchanged (windowtitle
+  events fire constantly). (4) The control center's cards only update while
+  the popover is open — the media card was downloading album art on every
+  track change with the panel closed — and MPRIS position polling runs only
+  while a consumer is registered (`Mpris::register_consumer`, like
+  SystemStats); positions extrapolate in between. (5) `std::regex` is gone
+  (notification rules were re-compiled per notification per rule): rules
+  compile once per config change, clipboard / app-id patterns are static
+  `Glib::Regex` (PCRE2). Glib::Regex takes `Glib::UStringView`, i.e. pass
+  `.c_str()`, and replacements use `\1`, not `$1`. (6) LockKeys keeps the
+  LED fds open and `pread()`s (three syscalls per 200 ms poll instead of
+  open/read/close plus allocations); ActiveWindow caches the desktop entry of
+  the current class; the bar only asks for the workspace's emptiness when
+  auto-hide needs it; the clock places its popover on click, not every
+  minute. (7) Settings app: `nl_time_option` leaked a `g_strdup_printf`
+  string per call (~100 at startup), two GtkStringLists leaked a ref, the
+  clock guide's 1 s example timer ran for the app's lifetime (now only while
+  the list is mapped), the VPN page rebuilt identical rows every 3 s, and the
+  Settings state's timers/monitors are released with it. Build: `b_lto=true`,
+  `b_ndebug=if-release`, `strip=true` in meson's default_options (an existing
+  build dir needs `meson configure build -Db_lto=true -Dstrip=true`).
+  Measuring: the shell's RSS (~330 MB) is mostly shared GPU-driver libraries
+  (libLLVM, libnvidia-*, libgallium) mapped by every GTK4 process; compare
+  `Pss`/`Private_Dirty` from `/proc/<pid>/smaps_rollup` (~53 MB private)
+  instead. Comment cleanup was limited to stale, wrong or code-restating
+  comments; rationale ("why") comments stay.

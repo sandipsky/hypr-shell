@@ -7,6 +7,9 @@ project(
     'warning_level=2',
     'cpp_std=c++20',
     'buildtype=debugoptimized',
+    'b_lto=true',
+    'b_ndebug=if-release',
+    'strip=true',
   ],
 )
 

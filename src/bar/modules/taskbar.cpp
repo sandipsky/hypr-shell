@@ -71,7 +71,6 @@ Taskbar::Taskbar() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     // the bar's monitor is only known once mapped — filter again then
     signal_map().connect([this] { schedule_refresh(); });
     refresh();
-
 }
 
 Taskbar::~Taskbar() {
@@ -303,13 +302,14 @@ void Taskbar::update_model() {
         }
     }
 
+    std::vector<Item> previous = std::move(items_);
     items_ = sort_items(std::move(items));
     if (session_order_.empty() || session_order_.size() != items_.size()) {
         session_order_.clear();
         for (const auto& item : items_)
             session_order_.push_back(item_key(item));
     }
-    rebuild();
+    rebuild(previous);
 }
 
 // sortApps: pinned apps keep the pinned order (running or not), then the
@@ -354,12 +354,46 @@ std::vector<Taskbar::Item> Taskbar::sort_items(std::vector<Item> items) const {
 
 // -- ui --------------------------------------------------------------------------
 
-void Taskbar::rebuild() {
-    while (auto* child = items_box_.get_first_child())
-        items_box_.remove(*child);
-
+void Taskbar::rebuild(const std::vector<Item>& previous) {
     const auto& cfg = Config::get().taskbar();
     const bool vertical = Config::get().bar_vertical();
+    const int item_size = to_odd(kCapsuleHeight * std::max(0.1, cfg.icon_scale));
+    const bool show_title = cfg.show_title && !vertical;
+    int title_width = cfg.title_width;
+    if (show_title && cfg.smart_width && !items_.empty()) {
+        // smartWidth: shrink titles so the whole widget fits max_width_percent
+        const int max_width = screen_width() * cfg.max_width_percent / 100;
+        if (max_width > 0) {
+            const double per_entry = static_cast<double>(max_width) / items_.size() -
+                                     item_size - kMarginS - 2 * kMarginM;
+            title_width = static_cast<int>(std::min<double>(title_width, per_entry));
+        }
+        title_width = std::max(title_width, kMinTitleWidth);
+    }
+    if (!show_title)
+        title_width = 0;
+
+    const std::string layout_key = std::to_string(vertical) + ':' + std::to_string(cfg.item_gap) +
+                                   ':' + std::to_string(item_size) + ':' + std::to_string(title_width);
+    bool same = layout_key == layout_key_ && previous.size() == items_.size();
+    for (std::size_t i = 0; same && i < items_.size(); ++i)
+        same = previous[i].root != nullptr && previous[i].id == items_[i].id &&
+               previous[i].type == items_[i].type && previous[i].app_id == items_[i].app_id;
+    if (same) {
+        // window titles and focus change constantly (windowtitle / activewindow
+        // events) — keep the widgets, refresh their state
+        for (std::size_t i = 0; i < items_.size(); ++i) {
+            items_[i].root = previous[i].root;
+            items_[i].title_label = previous[i].title_label;
+            refresh_item(i);
+        }
+        apply_hide_mode();
+        return;
+    }
+    layout_key_ = layout_key;
+
+    while (auto* child = items_box_.get_first_child())
+        items_box_.remove(*child);
     items_box_.set_orientation(vertical ? Gtk::Orientation::VERTICAL
                                         : Gtk::Orientation::HORIZONTAL);
     items_box_.set_spacing(cfg.item_gap);
@@ -367,29 +401,29 @@ void Taskbar::rebuild() {
         capsule_.remove_css_class(name);
     if (vertical)
         capsule_.add_css_class("vertical");
-
-    const int item_size = to_odd(kCapsuleHeight * std::max(0.1, cfg.icon_scale));
-    const bool show_title = cfg.show_title && !vertical;
-    int title_width = cfg.title_width;
-    if (show_title) {
+    if (show_title)
         capsule_.add_css_class("with-titles");
-        // smartWidth: shrink titles so the whole widget fits max_width_percent
-        if (cfg.smart_width && !items_.empty()) {
-            const int max_width = screen_width() * cfg.max_width_percent / 100;
-            if (max_width > 0) {
-                const double per_entry = static_cast<double>(max_width) / items_.size() -
-                                         item_size - kMarginS - 2 * kMarginM;
-                title_width = static_cast<int>(std::min<double>(title_width, per_entry));
-            }
-            title_width = std::max(title_width, kMinTitleWidth);
-        }
-    }
 
     for (std::size_t i = 0; i < items_.size(); ++i) {
-        items_[i].root = build_item(i, item_size, show_title ? title_width : 0);
+        items_[i].root = build_item(i, item_size, title_width);
         items_box_.append(*items_[i].root);
     }
     apply_hide_mode();
+}
+
+void Taskbar::refresh_item(std::size_t index) {
+    auto& item = items_[index];
+    const bool focused =
+        item.window >= 0 && windows_[static_cast<std::size_t>(item.window)].focused;
+    if (focused)
+        item.root->add_css_class("focused");
+    else
+        item.root->remove_css_class("focused");
+    const std::string& tooltip = item.title.empty() ? item.app_id : item.title;
+    if (item.root->get_tooltip_text().raw() != tooltip)
+        item.root->set_tooltip_text(tooltip);
+    if (item.title_label != nullptr && item.title_label->get_text().raw() != item.title)
+        item.title_label->set_text(item.title);
 }
 
 Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_width) {
@@ -444,6 +478,7 @@ Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_wid
         title->set_max_width_chars(1); // the size request wins, never the text
         title->set_hexpand(false);
         row->append(*title);
+        item.title_label = title;
     }
     root->set_child(*row);
 
@@ -618,7 +653,7 @@ void Taskbar::reorder(std::size_t from, std::size_t to) {
     for (const auto& item : items_)
         session_order_.push_back(item_key(item));
     save_pinned_order();
-    rebuild();
+    rebuild({});
 }
 
 // savePinnedOrder: pinned ids in their visual order, then any pinned app that

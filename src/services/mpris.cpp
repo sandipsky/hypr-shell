@@ -164,8 +164,6 @@ void Mpris::remove_player(const std::string& bus_name) {
 }
 
 void Mpris::read_properties(Entry& entry) {
-    // the proxy caches every property once created; Position is not emitted
-    // via PropertiesChanged, so it is re-read by the poll
     for (const char* key : {"PlaybackStatus", "Metadata", "CanPlay", "CanPause", "CanGoNext", "CanGoPrevious",
                             "CanSeek", "CanControl", "Volume", "Position"}) {
         Glib::VariantBase value;
@@ -260,46 +258,62 @@ void Mpris::apply_property(Entry& entry, const Glib::ustring& key, const Glib::V
     }
 }
 
+void Mpris::register_consumer() {
+    if (consumers_++ == 0) {
+        fetch_positions();
+        poll_position();
+    }
+}
+
+void Mpris::unregister_consumer() {
+    if (consumers_ > 0 && --consumers_ == 0)
+        poll_.disconnect();
+}
+
 // Position is a plain property (no change notifications): re-read it every
-// second for playing players so the progress bar stays honest
+// second for playing players while something displays it
 void Mpris::poll_position() {
-    if (poll_.connected())
+    if (poll_.connected() || consumers_ == 0)
         return;
     poll_ = Glib::signal_timeout().connect_seconds(
         [this] {
-            bool any_playing = false;
-            for (auto& [name, entry] : players_) {
-                if (!entry->proxy || !entry->player.playing())
-                    continue;
-                any_playing = true;
-                Entry* raw = entry.get();
-                const std::string bus_name = name;
-                bus_->call(
-                    kPath, "org.freedesktop.DBus.Properties", "Get",
-                    Glib::VariantContainerBase::create_tuple(
-                        {Glib::Variant<Glib::ustring>::create(kPlayerIface),
-                         Glib::Variant<Glib::ustring>::create("Position")}),
-                    [this, raw, bus_name, alive = alive_](Glib::RefPtr<Gio::AsyncResult>& result) {
-                        if (!*alive || !players_.count(bus_name))
-                            return;
-                        try {
-                            auto reply = bus_->call_finish(result);
-                            Glib::Variant<Glib::VariantBase> boxed;
-                            reply.get_child(boxed, 0);
-                            gint64 pos = 0;
-                            if (get_typed(boxed.get(), pos)) {
-                                raw->player.position_us = pos;
-                                raw->player.last_update_us = g_get_monotonic_time();
-                                changed_.emit();
-                            }
-                        } catch (const Glib::Error&) {
-                        }
-                    },
-                    bus_name);
-            }
-            return any_playing; // stop polling when nothing plays
+            fetch_positions();
+            return consumers_ > 0 &&
+                   std::any_of(players_.begin(), players_.end(),
+                               [](const auto& e) { return e.second->proxy && e.second->player.playing(); });
         },
         1);
+}
+
+void Mpris::fetch_positions() {
+    for (auto& [name, entry] : players_) {
+        if (!entry->proxy || !entry->player.playing())
+            continue;
+        Entry* raw = entry.get();
+        const std::string bus_name = name;
+        bus_->call(
+            kPath, "org.freedesktop.DBus.Properties", "Get",
+            Glib::VariantContainerBase::create_tuple(
+                {Glib::Variant<Glib::ustring>::create(kPlayerIface),
+                 Glib::Variant<Glib::ustring>::create("Position")}),
+            [this, raw, bus_name, alive = alive_](Glib::RefPtr<Gio::AsyncResult>& result) {
+                if (!*alive || !players_.count(bus_name))
+                    return;
+                try {
+                    auto reply = bus_->call_finish(result);
+                    Glib::Variant<Glib::VariantBase> boxed;
+                    reply.get_child(boxed, 0);
+                    gint64 pos = 0;
+                    if (get_typed(boxed.get(), pos)) {
+                        raw->player.position_us = pos;
+                        raw->player.last_update_us = g_get_monotonic_time();
+                        changed_.emit();
+                    }
+                } catch (const Glib::Error&) {
+                }
+            },
+            bus_name);
+    }
 }
 
 const Mpris::Player* Mpris::player(const std::string& bus_name) const {
@@ -345,13 +359,7 @@ void Mpris::call(const std::string& bus_name, const char* method, const Glib::Va
     const auto it = players_.find(bus_name);
     if (it == players_.end() || !it->second->proxy)
         return;
-    it->second->proxy->call(
-        method,
-        [method](Glib::RefPtr<Gio::AsyncResult>& result) {
-            (void)result;
-            (void)method;
-        },
-        params);
+    it->second->proxy->call(method, [](Glib::RefPtr<Gio::AsyncResult>&) {}, params);
 }
 
 void Mpris::play_pause(const std::string& bus_name) { call(bus_name, "PlayPause"); }

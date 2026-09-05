@@ -43,11 +43,11 @@ constexpr const char* kBrightLow = "\uFB23";   // brightness-down-filled
 constexpr const char* kBrightHigh = "\uFB24";  // brightness-up-filled
 constexpr const char* kKeyboard = "\uEBD6";    // keyboard
 
-// the shared Noctalia color snapshot
-constexpr const char* kStatePrimary = "primary"; // mPrimary #bfc2ff
-constexpr const char* kStateError = "error";     // mError #ffb4ab
-constexpr const char* kStateDim = "dim";         // mOnSurfaceVariant #c7c5d0
-constexpr const char* kStateDefault = "";        // mOnSurface #e5e1e6
+// CSS state classes: mPrimary / mError / mOnSurfaceVariant / mOnSurface (default)
+constexpr const char* kStatePrimary = "primary";
+constexpr const char* kStateError = "error";
+constexpr const char* kStateDim = "dim";
+constexpr const char* kStateDefault = "";
 
 double ease_in_out_quad(double t) {
     return t < 0.5 ? 2.0 * t * t : 1.0 - std::pow(-2.0 * t + 2.0, 2) / 2.0;
