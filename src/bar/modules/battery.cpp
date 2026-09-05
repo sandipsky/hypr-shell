@@ -51,7 +51,6 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     // the panel's brightness slider shows the level — no OSD while open
     popover_.signal_map().connect([] { Osd::get().set_brightness_panel_open(true); });
     popover_.signal_unmap().connect([] { Osd::get().set_brightness_panel_open(false); });
-    set_cursor(Gdk::Cursor::create("pointer"));
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {
         // keep the panel on the free side of the bar

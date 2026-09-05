@@ -96,6 +96,36 @@ Bar::Bar() {
     layout_.set_end_widget(end_box_);
     set_child(layout_);
 
+    // Corner hit target (user request, Windows' Start-button rule): when the
+    // app menu is the outermost module — first in the start section or last
+    // in the end section, on any bar orientation — a click anywhere between
+    // it and the screen corner (the bar's padding) opens it too, so the
+    // pointer can be thrown into the corner without aiming.
+    auto corner_click = Gtk::GestureClick::create();
+    corner_click->set_button(GDK_BUTTON_PRIMARY);
+    corner_click->set_propagation_phase(Gtk::PropagationPhase::BUBBLE);
+    corner_click->signal_pressed().connect([this](int, double x, double y) {
+        if (hidden_ || app_menu_.get_parent() == nullptr)
+            return;
+        const bool first = app_menu_.get_parent() == &start_box_ &&
+                           start_box_.get_first_child() == &app_menu_;
+        const bool last = app_menu_.get_parent() == &end_box_ &&
+                          end_box_.get_last_child() == &app_menu_;
+        if (!first && !last)
+            return;
+        const auto bounds = app_menu_.compute_bounds(*this);
+        if (!bounds)
+            return;
+        const double x1 = bounds->get_x(), y1 = bounds->get_y();
+        const double x2 = x1 + bounds->get_width(), y2 = y1 + bounds->get_height();
+        if (x >= x1 && x <= x2 && y >= y1 && y <= y2)
+            return; // the module handles its own clicks
+        const bool hit = first ? x <= x2 && y <= y2 : x >= x1 && y >= y1;
+        if (hit)
+            app_menu_.toggle();
+    });
+    add_controller(corner_click);
+
     // Auto-hide needs to know about workspace switches (peek) and whether the
     // active workspace is empty (optionally keeps the bar visible).
     auto& hypr = Hyprland::get();

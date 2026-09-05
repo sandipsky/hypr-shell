@@ -20,7 +20,6 @@ ClipboardModule::ClipboardModule() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     icon_.add_css_class("icon");
     append(icon_);
     set_tooltip_text("Clipboard history");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([](int, double, double) {

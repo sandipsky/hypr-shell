@@ -1,14 +1,3 @@
-hyprsettings not opening from settings icon of app menu and control center
-
-make settings icon and power button icon little bit larger in both app menu and control center and remove border but keep hover effect 
-
-add hover effect to bar items in bar 
-
-if app menu is on leftmost or rightmost side on horizontal bar and topmost or bottomost in vertical bar then clicking the corner where app menu is to open app menu
-
-on launcher settings search for subitems its not opening settings item with its page fix that bug
-for example when i type osd and i get result osd position and i click it it should open hypr settings with osd page 
-
 for taskbar hypr module 
 instead of show pinned apps toggle 
 make it dropdown with options

@@ -74,7 +74,6 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     anchor_.set_child(content_);
     append(anchor_);
     set_tooltip_text("Applications");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     panel_ = Gtk::make_managed<AppMenuPanel>();
     popover_.set_child(*panel_);

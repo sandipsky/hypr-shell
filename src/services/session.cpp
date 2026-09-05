@@ -98,11 +98,31 @@ void spawn_detached(const std::vector<std::string>& argv) {
     }
 }
 
+// hypr-shell-settings installs next to hypr-shell (~/.local/bin), which the
+// session PATH the shell is autostarted with does not contain — a bare name
+// found nothing from the app menu / control center buttons. Look beside our
+// own executable first, PATH second.
+std::string settings_executable() {
+    static const std::string resolved = [] {
+        std::string result = "hypr-shell-settings";
+        if (gchar* self = g_file_read_link("/proc/self/exe", nullptr)) {
+            gchar* dir = g_path_get_dirname(self);
+            const std::string sibling = std::string(dir) + "/hypr-shell-settings";
+            if (g_file_test(sibling.c_str(), G_FILE_TEST_IS_EXECUTABLE))
+                result = sibling;
+            g_free(dir);
+            g_free(self);
+        }
+        return result;
+    }();
+    return resolved;
+}
+
 void open_settings(const std::string& page) {
     if (page.empty())
-        spawn_detached({"hypr-shell-settings"});
+        spawn_detached({settings_executable()});
     else
-        spawn_detached({"env", "HS_SETTINGS_PAGE=" + page, "hypr-shell-settings"});
+        spawn_detached({"env", "HS_SETTINGS_PAGE=" + page, settings_executable()});
 }
 
 } // namespace hyprshell

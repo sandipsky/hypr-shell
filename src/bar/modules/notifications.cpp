@@ -38,7 +38,6 @@ Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.set_parent(overlay_);
     popover_.set_has_arrow(false);
     popover_.add_css_class("notification-popover");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {

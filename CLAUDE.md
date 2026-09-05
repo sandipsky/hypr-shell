@@ -1706,3 +1706,36 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   page gathers its facts (pci.ids scan) from a low-priority idle. The
   remaining first-frame cost is the Bar page itself (fourteen module rows +
   fourteen layout rows with GtkDropDowns) plus GTK's fixed init.
+- 2026-09-05 — Settings buttons launched nothing (user report: app menu +
+  control center). `open_settings()` spawned the bare name
+  `hypr-shell-settings`, but the shell is autostarted with the session PATH
+  (`/usr/local/bin:/usr/bin:…`), which lacks `~/.local/bin` — the same trap
+  as the desktop entry's Exec (2026-08-31). `settings_executable()` in
+  `services/session.cpp` now resolves the sibling of `/proc/self/exe` first
+  and falls back to PATH. Same day, look changes (user request): the app
+  menu's and control center's settings / power buttons are flat — 40px,
+  glyph 21px / 16pt, no border or fill at rest, mHover disc while hovered
+  (or while the session dropdown is open) — and every clickable bar module
+  shows a hover pill (`.module:hover`, `alpha(@mOnSurface, 0.1)`, full
+  radius; workspaces, taskbar and the window title opt out since they
+  highlight their own items or aren't clickable). GTK keeps a popover's
+  parent in the hover state while the popover is mapped, so the pill also
+  marks the module whose popover is open. Testing note: toggling one
+  module's popover while another's is open logs "Tried to map a grabbing
+  popup with a non-top most parent" and freezes the main loop (the known
+  HS_OPEN_AUDIO freeze) — open one popover at a time from the tool shell;
+  the freeze itself is not fixed.
+- 2026-09-05 — Bar hover pill uses `@mHover` (the 10 % on-surface tint was
+  too faint to tell hovered from not, per user), and the bar modules no
+  longer switch the mouse cursor to a hand: every `set_cursor("pointer")`
+  in `bar/modules/*.cpp` (status icons, clock, launcher, app menu, session,
+  clipboard, taskbar items) was removed per user — the default arrow stays
+  over the bar, like Waybar. The lock screen's buttons keep theirs.
+- 2026-09-05 — App menu corner hit target (user request): when the app menu
+  module is the outermost one (first in the start section or last in the end
+  section, any orientation), a primary click in the bar between the module and
+  the screen corner — the bar-inner padding, where nothing else listens — also
+  toggles the popover (a bubble-phase GestureClick on the Bar window compares
+  the click with the module's bounds via `compute_bounds`). Windows' Start
+  button rule; the module's own click handling is untouched.
+

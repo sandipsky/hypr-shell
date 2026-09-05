@@ -38,7 +38,6 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     // the panel shows the levels itself — no OSD while it is open (Noctalia)
     popover_.signal_map().connect([] { Osd::get().set_audio_panel_open(true); });
     popover_.signal_unmap().connect([] { Osd::get().set_audio_panel_open(false); });
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {

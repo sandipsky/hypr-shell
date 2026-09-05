@@ -24,7 +24,6 @@ Clock::Clock() {
     popover_.set_parent(*this);
     popover_.set_has_arrow(false);
     popover_.add_css_class("calendar-popover");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {

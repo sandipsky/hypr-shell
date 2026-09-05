@@ -20,7 +20,6 @@ ControlCenter::ControlCenter() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     icon_.add_css_class("icon");
     append(icon_);
     set_tooltip_text("Control center");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     panel_ = Gtk::make_managed<ControlCenterPanel>();
     popover_.set_child(*panel_);

@@ -77,13 +77,15 @@ button.cc-media-btn {
 }
 button.cc-media-btn .cc-btn-icon { font-size: 15pt; }
 button.cc-media-btn:hover { background: @mHover; color: @mOnHover; }
-/* profile card buttons (settings, session): the app menu's round-button look —
- * neutral glyph, no accent (user request) */
+/* profile card buttons (settings, session): the app menu's flat round-button
+ * look — neutral glyph, no border or fill at rest, mHover disc on hover
+ * (user request) */
 button.cc-profile-btn {
-  min-width: 33px; min-height: 33px; padding: 0; border-radius: 999px;
-  background: @mSurfaceVariant; border: 1px solid @mOutline; box-shadow: none; color: @mOnSurface;
+  min-width: 40px; min-height: 40px; padding: 0; border-radius: 999px;
+  background: transparent; border: none; box-shadow: none; color: @mOnSurface;
+  transition: background 150ms ease;
 }
-button.cc-profile-btn .cc-btn-icon { font-size: 15pt; }
+button.cc-profile-btn .cc-btn-icon { font-size: 16pt; }
 button.cc-profile-btn:hover { background: @mHover; color: @mOnHover; }
 /* profile card */
 .cc-avatar-ring {

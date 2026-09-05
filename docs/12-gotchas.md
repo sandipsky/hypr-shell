@@ -226,6 +226,12 @@ those eight writes each rewrote config.json (fsync included) and made the
 shell reload it — on every launch. `HS_SETTINGS_TIMING=1` lists every save,
 so a launch must print none.
 
+**`~/.local/bin` is not on the shell's PATH.** Hyprland's autostart runs the
+shell with the session PATH, so anything the shell spawns by bare name must
+be in `/usr/bin` — `hypr-shell-settings` is not. `settings_executable()`
+(`services/session.cpp`) looks next to `/proc/self/exe` first; use it (or an
+absolute path) for anything else installed under `~/.local`.
+
 **Desktop entry icon**: the settings entry uses `Icon=dev.hyprshell.Settings`,
 GNOME Settings' icon bundled in `data/icons/` and installed under
 `<datadir>/icons/hicolor`. Docks match the running window to the entry

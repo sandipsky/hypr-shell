@@ -41,26 +41,27 @@ entry.am-search selection {
 }
 
 /* round header buttons: settings, session (".active" while its dropdown is
- * open; the dropdown itself is styled in session.css) */
+ * open; the dropdown itself is styled in session.css). Flat: no border or
+ * fill at rest, an mHover disc while hovered / open (user request) */
 button.am-icon-btn {
-  background: @mSurfaceVariant; /* mSurfaceVariant */
-  border: 1px solid @mOutline; /* mOutline */
+  background: transparent;
+  border: none;
   box-shadow: none;
   border-radius: 999px;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 40px;
+  min-height: 40px;
   padding: 0;
+  transition: background 150ms ease;
 }
 
 button.am-icon-btn:hover,
 button.am-icon-btn.active {
   background: @mHover;
-  border-color: @mOutline;
 }
 
 .am-btn-glyph {
   font-family: "noctalia-tabler-icons";
-  font-size: 17px;
+  font-size: 21px;
   color: @mOnSurface;
 }
 

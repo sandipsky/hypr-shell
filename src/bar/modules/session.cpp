@@ -22,7 +22,6 @@ Session::Session() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     icon_.add_css_class("icon");
     append(icon_);
     set_tooltip_text("Session");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     // anchored to the icon label, never the module Box (see battery.cpp)
     list_ = Gtk::make_managed<SessionMenuList>();

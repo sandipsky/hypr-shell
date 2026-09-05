@@ -51,6 +51,20 @@ window.bar.right .module {
   padding: 0 6px;
   font-size: 13px;
   color: @mOnSurface;
+  border-radius: 999px;
+  transition: background 150ms ease;
+}
+
+/* hover pill on the clickable modules (user request); workspaces and the
+ * taskbar highlight their own items, the window title is not clickable */
+.module:hover {
+  background: @mHover; /* the shared hover grey, clearly lighter than the bar */
+}
+
+.workspaces:hover,
+.taskbar:hover,
+.active-window:hover {
+  background: transparent;
 }
 
 /* workspaces */

@@ -31,7 +31,6 @@ Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.set_parent(icon_);
     popover_.set_has_arrow(false);
     popover_.add_css_class("bluetooth-popover");
-    set_cursor(Gdk::Cursor::create("pointer"));
 
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) {

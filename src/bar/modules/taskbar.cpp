@@ -442,7 +442,6 @@ Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_wid
         root->add_css_class("hovered");
     if (show_title)
         root->add_css_class("with-title");
-    root->set_cursor(Gdk::Cursor::create("pointer"));
     root->set_tooltip_text(item.title.empty() ? item.app_id : item.title);
 
     auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, kMarginS);
