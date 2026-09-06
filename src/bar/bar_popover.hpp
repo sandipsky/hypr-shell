@@ -6,6 +6,7 @@
 #include <gtkmm/popover.h>
 #include <gtkmm/root.h>
 
+#include "bar/frame_probe.hpp"
 #include "services/config.hpp"
 
 #include <algorithm>
@@ -139,6 +140,8 @@ inline void place_bar_popover(Gtk::Popover& popover) {
         popover.set_valign(Gtk::Align::FILL);
         popover.set_halign(align);
     }
+
+    log_first_frame(popover, "popover"); // HS_FRAME_DEBUG
 
     // dev hook: HS_POPOVER_DEBUG=1 logs what GTK measured and where the
     // compositor finally put the popup (positions relative to the bar surface)

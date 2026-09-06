@@ -55,7 +55,7 @@ public:
     void cancel_thumbnail_requests(); // drop queued (not in-flight) decodes
     void copy(const Item& item);  // entry → clipboard
     void paste(const Item& item); // copy, then Ctrl(+Shift)+V via wtype
-    void remove(const std::string& id);
+    void remove(std::string id);
     void wipe();
 
     sigc::signal<void()>& signal_changed() { return changed_; } // items() changed

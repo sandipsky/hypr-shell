@@ -108,6 +108,9 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &AppMenu::apply_config));
     apply_config();
+    // build the grid and rasterize the icons once startup has settled, so the
+    // first open paints as fast as the later ones
+    Glib::signal_idle().connect_once([this] { panel_->prewarm(); }, Glib::PRIORITY_LOW);
 }
 
 AppMenu::~AppMenu() {

@@ -1,11 +1,14 @@
 #include "bar/clipboard_window.hpp"
 
+#include "bar/frame_probe.hpp"
+
 #include "services/config.hpp"
 
 #include <gtk4-layer-shell.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cmath>
 
 namespace hyprshell {
@@ -181,8 +184,21 @@ void ClipboardWindow::open() {
     search_.set_text("");
     Clipboard::get().refresh(); // Noctalia re-lists on every open
     update_results();
+    log_first_frame(*this, "clipboard"); // HS_FRAME_DEBUG
     present();
     search_.grab_focus();
+    // dev hook: HS_CLIPBOARD_DELETE=<ms> presses the selected row's trash
+    // button that long after opening (pointer clicks cannot be scripted)
+    if (const char* hook = g_getenv("HS_CLIPBOARD_DELETE")) {
+        Glib::signal_timeout().connect_once(
+            [this, alive = alive_] {
+                if (!*alive || selected_ < 0 || selected_ >= static_cast<int>(delete_buttons_.size()))
+                    return;
+                if (auto* b = delete_buttons_[static_cast<std::size_t>(selected_)])
+                    b->activate();
+            },
+            std::max(100, std::atoi(hook)));
+    }
 
     // panel: max(25% of the screen, 552) x max(50%, 600) like the launcher —
     // the window is the (bar-less) output, so its size is known after the
@@ -458,12 +474,20 @@ void ClipboardWindow::rebuild_rows() {
         const int index = static_cast<int>(i);
         auto click = Gtk::GestureClick::create();
         click->signal_released().connect([this, index, row, remove](int, double x, double y) {
-            // a click on the trash button is the button's, not the row's
+            // A click over the trash button normally never gets here: the
+            // button claims the sequence on release. But GTK delivers a press
+            // to the widget its pointer focus last saw under the pointer, and
+            // that focus only moves with motion events — so a trash button
+            // that appeared under a resting pointer (hover selected the row,
+            // then a tap without further motion) is invisible to the press and
+            // the click arrives as a row click. Honour what the user aimed at.
             if (remove != nullptr && remove->get_visible()) {
                 if (auto bounds = remove->compute_bounds(*row))
                     if (bounds->contains_point(Gdk::Graphene::Point(static_cast<float>(x),
-                                                                   static_cast<float>(y))))
+                                                                   static_cast<float>(y)))) {
+                        delete_index(index);
                         return;
+                    }
             }
             activate_index(index);
         });

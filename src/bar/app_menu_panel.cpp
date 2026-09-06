@@ -1,5 +1,7 @@
 #include "bar/app_menu_panel.hpp"
 
+#include "bar/icon_cache.hpp"
+
 #include "services/config.hpp"
 #include "services/session.hpp"
 
@@ -219,6 +221,7 @@ AppMenuPanel::AppMenuPanel() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
         else
             dirty_ = true;
     });
+    IconCache::get().signal_rendered().connect(sigc::mem_fun(*this, &AppMenuPanel::refresh_icons));
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &AppMenuPanel::apply_config));
     apply_config();
 }
@@ -255,6 +258,23 @@ void AppMenuPanel::set_open(bool open) {
     const int height = results_.empty() ? kGridMinHeight
                                         : std::max(kGridMinHeight, std::min(content_height_, cap));
     content_stack_.set_size_request(-1, height);
+}
+
+void AppMenuPanel::prewarm() {
+    if (dirty_)
+        update_results(); // rebuild_grid also queues the icon rasterization
+}
+
+void AppMenuPanel::refresh_icons() {
+    auto& cache = IconCache::get();
+    for (std::size_t i = 0; i < icon_pending_.size() && i < tile_icons_.size(); ++i) {
+        if (!icon_pending_[i] || tile_icons_[i] == nullptr)
+            continue;
+        if (auto paintable = cache.find(results_[i].icon, icon_px_)) {
+            tile_icons_[i]->set(paintable);
+            icon_pending_[i] = false;
+        }
+    }
 }
 
 void AppMenuPanel::show_session_menu() {
@@ -348,6 +368,7 @@ void AppMenuPanel::rebuild_grid() {
         grid_.remove(*child);
     tiles_.clear();
     tile_icons_.clear();
+    icon_pending_.clear();
     item_row_.clear();
     item_col_.clear();
     selected_ = -1;
@@ -355,6 +376,21 @@ void AppMenuPanel::rebuild_grid() {
     const bool list = list_view_;
     const int cols = list ? 1 : std::clamp(columns_, kMinColumns, kMaxColumns);
     const int icon_px = list ? kListIconPx : kIconSizes[std::clamp(columns_, kMinColumns, kMaxColumns) - kMinColumns];
+    icon_px_ = icon_px;
+    // the IconCache render when it exists, else the GIcon itself (swapped by
+    // refresh_icons once rendered — or drawn by GTK if the popover paints first)
+    auto set_icon = [icon_px](Gtk::Image& image, const Apps::Entry* app) {
+        if (app == nullptr || !app->icon) {
+            image.set_from_icon_name("application-x-executable");
+            return false;
+        }
+        if (auto paintable = IconCache::get().find(app->icon, icon_px)) {
+            image.set(paintable);
+            return false;
+        }
+        image.set(app->icon);
+        return true;
+    };
     const int lines = multiline_ ? 2 : 1;
     const int max_rows = list ? kListMaxRows : kGridMaxRows;
     // headers only while browsing: a search result list is sorted by score
@@ -393,10 +429,7 @@ void AppMenuPanel::rebuild_grid() {
         auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
         row->add_css_class("am-row");
         auto* icon = Gtk::make_managed<Gtk::Image>();
-        if (app && app->icon)
-            icon->set(app->icon);
-        else
-            icon->set_from_icon_name("application-x-executable");
+        icon_pending_.push_back(set_icon(*icon, app));
         icon->set_pixel_size(icon_px);
         icon->set_valign(Gtk::Align::CENTER);
         row->append(*icon);
@@ -431,10 +464,7 @@ void AppMenuPanel::rebuild_grid() {
         tile->add_css_class("am-tile");
 
         auto* icon = Gtk::make_managed<Gtk::Image>();
-        if (app && app->icon)
-            icon->set(app->icon);
-        else
-            icon->set_from_icon_name("application-x-executable");
+        icon_pending_.push_back(set_icon(*icon, app));
         icon->set_pixel_size(icon_px);
         icon->set_halign(Gtk::Align::CENTER);
         tile->append(*icon);
@@ -466,6 +496,7 @@ void AppMenuPanel::rebuild_grid() {
     int min_h = 0, nat_h = 0, min_b = 0, nat_b = 0;
     probe->measure(Gtk::Orientation::VERTICAL, tile_w, min_h, nat_h, min_b, nat_b);
     grid_.remove(*probe);
+    icon_pending_.clear(); // the probe's entry — results start below
     tile_height_ = list ? std::max(nat_h, icon_px + 8) : std::max(nat_h, icon_px + 30);
     header_height_ = 0;
     if (grouped) {
@@ -545,6 +576,13 @@ void AppMenuPanel::rebuild_grid() {
                                            : static_cast<Gtk::Widget&>(scroller_));
     if (!empty)
         select(0, /*scroll_into_view=*/true);
+
+    std::vector<Glib::RefPtr<Gio::Icon>> icons;
+    for (std::size_t i = 0; i < results_.size(); ++i)
+        if (i < icon_pending_.size() && icon_pending_[i])
+            icons.push_back(results_[i].icon);
+    if (!icons.empty())
+        IconCache::get().request(*this, icons, icon_px);
 }
 
 void AppMenuPanel::select(int index, bool scroll_into_view) {

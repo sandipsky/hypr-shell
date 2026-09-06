@@ -22,6 +22,7 @@ public:
     ~AppMenuPanel() override;
 
     void set_open(bool open); // popover mapped state — resets search + focus
+    void prewarm();           // build the grid + rasterize icons before the first open
     void apply_config();      // grid columns, header buttons
     void show_session_menu(); // session button: dropdown, or the fullscreen window
     void open_pin_menu(int index); // right-click pin / unpin menu on a tile (dev hook too)
@@ -40,6 +41,7 @@ private:
     int vertical_neighbor(int index, int dir) const; // Up / Down over the laid-out rows
     void run_after_close(std::function<void()> action);
     void focus_default(); // the search box, or the panel itself when it is hidden
+    void refresh_icons(); // swap tiles still showing a GIcon to their IconCache render
 
     bool open_ = false;
     bool dirty_ = true; // app list / columns / label mode changed while closed
@@ -69,6 +71,8 @@ private:
     Gtk::Label pin_label_;
     int pin_index_ = -1;
     std::vector<Gtk::Image*> tile_icons_;
+    std::vector<bool> icon_pending_; // per result: tile still shows the raw GIcon
+    int icon_px_ = 0;                // icon size of the current grid
 
     Gtk::Stack content_stack_; // grid scroller or the empty label, fixed height per open
     Gtk::ScrolledWindow scroller_;

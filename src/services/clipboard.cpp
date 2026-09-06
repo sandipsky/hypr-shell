@@ -489,8 +489,12 @@ void Clipboard::paste(const Item& item) {
     });
 }
 
-void Clipboard::remove(const std::string& id) {
-    if (!available_ || !std::all_of(id.begin(), id.end(), ::isdigit))
+// `id` by value on purpose: callers pass a reference into their row list,
+// and the changed_ emission below rebuilds that list before the id is used
+// (the trash button ran "cliphist delete" with an empty id and the entry
+// came back on the refresh).
+void Clipboard::remove(std::string id) {
+    if (!available_ || id.empty() || !std::all_of(id.begin(), id.end(), ::isdigit))
         return;
     thumbs_.erase(id);
     thumb_order_.remove(id);

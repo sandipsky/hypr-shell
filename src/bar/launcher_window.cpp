@@ -1,5 +1,8 @@
 #include "bar/launcher_window.hpp"
 
+#include "bar/frame_probe.hpp"
+#include "bar/icon_cache.hpp"
+
 #include "services/apps.hpp"
 #include "services/config.hpp"
 #include "services/math_eval.hpp"
@@ -123,7 +126,30 @@ LauncherWindow::LauncherWindow() {
         sigc::mem_fun(*this, &LauncherWindow::on_key_pressed), false);
     add_controller(key);
 
-    Apps::get(); // build the app index up front, not on first open
+    Apps::get().signal_changed().connect(sigc::mem_fun(*this, &LauncherWindow::prewarm_icons));
+    IconCache::get().signal_rendered().connect(sigc::mem_fun(*this, &LauncherWindow::refresh_icons));
+    // build the app index and render its icons up front, not on first open
+    Glib::signal_idle().connect_once([this] { prewarm_icons(); }, Glib::PRIORITY_LOW);
+}
+
+void LauncherWindow::prewarm_icons() {
+    std::vector<Glib::RefPtr<Gio::Icon>> icons;
+    for (const auto& app : Apps::get().entries())
+        if (app.icon)
+            icons.push_back(app.icon);
+    IconCache::get().request(*this, icons, kIconSize);
+}
+
+void LauncherWindow::refresh_icons() {
+    auto& cache = IconCache::get();
+    for (std::size_t i = 0; i < icon_pending_.size() && i < row_icons_.size(); ++i) {
+        if (!icon_pending_[i] || row_icons_[i] == nullptr)
+            continue;
+        if (auto paintable = cache.find(results_[i].gicon, kIconSize)) {
+            row_icons_[i]->set(paintable);
+            icon_pending_[i] = false;
+        }
+    }
 }
 
 void LauncherWindow::toggle() {
@@ -144,6 +170,7 @@ void LauncherWindow::open() {
     search_.set_text(preset ? preset : "");
     g_unsetenv("HS_LAUNCHER_QUERY");
     update_results();
+    log_first_frame(*this, "launcher"); // HS_FRAME_DEBUG
     present();
     search_.grab_focus();
     search_.set_position(-1);
@@ -239,8 +266,7 @@ void LauncherWindow::apply_panel_layout() {
         if (results_.empty()) {
             list_anim_running_ = false;
             scroller_.set_visible(false);
-            scroller_.set_min_content_height(0);
-            scroller_.set_max_content_height(0);
+            set_list_height(0);
         } else {
             scroller_.set_visible(true);
             int min_h = 0, natural_h = 0, min_b = 0, nat_b = 0;
@@ -256,10 +282,21 @@ void LauncherWindow::apply_panel_layout() {
         panel_.set_size_request(panel_width_, panel_max_height_);
         scroller_.set_vexpand(true);
         scroller_.set_propagate_natural_height(false);
-        scroller_.set_min_content_height(-1);
-        scroller_.set_max_content_height(-1);
+        set_list_height(-1);
         scroller_.set_visible(true);
         footer_.set_visible(cfg.show_result_count);
+    }
+}
+
+// GTK asserts min <= max on every set, so growing sets the max first and
+// shrinking the min first (each step used to log two Gtk-CRITICALs).
+void LauncherWindow::set_list_height(int height) {
+    if (height >= scroller_.get_min_content_height()) {
+        scroller_.set_max_content_height(height);
+        scroller_.set_min_content_height(height);
+    } else {
+        scroller_.set_min_content_height(height);
+        scroller_.set_max_content_height(height);
     }
 }
 
@@ -271,8 +308,7 @@ void LauncherWindow::animate_list_height(int target) {
     list_anim_target_ = target;
     list_anim_start_us_ = 0;
     if (list_anim_from_ == target) {
-        scroller_.set_min_content_height(target);
-        scroller_.set_max_content_height(target);
+        set_list_height(target);
         return;
     }
     if (list_anim_running_)
@@ -289,8 +325,7 @@ void LauncherWindow::animate_list_height(int target) {
         const double eased = 1.0 - std::pow(1.0 - t, 4); // ease-out quart
         const int h = static_cast<int>(std::lround(
             list_anim_from_ + (list_anim_target_ - list_anim_from_) * eased));
-        scroller_.set_min_content_height(h);
-        scroller_.set_max_content_height(h);
+        set_list_height(h);
         if (t < 1.0)
             return true;
         list_anim_running_ = false;
@@ -515,6 +550,9 @@ void LauncherWindow::rebuild_rows() {
     while (auto* child = list_.get_first_child())
         list_.remove(*child);
     rows_.clear();
+    row_icons_.clear();
+    icon_pending_.clear();
+    std::vector<Glib::RefPtr<Gio::Icon>> missing;
 
     for (std::size_t i = 0; i < results_.size(); ++i) {
         const auto& result = results_[i];
@@ -522,20 +560,31 @@ void LauncherWindow::rebuild_rows() {
         auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 9);
         row->add_css_class("launcher-row");
 
+        Gtk::Image* icon = nullptr;
+        bool pending = false;
         if (!result.glyph.empty()) {
             auto* glyph = Gtk::make_managed<Gtk::Label>(result.glyph);
             glyph->add_css_class("launcher-glyph");
             glyph->set_size_request(kIconSize, kIconSize);
             row->append(*glyph);
         } else {
-            auto* icon = Gtk::make_managed<Gtk::Image>();
-            if (result.gicon)
-                icon->set(result.gicon);
-            else
+            // the IconCache render when it exists, else the GIcon itself
+            // (swapped by refresh_icons once rendered)
+            icon = Gtk::make_managed<Gtk::Image>();
+            if (!result.gicon) {
                 icon->set_from_icon_name("application-x-executable");
+            } else if (auto paintable = IconCache::get().find(result.gicon, kIconSize)) {
+                icon->set(paintable);
+            } else {
+                icon->set(result.gicon);
+                missing.push_back(result.gicon);
+                pending = true;
+            }
             icon->set_pixel_size(kIconSize);
             row->append(*icon);
         }
+        row_icons_.push_back(icon);
+        icon_pending_.push_back(pending);
 
         auto* text = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
         text->set_hexpand(true);
@@ -574,6 +623,8 @@ void LauncherWindow::rebuild_rows() {
 
     if (!rows_.empty())
         select(0, /*scroll_into_view=*/true);
+    if (!missing.empty())
+        IconCache::get().request(*this, missing, kIconSize);
 }
 
 void LauncherWindow::select(int index, bool scroll_into_view) {

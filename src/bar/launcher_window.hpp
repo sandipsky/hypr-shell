@@ -38,7 +38,10 @@ private:
     void update_results();
     void apply_panel_layout(); // fixed height vs Spotlight-style grow-to-fit
     void animate_list_height(int target); // Spotlight mode: smooth downward growth
+    void set_list_height(int height);     // min + max content height, in GTK's asserted order
     void rebuild_rows();
+    void refresh_icons(); // swap rows still showing a GIcon to their IconCache render
+    void prewarm_icons(); // queue every app icon at the row size (startup, app list changes)
     void select(int index, bool scroll_into_view);
     void activate_index(int index);
     bool on_key_pressed(guint keyval, guint keycode, Gdk::ModifierType state);
@@ -62,6 +65,8 @@ private:
 
     std::vector<Result> results_;
     std::vector<Gtk::Widget*> rows_;
+    std::vector<Gtk::Image*> row_icons_; // parallel to rows_ (nullptr for glyph rows)
+    std::vector<bool> icon_pending_;     // row still shows the raw GIcon
     int selected_ = 0;
 
     // screen-derived panel metrics (defaults until the first allocation)

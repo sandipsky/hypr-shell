@@ -61,6 +61,9 @@ data/fonts/                    noctalia-tabler-icons.ttf (installed to
 src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS hot reload
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
+src/bar/frame_probe.hpp        log_first_frame(): HS_FRAME_DEBUG first-painted-frame timing
+src/bar/icon_cache.{hpp,cpp}   IconCache: app icons rasterized once (a few per idle) into
+                               texture-backed paintables, shared by the app menu + launcher
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, taskbar, active_window, clock, network,
                                volume, battery, bluetooth, control_center,
@@ -186,6 +189,10 @@ meanwhile is dismissed at once (the HS_OPEN_AUDIO freeze noted in memory).
 `HS_POPOVER_DEBUG=1` logs each module popover's anchor / natural size /
 alignment and its final surface position (see `bar/bar_popover.hpp`), which
 verifies placement even when a screenshot is impossible (locked screen).
+`HS_FRAME_DEBUG=1` logs the milliseconds from open to the first painted
+frame of every module popover, the launcher and the clipboard window
+(`bar/frame_probe.hpp`) — the first-open lag; ~20–25 ms is the floor (the
+surface's first GL draw), anything more is work in the first frame.
 Settings app testing: `HS_SETTINGS_PAGE=<tag>` opens a page or module
 subpage; `HS_SETTINGS_SEARCH=<query>` opens the sidebar search pre-filled and
 `HS_SETTINGS_SEARCH_OPEN=1` additionally activates the first result 1.5s after
@@ -198,7 +205,9 @@ settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
 Clipboard testing: `HS_OPEN_CLIPBOARD=3000` opens the history window after 3s
-(`hypr-shell --clipboard` against a running instance also works). It needs
+(`hypr-shell --clipboard` against a running instance also works);
+`HS_CLIPBOARD_DELETE=<ms>` presses the selected row's trash button that long
+after the window opened (pointer clicks cannot be scripted). It needs
 `clipboard.enabled` in config.json; Noctalia's own `wl-paste … cliphist store`
 watchers are detected by pgrep and ours are then not started.
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
@@ -688,7 +697,7 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   clipboard/emoji/windows/command providers, ">" command mode, usage tracking
   (sortByMostUsed), custom launch prefix/terminal override, entrance
   animation. Gotcha: a GTK entry draws its own blue focus ring — needs
-  `outline: none` alongside the themed border. Dev hooks: HS_OPEN_LAUNCHER=1;
+  `outline: none` alongside the themed border. Dev hooks: HS_OPEN_LAUNCHER=1 (>1 = delay in ms, like the other HS_OPEN_* hooks);
   HS_LAUNCHER_QUERY=<text> pre-fills the search on the first open only
   (the search itself never remembers the previous query);
   HS_SETTINGS_PAGE=launcher_page opens the settings page.
@@ -1792,6 +1801,61 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   item before it, wrapping), which also skips header rows. Settings: a
   "View" dropdown on the App menu subpage; Grid columns / Two-line names show
   only for grid, App descriptions only for list; "Group by letter" always.
+- 2026-09-06 — Clipboard trash button did nothing (user report) while Clear
+  all worked. The button's own click path was fine (the new
+  `HS_CLIPBOARD_DELETE` hook deletes through it); the click never reached the
+  button: **GTK delivers a button press to the widget its pointer focus last
+  saw under the pointer, and pointer focus moves only with motion / crossing
+  events** (`handle_pointing_event` in gtkmain.c, read in 4.22.4) — a widget
+  that becomes visible under a resting pointer is never picked. The trash
+  button appears when hover selects its row, so "move down the trash column,
+  tap" (a touchpad tap has no motion after the last move) sent the press to
+  the row's label, the row's GestureClick got `released`, and its guard
+  swallowed the click as "that was the button's". The row handler now treats
+  a release over the visible trash button as the delete it was aimed at; when
+  the button does get the press it claims the sequence on release (GtkButton's
+  gesture runs in the CAPTURE phase) and the row handler never runs, so
+  nothing double-deletes. Lesson for every panel with hover-revealed buttons:
+  what sits under a stationary pointer is stale until the pointer moves.
+- 2026-09-06 — App menu first open lagged ~100–130 ms, later opens ~3 ms
+  (user report; measured with the first-frame probe now part of
+  `HS_POPOVER_DEBUG`). The grid build took 4 ms; the time went to each
+  Gtk::Image rasterizing its app's SVG icon (librsvg, ~5 ms × 20 apps) while
+  the first frame painted — GTK's icon-theme cache makes later opens cheap.
+  Looking the icons up ahead did not help: the cache key (names, size, scale,
+  *flags*) differs between an outside lookup and GtkIconHelper's, and
+  GFileIcons (absolute `Icon=` paths) are never cached. So the shell
+  rasterizes app icons itself — `Gtk::IconTheme::lookup_icon` +
+  `Gdk::Paintable::snapshot` into a `Gtk::Snapshot`, `to_paintable()` (a
+  render node holding the decoded texture) — in `bar/icon_cache` (moved out
+  of the panel the same day when the launcher needed it too): `find(icon,
+  px)` returns the render or null, `request(context, icons, px)` queues the
+  missing ones, four per idle, and `signal_rendered` lets each panel swap its
+  images still showing the raw GIcon (`refresh_icons()`). `AppMenu` calls
+  `prewarm()` from a PRIORITY_LOW idle at startup so the grid and its icons
+  exist before the first click; the launcher requests every app icon at its
+  row size from the same kind of idle (and on app-list changes). Symbolic
+  icons stay GIcons (CSS recolouring). First frames: app menu 105–130 →
+  ~25 ms, launcher with results ~110 → ~25 ms; the rest is the surface's
+  first GL draw (an empty launcher or a tiny popover costs ~17–21 ms too) —
+  pre-realizing the popover and pre-measuring the panel changed nothing
+  measurable and were dropped.
+- 2026-09-06 — Clipboard: deleting the only entry brought it back (user
+  report). `Clipboard::remove(const std::string& id)` received a reference
+  into the window's row list; its own optimistic `changed_` emission rebuilt
+  that list before the id was used, so "cliphist delete" ran with an empty
+  id (exit 1) and the refresh re-listed the entry. With more entries the
+  same dangling reference read whatever row took the slot — undefined
+  behaviour that happened to look right. `remove` takes the id by value now
+  and rejects an empty one. Lesson: a service call that emits `changed` must
+  not hold references into a listener's state; copy first. Found with the
+  `HS_CLIPBOARD_DELETE` hook and two temporary g_debugs (the shell's stderr
+  is invisible in the autostarted instance). While testing, the hook deleted
+  a real entry ("chess") the user had just copied — the hook removes
+  whatever row is selected, so keep the history to probe entries during a
+  run. Also fixed on the way: the launcher's Spotlight animation logged two
+  Gtk-CRITICALs per frame (`set_min_content_height` above the still-old max
+  while growing) — `set_list_height()` orders the two sets by direction.
 - 2026-09-05 — App menu: `bar.app_menu.tile_background` (default on, "App
   item background" switch, grid only) drops the mSurfaceVariant cards via a
   `flat-tiles` class on the panel; list rows got 8px/12px padding. Bug fix

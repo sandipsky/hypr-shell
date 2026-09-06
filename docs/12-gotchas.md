@@ -73,6 +73,44 @@ A box parent allocates the open popover inline and the module balloons in
 width. Anchoring to a label that sits under another overlay child unmaps the
 popover immediately after `popup()`.
 
+**A widget that appears under a resting pointer gets no click.** GTK sends a
+button press to the widget its *pointer focus* last saw under the pointer,
+and that focus only moves on motion / crossing events (`handle_pointing_event`
+in gtkmain.c). A button revealed by hover (the clipboard rows' trash icon,
+shown when the row is selected) is therefore invisible to a tap that follows
+without further motion — the press goes to whatever was there before, and an
+ancestor's `GestureClick` sees the click instead. Either avoid hover-revealed
+buttons or, like `ClipboardWindow`, let the ancestor's release handler honour
+a release over the visible button. When the button does get the press it
+claims the sequence on release (GtkButton's gesture runs in the CAPTURE
+phase), so the ancestor's handler does not run twice.
+
+**Icons are rasterized during the first paint.** A `Gtk::Image` showing a
+GIcon renders its SVG (librsvg, ~5 ms each) while the surface paints its
+first frame; GTK's icon-theme cache makes later frames cheap. A popover full
+of app icons therefore lags on its first open (the app menu: ~100 ms for 20
+apps). Pre-looking the icons up does not help — the cache key includes the
+lookup flags, which differ between an outside lookup and GtkIconHelper's,
+and file icons are never cached. `bar/icon_cache` is the cure:
+`Gtk::IconTheme::lookup_icon` + `Gdk::Paintable::snapshot` into a
+`Gtk::Snapshot`, `to_paintable()`, cached per icon and size, rendered a few
+per idle; panels show the render when `find()` has it, else the GIcon, and
+swap on `signal_rendered`. Request the icons at startup (the app menu's
+`prewarm()`, the launcher's `prewarm_icons()`). `HS_FRAME_DEBUG=1` logs the
+milliseconds to a window's first painted frame; ~20 ms is the floor.
+
+**A service must not keep a reference into a listener's state across its own
+`changed` emission.** `Clipboard::remove(const std::string& id)` was handed a
+reference into the clipboard window's row list; the optimistic
+`changed_.emit()` inside rebuilt that list before the id was used, so the
+delete ran with an empty id (or, with more rows, whichever id took the slot).
+Take such arguments by value, or copy before emitting.
+
+**`set_min_content_height` / `set_max_content_height` assert min ≤ max on
+every call.** Driving both to the same value each animation frame must set
+the max first when growing and the min first when shrinking
+(`LauncherWindow::set_list_height`), or GTK logs two criticals per frame.
+
 **Programmatic widget changes fire the same signals as user input.** Guard
 with an `updating_` flag (shell panels) or the `loading` flag (settings app)
 or you'll write the value straight back to the backend/file.

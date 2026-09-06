@@ -253,10 +253,13 @@ protected:
             Glib::signal_timeout().connect_once(
                 [] { Idle::get().report_external_activity(); },
                 static_cast<unsigned>(std::max(1, atoi(delay))));
-        // dev hook: HS_OPEN_LAUNCHER=1 opens it shortly after startup
-        if (open_launcher_on_startup_ || g_getenv("HS_OPEN_LAUNCHER") != nullptr)
+        // dev hook: HS_OPEN_LAUNCHER=1 opens it shortly after startup (>1 = delay in ms)
+        if (open_launcher_on_startup_ || g_getenv("HS_OPEN_LAUNCHER") != nullptr) {
+            const char* hook = g_getenv("HS_OPEN_LAUNCHER");
+            const int delay = std::max(400, hook ? atoi(hook) : 0);
             Glib::signal_timeout().connect_once([this] { launcher_window_->open(); },
-                                                400);
+                                                static_cast<unsigned>(delay));
+        }
     }
 
 private:

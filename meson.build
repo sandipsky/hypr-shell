@@ -88,6 +88,7 @@ sources = files(
   'src/bar/wallpaper_window.cpp',
   'src/bar/calendar.cpp',
   'src/bar/idle_fade.cpp',
+  'src/bar/icon_cache.cpp',
   'src/bar/launcher_window.cpp',
   'src/bar/clipboard_window.cpp',
   'src/bar/lock_background.cpp',
