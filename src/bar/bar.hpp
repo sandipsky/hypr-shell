@@ -7,6 +7,7 @@
 #include "bar/modules/clipboard.hpp"
 #include "bar/modules/control_center.hpp"
 #include "bar/modules/clock.hpp"
+#include "bar/modules/corner_target.hpp"
 #include "bar/modules/launcher.hpp"
 #include "bar/modules/network.hpp"
 #include "bar/modules/notifications.hpp"

@@ -26,11 +26,7 @@ Clock::Clock() {
     popover_.add_css_class("calendar-popover");
 
     auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([this](int, double, double) {
-        calendar_->reset_to_today();
-        place_bar_popover(popover_);
-        popover_.popup();
-    });
+    click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
 
     // dev hook: HS_OPEN_CALENDAR=1 pops the calendar shortly after startup
@@ -44,6 +40,12 @@ Clock::Clock() {
             },
             delay);
     }
+}
+
+void Clock::open() {
+    calendar_->reset_to_today();
+    place_bar_popover(popover_);
+    popover_.popup();
 }
 
 Clock::~Clock() {

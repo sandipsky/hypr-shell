@@ -96,6 +96,7 @@ is missing.
 | `app_menu_panel.{hpp,cpp}` | app_menu | Noctalia's launcher grid as a 480px bar popover: search entry, settings + session buttons, fixed-size app tiles (`columns`, one or two-line names), keyboard navigation. Right-clicking a tile opens a one-entry popover: Pin to / Unpin from taskbar (`Apps::toggle_pinned`). |
 | `avatar.{hpp,cpp}` | lock surface, control center | `load_avatar_texture(path, size)`: centre-cropped square texture, bundled `avatar-fallback.svg` when the path is empty/unreadable. |
 | `bar_popover.hpp` | all module popovers | `place_bar_popover()`: side facing away from the bar + 6px gap (`set_offset`). |
+| `modules/corner_target.hpp` | every clickable module, `Bar` | `CornerTarget::activate_corner(bool start)`: the bar's corner click (padding between the outermost module and the screen corner) triggers the first / last module's primary action; workspaces and taskbar pick their first / last item. |
 | `frame_probe.hpp` | popovers, launcher, clipboard | `log_first_frame()`: with `HS_FRAME_DEBUG=1`, logs the ms from open to the first painted frame (first-open lag). |
 | `icon_cache.{hpp,cpp}` | app menu, launcher | `IconCache`: app icons rasterized once, a few per idle, into texture-backed paintables (`find` / `request` / `signal_rendered`) so a panel's first frame does not render 20 SVGs. |
 | `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |

@@ -2,6 +2,8 @@
 
 #include "bar/app_menu_panel.hpp"
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -10,8 +12,9 @@ namespace hyprshell {
 // default; a preset glyph, the distro logo or a custom icon via
 // bar.app_menu.icon, optionally with a text label) that opens the grid app
 // menu popover.
-class AppMenu : public Gtk::Box {
+class AppMenu : public Gtk::Box, public CornerTarget {
 public:
+    void activate_corner(bool) override { toggle(); }
     AppMenu();
     ~AppMenu() override;
 

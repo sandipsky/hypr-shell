@@ -36,6 +36,13 @@ Workspaces::Workspaces() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     refresh();
 }
 
+void Workspaces::activate_corner(bool start) {
+    const std::size_t shown = shown_ids_.size();
+    if (shown == 0 || buttons_.size() < shown)
+        return;
+    buttons_[start ? 0 : shown - 1]->activate(); // runs the button's click handler
+}
+
 bool Workspaces::on_scroll(double /*dx*/, double dy) {
     // Accumulate smooth-scroll deltas (touchpads send many small ones); a mouse
     // wheel notch is exactly ±1.0. Switch once per whole unit.

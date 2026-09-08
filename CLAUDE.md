@@ -62,6 +62,8 @@ src/main.cpp                   App (Gtk::Application), CSS loading + user-CSS ho
 src/bar/bar.{hpp,cpp}          Bar window (layer-shell setup)
 src/bar/bar_popover.hpp        place_bar_popover(): module popover side + gap from the bar
 src/bar/frame_probe.hpp        log_first_frame(): HS_FRAME_DEBUG first-painted-frame timing
+src/bar/modules/corner_target.hpp  CornerTarget: the corner-click interface every clickable
+                               module implements (bar corners hit the outermost module)
 src/bar/icon_cache.{hpp,cpp}   IconCache: app icons rasterized once (a few per idle) into
                                texture-backed paintables, shared by the app menu + launcher
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
@@ -1856,6 +1858,25 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   run. Also fixed on the way: the launcher's Spotlight animation logged two
   Gtk-CRITICALs per frame (`set_min_content_height` above the still-old max
   while growing) — `set_list_height()` orders the two sets by direction.
+- 2026-09-08 — Bar corners hit the outermost module on each end (user
+  request, generalising the 2026-09-05 app-menu-only rule): the bar's
+  bubble-phase GestureClick finds the first *visible* child of the start box
+  and the last of the end box, `dynamic_cast`s it to `CornerTarget`
+  (`bar/modules/corner_target.hpp`) and, when the press lands between that
+  module and the screen corner, calls `activate_corner(start)`. Every
+  clickable module implements it — launcher / clipboard (their GAction),
+  app menu / control center (toggle), session (open), network / bluetooth /
+  notifications / clock / volume / battery (their click lambdas became a
+  public `open()`), workspaces (the first or last workspace button's
+  `activate()`) and the taskbar (its first or last item, via the new
+  `activate_item()`); active_window stays inert. Works on horizontal and
+  vertical bars alike. The hit test looks only along the bar's axis (start:
+  before the module's far edge, end: past its near edge, across the bar's
+  whole thickness): the 2026-09-05 version also required the click to be
+  inside the module's rows, which on a top bar rejected the top-right corner
+  pixel for the end module — the user's clock did nothing until this was
+  fixed. Skipping hidden children matters: a battery module without UPower
+  is still the box's last child.
 - 2026-09-08 — Wheel over the volume and battery icons (user request): the
   `volume` module steps the default sink by `bar.volume.scroll_step` percent
   per notch (default 5, Noctalia's volumeStep; capped at 100%, mute untouched)

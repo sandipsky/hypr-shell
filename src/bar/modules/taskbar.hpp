@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 #include <cstdint>
@@ -15,8 +17,10 @@ namespace hyprshell {
 // cycles focus, drag reorders (pinned order persisted). No right-click
 // menu and no capsule background, per user.
 // Hide modes: always visible, hidden or transparent when nothing matches.
-class Taskbar : public Gtk::Box {
+class Taskbar : public Gtk::Box, public CornerTarget {
 public:
+    // corner click = the first (start corner) or last (end corner) item
+    void activate_corner(bool start) override;
     Taskbar();
     ~Taskbar() override;
 
@@ -66,6 +70,7 @@ private:
     void reorder(std::size_t from, std::size_t to);
     void save_pinned_order();
     void launch_pinned(const std::string& app_id);
+    void activate_item(const Item& item); // focus its window or launch the pinned app
 
     Gtk::Box capsule_{Gtk::Orientation::HORIZONTAL, 0};
     Gtk::Box items_box_{Gtk::Orientation::HORIZONTAL, 2};

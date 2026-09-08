@@ -2,6 +2,8 @@
 
 #include "bar/session_menu.hpp"
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -10,8 +12,9 @@ namespace hyprshell {
 // opens the session menu: a dropdown popover here, or the fullscreen session
 // window (through the app's "session" action) when session.mode is
 // "fullscreen".
-class Session : public Gtk::Box {
+class Session : public Gtk::Box, public CornerTarget {
 public:
+    void activate_corner(bool) override { open(); }
     Session();
     ~Session() override;
 

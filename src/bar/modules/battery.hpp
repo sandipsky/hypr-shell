@@ -2,6 +2,8 @@
 
 #include "bar/battery_panel.hpp"
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -11,8 +13,10 @@ namespace hyprshell {
 // tinted green and the BatteryCharging0 frame (outline + bolt, transparent
 // interior) is drawn over it so only the level bars show the tint. Ported from
 // the user's Noctalia fork (NBatteryWin11.qml).
-class Battery : public Gtk::Box {
+class Battery : public Gtk::Box, public CornerTarget {
 public:
+    void open();
+    void activate_corner(bool) override { open(); }
     Battery();
     ~Battery() override;
 

@@ -33,12 +33,7 @@ Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.add_css_class("bluetooth-popover");
 
     auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([this](int, double, double) {
-        // keep the panel on the free side of the bar
-        place_bar_popover(popover_);
-        panel_->set_open(true); // starts discovery while the popover shows
-        popover_.popup();
-    });
+    click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
     popover_.signal_closed().connect([this] { panel_->set_open(false); });
 
@@ -58,6 +53,13 @@ Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
     Bluez::get().signal_changed().connect(sigc::mem_fun(*this, &Bluetooth::update));
     update();
+}
+
+void Bluetooth::open() {
+    // keep the panel on the free side of the bar
+    place_bar_popover(popover_);
+    panel_->set_open(true); // starts discovery while the popover shows
+    popover_.popup();
 }
 
 Bluetooth::~Bluetooth() {

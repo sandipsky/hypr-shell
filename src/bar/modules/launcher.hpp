@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -8,9 +10,12 @@ namespace hyprshell {
 // that toggles the app launcher. The launcher window is owned by the App, so
 // the click goes through the application's "launcher" action — the same one
 // `hypr-shell --launcher` triggers for keybinds.
-class Launcher : public Gtk::Box {
+class Launcher : public Gtk::Box, public CornerTarget {
 public:
     Launcher();
+
+    void open();
+    void activate_corner(bool) override { open(); }
 
 private:
     Gtk::Label icon_;

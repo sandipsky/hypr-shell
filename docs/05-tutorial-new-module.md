@@ -369,6 +369,11 @@ meson compile -C build && pkill -x hypr-shell; ./build/hypr-shell
   ([services](06-services-and-async-io.md)), then the module is just
   `Service::get().signal_changed().connect(...)` + `update()`.
 - **Module with a click panel**: see [panels](08-panels-and-popovers.md).
+- **Clickable module**: also inherit `CornerTarget`
+  (`bar/modules/corner_target.hpp`) and implement `activate_corner(bool
+  start)` with the same action as your primary click. When the module is the
+  outermost one in the bar, a click in the padding between it and the screen
+  corner then triggers it too (Windows' Start-button rule).
 - **Vertical bars**: if your module lays children out horizontally, flip
   the orientation in `update()` using `Config::get().bar_vertical()`, like
   `Workspaces::rebuild()` does.

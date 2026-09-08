@@ -503,12 +503,8 @@ Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_wid
     click->signal_released().connect([this, id](int, double, double) {
         auto it = std::find_if(items_.begin(), items_.end(),
                                [&](const Item& i) { return i.id == id; });
-        if (it == items_.end())
-            return;
-        if (it->window >= 0)
-            Hyprland::get().focus_window(windows_[static_cast<std::size_t>(it->window)].address);
-        else if (it->type == ItemType::Pinned)
-            launch_pinned(it->app_id);
+        if (it != items_.end())
+            activate_item(*it);
     });
     root->add_controller(click);
 
@@ -688,6 +684,19 @@ void Taskbar::save_pinned_order() {
         if (std::find(ordered.begin(), ordered.end(), stored) == ordered.end())
             ordered.push_back(stored);
     apps.set_pinned(std::move(ordered));
+}
+
+void Taskbar::activate_item(const Item& item) {
+    if (item.window >= 0)
+        Hyprland::get().focus_window(windows_[static_cast<std::size_t>(item.window)].address);
+    else if (item.type == ItemType::Pinned)
+        launch_pinned(item.app_id);
+}
+
+void Taskbar::activate_corner(bool start) {
+    if (items_.empty())
+        return;
+    activate_item(start ? items_.front() : items_.back());
 }
 
 void Taskbar::launch_pinned(const std::string& app_id) {

@@ -40,12 +40,7 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.signal_unmap().connect([] { Osd::get().set_audio_panel_open(false); });
 
     auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([this](int, double, double) {
-        // keep the panel on the free side of the bar
-        place_bar_popover(popover_);
-        panel_->refresh();
-        popover_.popup();
-    });
+    click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
 
     // right click toggles output mute
@@ -75,6 +70,13 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
     Pulse::get().signal_changed().connect(sigc::mem_fun(*this, &Volume::update));
     update();
+}
+
+void Volume::open() {
+    // keep the panel on the free side of the bar
+    place_bar_popover(popover_);
+    panel_->refresh();
+    popover_.popup();
 }
 
 Volume::~Volume() {

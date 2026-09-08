@@ -2,6 +2,8 @@
 
 #include "bar/audio_panel.hpp"
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -9,8 +11,10 @@ namespace hyprshell {
 // Default-sink volume status icon (tabler glyphs). Left click opens the audio
 // panel (output/input levels), right click toggles output mute, the wheel
 // steps the volume by bar.volume.scroll_step percent.
-class Volume : public Gtk::Box {
+class Volume : public Gtk::Box, public CornerTarget {
 public:
+    void open();
+    void activate_corner(bool) override { open(); }
     Volume();
     ~Volume() override;
 

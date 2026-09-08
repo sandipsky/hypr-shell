@@ -19,11 +19,13 @@ Launcher::Launcher() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     set_tooltip_text("Open launcher");
 
     auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([](int, double, double) {
-        if (auto app = Gio::Application::get_default())
-            app->activate_action("launcher");
-    });
+    click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
+}
+
+void Launcher::open() {
+    if (auto app = Gio::Application::get_default())
+        app->activate_action("launcher");
 }
 
 } // namespace hyprshell

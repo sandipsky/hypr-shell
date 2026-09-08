@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 #include <cstdint>
@@ -8,9 +10,12 @@
 
 namespace hyprshell {
 
-class Workspaces : public Gtk::Box {
+class Workspaces : public Gtk::Box, public CornerTarget {
 public:
     Workspaces();
+
+    // corner click = the first (start corner) or last (end corner) workspace button
+    void activate_corner(bool start) override;
 
 private:
     struct Entry {

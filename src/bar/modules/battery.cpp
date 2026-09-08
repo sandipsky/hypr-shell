@@ -53,12 +53,7 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.signal_map().connect([] { Osd::get().set_brightness_panel_open(true); });
     popover_.signal_unmap().connect([] { Osd::get().set_brightness_panel_open(false); });
     auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([this](int, double, double) {
-        // keep the panel on the free side of the bar
-        place_bar_popover(popover_);
-        panel_->refresh();
-        popover_.popup();
-    });
+    click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
 
     // wheel over the icon steps the backlight (Noctalia's Brightness widget
@@ -83,6 +78,13 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     UPower::get().signal_changed().connect(sigc::mem_fun(*this, &Battery::update));
     PowerProfiles::get().signal_changed().connect(sigc::mem_fun(*this, &Battery::update));
     update();
+}
+
+void Battery::open() {
+    // keep the panel on the free side of the bar
+    place_bar_popover(popover_);
+    panel_->refresh();
+    popover_.popup();
 }
 
 Battery::~Battery() {

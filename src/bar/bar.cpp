@@ -102,33 +102,46 @@ Bar::Bar() {
     layout_.set_end_widget(end_box_);
     set_child(layout_);
 
-    // Corner hit target (user request, Windows' Start-button rule): when the
-    // app menu is the outermost module — first in the start section or last
-    // in the end section, on any bar orientation — a click anywhere between
-    // it and the screen corner (the bar's padding) opens it too, so the
-    // pointer can be thrown into the corner without aiming.
+    // Corner hit targets (user request, Windows' Start-button rule): a click
+    // between the outermost module — the first visible one in the start
+    // section, the last visible one in the end section, on any bar
+    // orientation — and the screen corner (the bar's padding, where nothing
+    // else listens) counts as a click on that module, so the pointer can be
+    // thrown into either corner without aiming. Modules opt in through
+    // CornerTarget; the bubble phase leaves the modules' own gestures first.
     auto corner_click = Gtk::GestureClick::create();
     corner_click->set_button(GDK_BUTTON_PRIMARY);
     corner_click->set_propagation_phase(Gtk::PropagationPhase::BUBBLE);
     corner_click->signal_pressed().connect([this](int, double x, double y) {
-        if (hidden_ || app_menu_.get_parent() == nullptr)
+        if (hidden_)
             return;
-        const bool first = app_menu_.get_parent() == &start_box_ &&
-                           start_box_.get_first_child() == &app_menu_;
-        const bool last = app_menu_.get_parent() == &end_box_ &&
-                          end_box_.get_last_child() == &app_menu_;
-        if (!first && !last)
-            return;
-        const auto bounds = app_menu_.compute_bounds(*this);
-        if (!bounds)
-            return;
-        const double x1 = bounds->get_x(), y1 = bounds->get_y();
-        const double x2 = x1 + bounds->get_width(), y2 = y1 + bounds->get_height();
-        if (x >= x1 && x <= x2 && y >= y1 && y <= y2)
-            return; // the module handles its own clicks
-        const bool hit = first ? x <= x2 && y <= y2 : x >= x1 && y >= y1;
-        if (hit)
-            app_menu_.toggle();
+        // the start corner belongs to the first module, the end corner to the last
+        for (const bool start : {true, false}) {
+            Gtk::Widget* widget =
+                start ? start_box_.get_first_child() : end_box_.get_last_child();
+            while (widget && !widget->get_visible())
+                widget = start ? widget->get_next_sibling() : widget->get_prev_sibling();
+            auto* target = dynamic_cast<CornerTarget*>(widget);
+            if (!target)
+                continue;
+            const auto bounds = widget->compute_bounds(*this);
+            if (!bounds)
+                continue;
+            const double x1 = bounds->get_x(), y1 = bounds->get_y();
+            const double x2 = x1 + bounds->get_width(), y2 = y1 + bounds->get_height();
+            if (x >= x1 && x <= x2 && y >= y1 && y <= y2)
+                return; // the module handles its own clicks
+            // Only the position along the bar decides: everything from the
+            // module's far edge to the screen edge, across the bar's whole
+            // thickness (the module is centred in the bar, so a click at the
+            // corner pixel lies outside its own rows/columns).
+            const bool vertical = Config::get().bar_vertical();
+            const bool hit = vertical ? (start ? y <= y2 : y >= y1) : (start ? x <= x2 : x >= x1);
+            if (hit) {
+                target->activate_corner(start);
+                return;
+            }
+        }
     });
     add_controller(corner_click);
 

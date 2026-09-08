@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
@@ -8,9 +10,12 @@ namespace hyprshell {
 // history window through the application's "clipboard" action — the same one
 // `hypr-shell --clipboard` triggers for keybinds. Hidden while clipboard
 // history is disabled or cliphist is missing (no settings of its own).
-class ClipboardModule : public Gtk::Box {
+class ClipboardModule : public Gtk::Box, public CornerTarget {
 public:
     ClipboardModule();
+
+    void open();
+    void activate_corner(bool) override { open(); }
 
 private:
     void update();

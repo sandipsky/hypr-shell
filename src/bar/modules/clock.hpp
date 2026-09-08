@@ -2,12 +2,16 @@
 
 #include "bar/calendar.hpp"
 
+#include "bar/modules/corner_target.hpp"
+
 #include <gtkmm.h>
 
 namespace hyprshell {
 
-class Clock : public Gtk::Label {
+class Clock : public Gtk::Label, public CornerTarget {
 public:
+    void open();
+    void activate_corner(bool) override { open(); }
     Clock();
     ~Clock() override;
 
