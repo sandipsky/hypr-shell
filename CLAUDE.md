@@ -142,6 +142,9 @@ src/settings/about_page.{hpp,cpp}       "About" page: hardware + software facts 
 src/settings/hotspot_page.{hpp,cpp}     "Hotspot" page: NetworkManager AP mode over nmcli (profile
                                         "Hotspot"; name/security/password/band/hidden, virtual
                                         AP interface for Wi-Fi + hotspot, autostart, live status)
+src/settings/login_page.{hpp,cpp}       "Login screen" page: the Elegant SDDM theme's theme.conf.user
+                                        (root-owned; pkexec on Apply). Sidebar row hidden unless
+                                        SDDM + that theme are installed and selected
 src/settings/vpn_page.{hpp,cpp}         "VPN" page: NetworkManager vpn/wireguard profiles over
                                         nmcli (connect switches, import .conf/.ovpn, delete)
 src/settings/command.{hpp,cpp}          run_command(): async GSubprocess helper + string utils
@@ -1897,4 +1900,15 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   pointer next crossed the bar — `clear_hover_on_close()` (bar_popover.hpp,
   hooked from `place_bar_popover`) unsets PRELIGHT on the anchor chain up to
   the module when the popover closes.
-
+- 2026-09-08 — Settings: "Login screen" page (`settings/login_page.cpp`) for
+  the dotfiles' Elegant SDDM theme (styled after the lock screen). Two
+  departures from the settings-app rules, both forced by the target file
+  being root-owned (`/usr/share/sddm/themes/Elegant/theme.conf.user`, read
+  by the greeter as the sddm user): (1) an explicit Apply button runs one
+  `pkexec sh -c 'install …'` for the conf and the copied background image
+  instead of instant save — one auth prompt per slider tick is unusable;
+  (2) the sidebar row is hidden (not disabled-with-hint) when
+  `login_page_available()` is false, per user request. Hidden rather than
+  skipped so every index-based mapping (`row-selected`, `HS_SETTINGS_PAGE`,
+  search) stays valid; `search.cpp` skips hidden rows. Nothing touches
+  config.json — the shell has no login-screen state.

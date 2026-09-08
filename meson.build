@@ -186,6 +186,7 @@ executable(
     'src/settings/main.cpp',
     'src/settings/about_page.cpp',
     'src/settings/hotspot_page.cpp',
+    'src/settings/login_page.cpp',
     'src/settings/vpn_page.cpp',
     'src/settings/command.cpp',
     'src/settings/search.cpp',

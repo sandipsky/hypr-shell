@@ -262,6 +262,29 @@ accepts arbitrary widgets, not just rows.
 The `+[](...)` in front of the lambda forces conversion to a plain function
 pointer, which `G_CALLBACK` needs; only capture-less lambdas can do that.
 
+### Hiding a sidebar page
+
+Pages that only make sense with something installed keep their row and
+disable their rows with an explanatory subtitle (Night light, Clipboard,
+Hotspot). The one exception is "Login screen" (`login_page.cpp`), which the
+user wanted gone entirely when SDDM with the Elegant theme is absent: the
+sidebar loop in `on_activate()` calls `gtk_widget_set_visible(row, FALSE)`
+on its row when `login_page_available()` is false. Hide, never skip — a
+hidden `GtkListBoxRow` keeps its index, and the `row-selected` handler,
+`HS_SETTINGS_PAGE` and the search all index `kSidebarPages` by row position.
+`search.cpp` skips pages whose sidebar row is hidden, so their rows never
+appear as results.
+
+### Pages that don't save instantly
+
+"Login screen" writes a root-owned file (`/usr/share/sddm/themes/Elegant/
+theme.conf.user`) through `pkexec`, so it is the one page with an Apply
+button: edits only mark the page dirty, Apply runs a single
+`pkexec /bin/sh -c 'install …'` for the conf and the copied background image
+(positional parameters, no quoting of paths in the script), and the page
+re-reads the file afterwards. Follow that shape for anything else that needs
+privileges; everything backed by config.json stays instant-apply.
+
 ## Conditional rows
 
 Some rows only make sense given another row's value (auto-hide toggles only

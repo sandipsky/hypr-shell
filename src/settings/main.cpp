@@ -14,6 +14,7 @@
 #include "services/wallpaper_files.hpp"
 #include "settings/about_page.hpp"
 #include "settings/hotspot_page.hpp"
+#include "settings/login_page.hpp"
 #include "settings/search.hpp"
 #include "settings/vpn_page.hpp"
 
@@ -155,6 +156,7 @@ constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"clipboard_page", "Clipboard", "edit-paste-symbolic"},
     {"session_page", "Session menu", "system-shutdown-symbolic"},
     {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
+    {"login_page", "Login screen", "glyph:\uEBA7"}, // tabler login; row hidden without SDDM+Elegant
     {"idle_page", "Idle", "alarm-symbolic"},
     {"osd_page", "On-screen display", "display-brightness-symbolic"},
     {"notifications_page", "Notifications", "preferences-system-notifications-symbolic"},
@@ -3885,6 +3887,17 @@ void build_secondary_pages(Settings* s) {
     gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
+    // -- Login screen: the Elegant SDDM theme's theme.conf.user (root-owned,
+    // written through pkexec on Apply — not config.json) ----------------------
+    GtkWidget* login_view = adw_toolbar_view_new();
+    GtkWidget* login_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(login_header),
+                                    adw_window_title_new("Login screen", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(login_view), login_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(login_view),
+                                 hyprshell::settings::build_login_page(GTK_WINDOW(win)));
+    gtk_stack_add_named(GTK_STACK(stack), login_view, "login_page");
+
     // -- Hotspot: NetworkManager AP mode (state lives in NM, not config.json) --
     GtkWidget* hs_view = adw_toolbar_view_new();
     GtkWidget* hs_header = adw_header_bar_new();
@@ -4903,6 +4916,11 @@ void on_activate(GtkApplication* app, gpointer) {
         GtkWidget* row = gtk_list_box_row_new();
         gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
         gtk_list_box_append(GTK_LIST_BOX(sidebar_list), row);
+        // Hidden rather than skipped: a hidden row keeps its index, which the
+        // row-selected mapping, HS_SETTINGS_PAGE and the search all rely on
+        // (the search skips hidden rows itself).
+        if (g_strcmp0(page.name, "login_page") == 0 && !hyprshell::settings::login_page_available())
+            gtk_widget_set_visible(row, FALSE);
     }
     g_signal_connect(sidebar_list, "row-selected",
                      G_CALLBACK(+[](GtkListBox*, GtkListBoxRow* row, gpointer data) {

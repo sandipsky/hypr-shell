@@ -160,6 +160,10 @@ void collect(Search* s, const std::string& query) {
         s->t.prepare(s->t.prepare_data);
     for (int i = 0; i < s->t.page_count; ++i) {
         const SidebarPage& page = s->t.pages[i];
+        // a hidden sidebar row is a page that doesn't apply on this machine
+        GtkListBoxRow* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(s->t.sidebar_list), i);
+        if (row != nullptr && !gtk_widget_get_visible(GTK_WIDGET(row)))
+            continue;
         // the page itself
         const std::string title_lc = lowercase(page.title);
         const int page_score = match_score(query, title_lc, "", "");

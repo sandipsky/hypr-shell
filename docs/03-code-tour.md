@@ -155,6 +155,15 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 
 ## `src/settings/` — `main.cpp` (~3900 lines) + `search.cpp` + `about_page.cpp`
 
+`login_page.{hpp,cpp}` — the "Login screen" page for the Elegant SDDM theme
+(dotfiles repo, `assets/sddm-themes/Elegant`). State is the theme's
+`theme.conf.user` under `/usr/share/sddm/themes/Elegant/`, read over the
+theme's `theme.conf` defaults and written back through `pkexec` on an Apply
+button (with the chosen background image copied next to it — the greeter runs
+as the sddm user and can't read a 0700 home). `login_page_available()` gates
+the sidebar row: sddm on PATH, the theme's `Main.qml` present, and
+`Current=Elegant` in SDDM's config.
+
 The settings app, one file, libadwaita C API.
 
 1. **Tables**: `kModules[]` (key, title, subtitle, default section) and the

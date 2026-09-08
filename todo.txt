@@ -1,6 +1,0 @@
-
-
-
-After and if gdm fork (gdm lite is installed ) in current system 
-show additional settings in hyprsettings to customize gdm 
-like font and its size 
