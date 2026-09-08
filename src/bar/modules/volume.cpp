@@ -55,6 +55,12 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
         [](int, double, double) { Pulse::get().set_muted(!Pulse::get().muted()); });
     add_controller(right_click);
 
+    // wheel steps the output volume (Noctalia's Volume widget)
+    auto scroll = Gtk::EventControllerScroll::create();
+    scroll->set_flags(Gtk::EventControllerScroll::Flags::VERTICAL);
+    scroll->signal_scroll().connect(sigc::mem_fun(*this, &Volume::on_scroll), false);
+    add_controller(scroll);
+
     // dev hook: HS_OPEN_AUDIO=1 pops the panel shortly after startup
     if (const char* hook = g_getenv("HS_OPEN_AUDIO")) {
         const int delay = std::max(800, std::atoi(hook)); // >1 = delay in ms
@@ -73,6 +79,31 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
 Volume::~Volume() {
     popover_.unparent();
+}
+
+bool Volume::on_scroll(double /*dx*/, double dy) {
+    auto& pulse = Pulse::get();
+    if (!pulse.available()) {
+        return false;
+    }
+    // Accumulate smooth-scroll deltas (touchpads send many small ones); a mouse
+    // wheel notch is exactly ±1.0. Scrolling up (negative dy) turns it up.
+    scroll_accum_ += dy;
+    int dir = 0;
+    if (scroll_accum_ >= 1.0) {
+        dir = -1;
+    } else if (scroll_accum_ <= -1.0) {
+        dir = +1;
+    }
+    if (dir == 0) {
+        return true;
+    }
+    scroll_accum_ = 0.0;
+    const double step = Config::get().volume_scroll_step() / 100.0;
+    // capped at 100%: no overdrive from the wheel (Noctalia's default cap)
+    const double next = std::clamp(pulse.volume() + dir * step, 0.0, 1.0);
+    pulse.set_volume(next);
+    return true;
 }
 
 void Volume::update() {

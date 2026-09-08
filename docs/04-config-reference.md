@@ -173,13 +173,21 @@ Invalid formats fall back to `%H:%M`.
 
 ## `bar.battery`
 
-Cards shown in the battery panel (each also needs its backend).
+Cards shown in the battery panel (each also needs its backend), plus the
+wheel step over the bar icon.
 
-| Key | Default |
-|-----|---------|
-| `show_power_profiles` | `true` |
-| `show_brightness` | `true` |
-| `show_refresh_rate` | `true` |
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `show_power_profiles` | bool | `true` | Power-profile slider card. |
+| `show_brightness` | bool | `true` | Brightness slider card. |
+| `show_refresh_rate` | bool | `true` | Refresh-rate buttons card. |
+| `scroll_step` | int 1..25 | `5` | Screen brightness percent per mouse-wheel notch over the battery icon (up = brighter, floor 1%). |
+
+## `bar.volume`
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `scroll_step` | int 1..25 | `5` | Output volume percent per mouse-wheel notch over the volume icon (up = louder, capped at 100%; mute is left alone). |
 
 ## `bar.bluetooth`
 

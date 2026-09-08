@@ -417,6 +417,8 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Battery panel cards", "Bar › Battery", "battery"},
         {"Brightness slider", "Bar › Battery", "battery"},
         {"Power profiles", "Bar › Battery", "battery"},
+        {"Brightness scroll step", "Bar › Battery", "battery"},
+        {"Volume scroll step", "Bar › Volume", "volume"},
         {"Notification unread badge", "Bar › Notifications", "notifications"},
         {"Session menu style", "Session menu", "session_page"},
         {"Session menu fullscreen layout", "Session menu", "session_page"},

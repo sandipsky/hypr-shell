@@ -2,6 +2,7 @@
 
 #include "bar/bar_popover.hpp"
 
+#include "services/brightness.hpp"
 #include "services/config.hpp"
 #include "services/osd.hpp"
 #include "services/power_profiles.hpp"
@@ -60,6 +61,13 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     });
     add_controller(click);
 
+    // wheel over the icon steps the backlight (Noctalia's Brightness widget
+    // behaviour, on the battery icon since that is where the slider lives)
+    auto scroll = Gtk::EventControllerScroll::create();
+    scroll->set_flags(Gtk::EventControllerScroll::Flags::VERTICAL);
+    scroll->signal_scroll().connect(sigc::mem_fun(*this, &Battery::on_scroll), false);
+    add_controller(scroll);
+
     // dev hook: HS_OPEN_BATTERY=1 pops the panel shortly after startup
     if (const char* hook = g_getenv("HS_OPEN_BATTERY")) {
         const int delay = std::max(800, std::atoi(hook)); // >1 = delay in ms
@@ -79,6 +87,31 @@ Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
 Battery::~Battery() {
     popover_.unparent();
+}
+
+bool Battery::on_scroll(double /*dx*/, double dy) {
+    auto& brightness = Brightness::get();
+    if (!brightness.available()) {
+        return false;
+    }
+    // Accumulate smooth-scroll deltas (touchpads send many small ones); a mouse
+    // wheel notch is exactly ±1.0. Scrolling up (negative dy) brightens.
+    scroll_accum_ += dy;
+    int dir = 0;
+    if (scroll_accum_ >= 1.0) {
+        dir = -1;
+    } else if (scroll_accum_ <= -1.0) {
+        dir = +1;
+    }
+    if (dir == 0) {
+        return true;
+    }
+    scroll_accum_ = 0.0;
+    const double step = Config::get().battery_scroll_step() / 100.0;
+    // never below 1%: a zero backlight looks like a dead screen
+    const double next = std::clamp(brightness.fraction() + dir * step, 0.01, 1.0);
+    brightness.set_fraction(next);
+    return true;
 }
 
 void Battery::update() {

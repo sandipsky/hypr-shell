@@ -88,6 +88,8 @@ void Config::load() {
     battery_show_profiles_ = true;
     battery_show_brightness_ = true;
     battery_show_refresh_ = true;
+    battery_scroll_step_ = 5;
+    volume_scroll_step_ = 5;
     clock_first_day_of_week_ = 0;
     clock_format_horizontal_ = "%H:%M %a, %b %d";
     clock_format_vertical_ = "%H %M";
@@ -221,6 +223,10 @@ void Config::load() {
             battery_show_profiles_ = it->value("show_power_profiles", true);
             battery_show_brightness_ = it->value("show_brightness", true);
             battery_show_refresh_ = it->value("show_refresh_rate", true);
+            battery_scroll_step_ = std::clamp(it->value("scroll_step", 5), 1, 25);
+        }
+        if (auto it = bar.find("volume"); it != bar.end() && it->is_object()) {
+            volume_scroll_step_ = std::clamp(it->value("scroll_step", 5), 1, 25);
         }
         if (auto it = bar.find("app_menu"); it != bar.end() && it->is_object()) {
             auto& a = app_menu_;

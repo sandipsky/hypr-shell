@@ -82,8 +82,8 @@ is missing.
 | `active_window` | `Gtk::Box` (icon + label + rotated drawing area) | Hyprland | `activewindow` event (`class,title`). Icon via `Gio::DesktopAppInfo`. Vertical bars draw the title rotated. |
 | `network` | `Gtk::Box` + icon label | NetworkManager | Glyph from connectivity + strength; ethernet wins. Click → `NetworkPanel`. |
 | `bluetooth` | `Gtk::Box` + icon label | Bluez | off / on / connected glyphs, tooltip = first connected device. Click → `BluetoothPanel`. |
-| `volume` | `Gtk::Box` + icon label | Pulse | Glyph from mute/level. Left click → `AudioPanel`; right click toggles mute. |
-| `battery` | `Gtk::Box` with `Gtk::Overlay` of two labels | UPower + PowerProfiles | Win11 look; CSS classes `charging` / `saver`. Click → `BatteryPanel`. |
+| `volume` | `Gtk::Box` + icon label | Pulse | Glyph from mute/level. Left click → `AudioPanel`; right click toggles mute; wheel steps the volume by `bar.volume.scroll_step`. |
+| `battery` | `Gtk::Box` with `Gtk::Overlay` of two labels | UPower + PowerProfiles | Win11 look; CSS classes `charging` / `saver`. Click → `BatteryPanel`. Wheel steps the backlight by `bar.battery.scroll_step`. |
 | `notifications` | `Gtk::Box` with `Gtk::Overlay` (icon + badge) | NotificationService | Bell / bell-off (DND), unread dot. Click → `NotificationPanel`; right click toggles DND. `bar.notifications.*` hide rules. |
 | `clock` | `Gtk::Label` | none | strftime formats from config. Click → `Calendar`. |
 | `control_center` | `Gtk::Box` (icon label) | none | Tabler "adjustments-horizontal" (sliders) button; click toggles `ControlCenterPanel`. |

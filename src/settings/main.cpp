@@ -361,6 +361,8 @@ struct Settings {
     AdwSwitchRow* bat_profiles = nullptr; // battery panel cards
     AdwSwitchRow* bat_brightness = nullptr;
     AdwSwitchRow* bat_refresh = nullptr;
+    AdwSpinRow* bat_scroll_step = nullptr; // brightness % per wheel notch over the icon
+    AdwSpinRow* vol_scroll_step = nullptr; // bar.volume.scroll_step, volume % per notch
 
     // Launcher sidebar page (top-level "launcher" object in config.json)
     AdwSwitchRow* lp_settings_search = nullptr;
@@ -591,11 +593,16 @@ void populate(Settings* s, PopulateStage stage) {
     }
 
     bool bat_profiles = true, bat_brightness = true, bat_refresh = true;
+    int bat_scroll_step = 5, vol_scroll_step = 5;
     try {
-        const json bat = s->root.value("bar", json::object()).value("battery", json::object());
+        const json bar_obj = s->root.value("bar", json::object());
+        const json bat = bar_obj.value("battery", json::object());
         bat_profiles = bat.value("show_power_profiles", true);
         bat_brightness = bat.value("show_brightness", true);
         bat_refresh = bat.value("show_refresh_rate", true);
+        bat_scroll_step = std::clamp(bat.value("scroll_step", 5), 1, 25);
+        vol_scroll_step =
+            std::clamp(bar_obj.value("volume", json::object()).value("scroll_step", 5), 1, 25);
     } catch (const json::exception&) {
     }
 
@@ -823,6 +830,8 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
     adw_switch_row_set_active(s->bat_refresh, bat_refresh);
+    adw_spin_row_set_value(s->bat_scroll_step, bat_scroll_step);
+    adw_spin_row_set_value(s->vol_scroll_step, vol_scroll_step);
     adw_switch_row_set_active(s->notif_badge, notif_badge);
     adw_switch_row_set_active(s->notif_hide_zero, notif_hide_zero);
     adw_switch_row_set_active(s->notif_hide_zero_unread, notif_hide_zero_unread);
@@ -1170,6 +1179,29 @@ void on_battery_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "battery-key"));
     battery_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_bat_scroll_step_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    battery_object(s)["scroll_step"] = static_cast<int>(adw_spin_row_get_value(s->bat_scroll_step));
+    save(s);
+}
+
+json& volume_object(Settings* s) {
+    json& bar = bar_object(s);
+    if (!bar["volume"].is_object())
+        bar["volume"] = json::object();
+    return bar["volume"];
+}
+
+void on_vol_scroll_step_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    volume_object(s)["scroll_step"] = static_cast<int>(adw_spin_row_get_value(s->vol_scroll_step));
     save(s);
 }
 
@@ -4540,6 +4572,36 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(bat_page),
                              ADW_PREFERENCES_GROUP(bat_group));
 
+    GtkWidget* bat_icon_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(bat_icon_group), "Bar icon");
+    GtkWidget* bat_step_row = adw_spin_row_new_with_range(1, 25, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(bat_step_row), "Brightness scroll step");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(bat_step_row),
+                                "Percent of screen brightness per mouse-wheel notch over the "
+                                "battery icon.");
+    s->bat_scroll_step = ADW_SPIN_ROW(bat_step_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(bat_icon_group), bat_step_row);
+    g_signal_connect(bat_step_row, "notify::value", G_CALLBACK(on_bat_scroll_step_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(bat_page),
+                             ADW_PREFERENCES_GROUP(bat_icon_group));
+
+    // -- Volume subpage --------------------------------------------------------
+    GtkWidget* vol_page = adw_preferences_page_new();
+    GtkWidget* vol_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(vol_group), "Bar icon");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(vol_group),
+        "Click opens the audio panel, right click toggles mute, the mouse wheel "
+        "changes the output volume.");
+    GtkWidget* vol_step_row = adw_spin_row_new_with_range(1, 25, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(vol_step_row), "Volume scroll step");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(vol_step_row),
+                                "Percent of output volume per mouse-wheel notch.");
+    s->vol_scroll_step = ADW_SPIN_ROW(vol_step_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(vol_group), vol_step_row);
+    g_signal_connect(vol_step_row, "notify::value", G_CALLBACK(on_vol_scroll_step_changed), s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(vol_page), ADW_PREFERENCES_GROUP(vol_group));
+
     // -- Notifications subpage ---------------------------------------------------
     GtkWidget* notif_page = adw_preferences_page_new();
     GtkWidget* notif_group = adw_preferences_group_new();
@@ -4662,6 +4724,12 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(bat_view, "Battery",
                                                              "battery"));
 
+    GtkWidget* vol_view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(vol_view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(vol_view), vol_page);
+    adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                            adw_navigation_page_new_with_tag(vol_view, "Volume", "volume"));
+
     GtkWidget* am_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(am_view), adw_header_bar_new());
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(am_view), am_page);
@@ -4753,6 +4821,18 @@ void on_activate(GtkApplication* app, gpointer) {
                      }),
                      nav);
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("battery")]), bat_cog);
+
+    // cog on the Volume module row
+    GtkWidget* vol_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(vol_cog, "flat");
+    gtk_widget_set_valign(vol_cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(vol_cog, "Volume settings");
+    g_signal_connect(vol_cog, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
+                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "volume");
+                     }),
+                     nav);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("volume")]), vol_cog);
 
     // cog on the Active window module row
     GtkWidget* aw_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");

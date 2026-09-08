@@ -1856,6 +1856,18 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   run. Also fixed on the way: the launcher's Spotlight animation logged two
   Gtk-CRITICALs per frame (`set_min_content_height` above the still-old max
   while growing) — `set_list_height()` orders the two sets by direction.
+- 2026-09-08 — Wheel over the volume and battery icons (user request): the
+  `volume` module steps the default sink by `bar.volume.scroll_step` percent
+  per notch (default 5, Noctalia's volumeStep; capped at 100%, mute untouched)
+  and the `battery` module steps the backlight by `bar.battery.scroll_step`
+  (default 5, Noctalia's brightnessStep; floor 1% so the screen never goes
+  dark) — the battery icon hosts brightness because its panel holds the
+  slider and there is no separate brightness module. Smooth deltas accumulate
+  to one step per whole unit like the workspaces module; scrolling up
+  (negative dy) increases. The OSD shows the result through the existing
+  Pulse / Brightness signals. Settings: "Brightness scroll step" spin row in
+  a new "Bar icon" group on the Battery subpage, and a new Volume subpage
+  (cog on the Volume module row, tag `volume`) with "Volume scroll step".
 - 2026-09-05 — App menu: `bar.app_menu.tile_background` (default on, "App
   item background" switch, grid only) drops the mSurfaceVariant cards via a
   `flat-tiles` class on the panel; list rows got 8px/12px padding. Bug fix

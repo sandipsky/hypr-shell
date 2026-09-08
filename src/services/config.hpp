@@ -89,6 +89,11 @@ public:
     bool battery_show_power_profiles() const { return battery_show_profiles_; }
     bool battery_show_brightness() const { return battery_show_brightness_; }
     bool battery_show_refresh_rate() const { return battery_show_refresh_; }
+    // bar.battery.scroll_step — brightness percent per wheel notch over the icon
+    int battery_scroll_step() const { return battery_scroll_step_; }
+
+    // bar.volume.scroll_step — output volume percent per wheel notch over the icon
+    int volume_scroll_step() const { return volume_scroll_step_; }
 
     // bar.control_center.* — which cards the control center panel shows
     // (Noctalia's controlCenter.cards, reduced to these four; defaults are
@@ -344,6 +349,8 @@ private:
     bool battery_show_profiles_ = true;
     bool battery_show_brightness_ = true;
     bool battery_show_refresh_ = true;
+    int battery_scroll_step_ = 5;
+    int volume_scroll_step_ = 5;
     int clock_first_day_of_week_ = 0;
     std::string clock_format_horizontal_ = "%H:%M %a, %b %d";
     std::string clock_format_vertical_ = "%H %M";

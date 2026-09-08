@@ -18,6 +18,9 @@ public:
 
 private:
     void update();
+    bool on_scroll(double dx, double dy);
+
+    double scroll_accum_ = 0.0; // smooth-scroll deltas, one step per whole unit
 
     Gtk::Overlay overlay_;
     Gtk::Label fill_;
