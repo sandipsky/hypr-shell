@@ -7,7 +7,13 @@
 #include <string>
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdint>
 #include <cstdlib>
+#include <ctime>
+
+#include <sys/timerfd.h>
+#include <unistd.h>
 
 namespace hyprshell {
 
@@ -49,6 +55,8 @@ void Clock::open() {
 }
 
 Clock::~Clock() {
+    minute_conn_.disconnect();
+    if (minute_fd_ >= 0) close(minute_fd_);
     popover_.unparent();
 }
 
@@ -88,13 +96,48 @@ void Clock::update() {
 }
 
 void Clock::schedule_next_minute() {
-    // fire ~1s past the minute boundary so the minute has always rolled over
-    auto wait = 61 - static_cast<unsigned>(Glib::DateTime::create_now_local().get_second());
-    Glib::signal_timeout().connect_seconds([this] {
-        update();
-        schedule_next_minute();
-        return false;
-    }, wait);
+    // GLib timeouts run on CLOCK_MONOTONIC, which stands still while the machine is
+    // suspended: a "60 s until the next minute" timer armed before suspend still had
+    // most of that minute left after resume, so the label showed the pre-suspend time
+    // for up to a minute (the calendar recomputes on open and was right). A timerfd on
+    // CLOCK_REALTIME armed for the ABSOLUTE next minute boundary keeps counting through
+    // suspend and fires as soon as the system is back; TFD_TIMER_CANCEL_ON_SET makes a
+    // stepped clock (NTP after resume, a manual date change) wake us too, so the label
+    // never waits on a boundary that no longer exists.
+    if (minute_fd_ < 0) {
+        minute_fd_ = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
+        if (minute_fd_ < 0) {
+            g_warning("clock: timerfd_create failed (%s); falling back to a GLib timeout", g_strerror(errno));
+            auto wait = 61 - static_cast<unsigned>(Glib::DateTime::create_now_local().get_second());
+            Glib::signal_timeout().connect_seconds([this] {
+                update();
+                schedule_next_minute();
+                return false;
+            }, wait);
+            return;
+        }
+        minute_conn_ = Glib::signal_io().connect(sigc::mem_fun(*this, &Clock::on_minute_timer),
+                                                 minute_fd_, Glib::IOCondition::IO_IN);
+    }
+
+    timespec now{};
+    clock_gettime(CLOCK_REALTIME, &now);
+    itimerspec spec{};
+    spec.it_value.tv_sec = now.tv_sec - now.tv_sec % 60 + 60; // next :00 in wall time
+    spec.it_value.tv_nsec = 0;
+    if (timerfd_settime(minute_fd_, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &spec, nullptr) < 0)
+        g_warning("clock: timerfd_settime failed (%s)", g_strerror(errno));
+}
+
+bool Clock::on_minute_timer(Glib::IOCondition) {
+    std::uint64_t expirations = 0;
+    const ssize_t n = read(minute_fd_, &expirations, sizeof expirations);
+    if (n < 0 && errno == EAGAIN) return true; // spurious wake-up, timer still armed
+    // n > 0: the minute boundary passed (possibly during suspend);
+    // n < 0 && errno == ECANCELED: the clock was set — the timer is disarmed, re-arm it
+    update();
+    schedule_next_minute();
+    return true;
 }
 
 } // namespace hyprshell

@@ -288,6 +288,20 @@ runs (install.sh does this).
 
 **sysfs has no inotify.** Provide `refresh()` and call it when the UI opens.
 
+**GLib timeouts stand still during suspend.** `Glib::signal_timeout()` runs
+on CLOCK_MONOTONIC, which does not advance while the machine sleeps, so a
+"fire at the next minute" timer armed before suspend still has most of that
+minute left after resume — the clock label showed the pre-suspend time for
+up to a minute while the calendar (recomputed on open) was right. Anything
+that must track wall-clock time uses a `timerfd` on CLOCK_REALTIME armed
+with `TFD_TIMER_ABSTIME` for the absolute boundary and
+`TFD_TIMER_CANCEL_ON_SET` (the clock module, `schedule_next_minute()`):
+real time keeps counting through suspend, an expiry that passed while asleep
+fires on resume, and a stepped clock (NTP after resume, `date -s`) returns
+ECANCELED from `read()` so the timer is re-armed. Watch the fd with
+`Glib::signal_io()`. Elapsed-time counters (debounces, animations, polls)
+are fine on monotonic timeouts.
+
 **The compositor does not see controller input.** Hyprland counts only
 keyboard / pointer / touch towards idleness, so a gamepad session looks
 idle. `services/gamepad` reads the evdev nodes itself — only joystick nodes

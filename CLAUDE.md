@@ -1565,6 +1565,17 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   and the rows can return by flipping the flag. Those keys are config-only
   now; the page description says so. The launcher's static settings index
   lost the matching entries.
+- 2026-09-10 — Clock behind after suspend (user report: the bar showed the
+  pre-suspend time after unlocking, the calendar was right). GLib timeouts
+  run on CLOCK_MONOTONIC, which stands still during suspend, so the "next
+  minute" timer armed before sleep still had most of its minute to run after
+  resume. `Clock::schedule_next_minute()` now arms a `timerfd` on
+  CLOCK_REALTIME for the absolute next :00 with `TFD_TIMER_CANCEL_ON_SET`,
+  watched via `Glib::signal_io()`: an expiry that passed while asleep fires on
+  resume, a stepped clock (NTP, `date -s`) cancels the timer (read →
+  ECANCELED) and it is re-armed — systemd's calendar-timer mechanism. The
+  GLib timeout remains only as a fallback if `timerfd_create` fails. Other
+  timers in the shell measure elapsed time and are unaffected.
 - 2026-09-05 — Clock tooltip (user request): hovering the clock shows
   `bar.clock.tooltip_format` (strftime through Glib::DateTime, default
   "%A, %B %-d, %Y" → "Saturday, September 5, 2026"; empty = no tooltip,
