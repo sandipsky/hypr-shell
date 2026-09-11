@@ -154,7 +154,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `idle` | `ext-idle-notify-v1`, `idle-inhibit-v1` | Stages screen off / lock / suspend with the fade grace period; "lock" is `request_lock()`, suspend waits for `signal_session_locked()` (3s cap) when `lock_before_suspend`. `report_external_activity()` holds an idle inhibitor on a role-less `wl_surface` for 3 s so the compositor cancels a fade and restarts its timeouts. |
 | `gamepad` | `/dev/input/event*` (evdev), `Gio::FileMonitor` on `/dev/input` | Opens joystick / gamepad nodes (the only ones the seated user may read, via systemd's uaccess ACL; a node must advertise gamepad buttons), reads events on `Glib::signal_io`, emits `signal_activity()` on button presses and axis moves past a dead zone, at most every 250 ms; hotplug with ACL retries. Feeds `Idle`. |
 
-## `src/settings/` — `main.cpp` (~3900 lines) + `search.cpp` + `about_page.cpp`
+## `src/settings/` — `main.cpp` (~5100 lines) + `search.cpp` + the page files
 
 `login_page.{hpp,cpp}` — the "Login screen" page for the Elegant SDDM theme
 (dotfiles repo, `assets/sddm-themes/Elegant`). State is the theme's
@@ -163,7 +163,9 @@ theme's `theme.conf` defaults and written back through `pkexec` on an Apply
 button (with the chosen background image copied next to it — the greeter runs
 as the sddm user and can't read a 0700 home). `login_page_available()` gates
 the sidebar row: sddm on PATH, the theme's `Main.qml` present, and
-`Current=Elegant` in SDDM's config.
+`Current=Elegant` in SDDM's config. `sddm_config_value(section, key)` — the
+reader behind that check (packaged defaults, /etc/sddm.conf, /etc/sddm.conf.d;
+last file wins) — is exported for the Users page's FacesDir lookup.
 
 The settings app, one file, libadwaita C API.
 
@@ -197,6 +199,7 @@ Two companions sit next to it:
 | `command.{hpp,cpp}` | `run_command(argv, done)`: async GSubprocess wrapper (stdout/stderr captured, `ok` = exit 0) plus `trim` / `first_line` / `split_lines`, shared by the hotspot and VPN pages. |
 | `vpn_page.{hpp,cpp}` | `build_vpn_page()`: NetworkManager `vpn` / `wireguard` profiles as switch rows (connect/disconnect via `nmcli connection up/down uuid`, Noctalia's success-text check), Import header button (`GtkFileDialog`, `.conf` → wireguard, `.ovpn` → openvpn), delete with `AdwAlertDialog`; refresh on map + 3 s poll. Replaced the bar's VPN module on 2026-09-05. |
 | `hotspot_page.{hpp,cpp}` | `build_hotspot_page()`: Wi-Fi hotspot over NetworkManager's AP mode, all through async `nmcli` (`run_cmd` GSubprocess helper). Reads/writes the user-owned "Hotspot" profile (name, WPA2/WPA3/open, password, band, hidden, autoconnect, interface), optional virtual AP interface via `pkexec iw` for hotspot + Wi-Fi at once (support parsed from `iw phy … info`), 3 s status poll while mapped. No config.json involvement. |
+| `users_page.{hpp,cpp}` | `build_users_page()`: GNOME's Users panel over AccountsService (`org.freedesktop.Accounts`, GDBus, async with a weak alive guard). Root = the current user (AdwAvatar with change/remove buttons, Name entry row → `SetRealName`, Password row → Change Password dialog → `SetPassword(crypt hash)`, Other Users list, Add User `AdwButtonRow`); another user's page is pushed onto the returned `AdwNavigationView` (plus Administrator switch → `SetAccountType`, Remove User → `DeleteUser`). Pictures: 512² PNG to `~/.face`, `SetIconFile`, one pkexec `install` into SDDM's FacesDir. Reloads on the daemon's `UserAdded` / `UserDeleted` / `Changed` signals. No config.json. |
 | `about_page.{hpp,cpp}` | `build_about_page()`: hardware (device name, model, memory, processor, graphics, disk) and software (firmware, OS name/type, kernel, windowing system, Hyprland and hypr-shell versions) as `.property` rows, all read from sysfs, `/proc` and `os-release`; only the Hyprland version is an async `hyprctl -j version`. |
 
 See [the settings app](07-settings-app.md) for how to extend it.

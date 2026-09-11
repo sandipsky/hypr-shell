@@ -93,6 +93,10 @@ void LockScreen::lock() {
     if (preview_ != nullptr)
         close_preview();
     reset_state();
+    // the settings app's Users page may have renamed the account or
+    // replaced ~/.face since startup
+    display_name_ = user_display_name();
+    avatar_path_ = user_avatar_path();
     g_message("lock screen: locking");
     if (!gtk_session_lock_instance_lock(instance_))
         g_warning("lock screen: lock request failed immediately");
@@ -102,6 +106,8 @@ void LockScreen::open_preview() {
     if (preview_ != nullptr || locked_)
         return;
     reset_state();
+    display_name_ = user_display_name();
+    avatar_path_ = user_avatar_path();
     auto display = Gdk::Display::get_default();
     auto monitors = display->get_monitors();
     Glib::RefPtr<Gdk::Monitor> monitor;

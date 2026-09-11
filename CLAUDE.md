@@ -36,8 +36,10 @@ footprint — native compiled code, no JS/QML runtime, minimal dependencies.
 - **meson + ninja**, install prefix `~/.local` (no sudo needed beyond pacman).
 - **libadwaita** — for the settings app only (GNOME-Settings look & UX). There is no
   official libadwaitamm, so `hypr-shell-settings` calls the libadwaita C API directly
-  from C++ (standard practice); it depends only on libadwaita + nlohmann-json, no gtkmm.
-  The shell itself stays plain GTK4 + custom CSS.
+  from C++ (standard practice); it depends only on libadwaita (>= 1.6: AdwButtonRow,
+  AdwSpinner, CSS `--accent-bg-color` variables) + nlohmann-json + libxcrypt (crypt_r
+  for AccountsService's SetPassword), no gtkmm. The shell itself stays plain GTK4 +
+  custom CSS.
 - Target platform: **Arch Linux + Hyprland** only (Hyprland 0.56+ at time of writing).
 
 ## Layout
@@ -149,6 +151,9 @@ src/settings/login_page.{hpp,cpp}       "Login screen" page: the Elegant SDDM th
                                         SDDM + that theme are installed and selected
 src/settings/vpn_page.{hpp,cpp}         "VPN" page: NetworkManager vpn/wireguard profiles over
                                         nmcli (connect switches, import .conf/.ovpn, delete)
+src/settings/users_page.{hpp,cpp}       "Users" page: GNOME's Users panel over AccountsService
+                                        (picture → ~/.face + SDDM FacesDir via pkexec, name,
+                                        password, other users, Add User with password set now)
 src/settings/command.{hpp,cpp}          run_command(): async GSubprocess helper + string utils
                                         shared by the hotspot and VPN pages
 docs/                                   long-form developer docs (start at docs/README.md)
@@ -213,6 +218,14 @@ frames) and at every config.json write — a launch must print no write.
 settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
+Users page testing: `HS_USERS_ADD=1` / `HS_USERS_PASSWORD=1` open the Add
+User / Change Password dialogs 1.5s after the page exists;
+`HS_USERS_PICTURE=<image>` applies that picture to the current account like
+the file dialog would (writes ~/.face — back it up first — and registers it
+with AccountsService), `HS_USERS_NO_PKEXEC=1` skips the privileged SDDM copy
+so the test raises no polkit prompt. **Never let a pkexec or polkit prompt
+appear from the tool shell unattended**, and never submit Add User / Change
+Password / Remove User against the real account.
 Clipboard testing: `HS_OPEN_CLIPBOARD=3000` opens the history window after 3s
 (`hypr-shell --clipboard` against a running instance also works);
 `HS_CLIPBOARD_DELETE=<ms>` presses the selected row's trash button that long
@@ -333,7 +346,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       applies changes live.
       *(pulled forward 2026-08-31: the executable exists — single bar page with
       position/height/module toggles, instant apply; the sidebar + search layout and
-      full option coverage come with this phase)*
+      full option coverage come with this phase; 2026-09-11: a GNOME-style "Users"
+      page over AccountsService landed — accounts are system state, not config.json)*
 - [ ] **Phase 7 — Noctalia-parity extras** (as desired): app launcher, wallpaper
       handling, screenshot helpers, systemd user units.
       *(pulled forward 2026-09-02: the app launcher landed — list view only,
@@ -1644,6 +1658,62 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   never highlights. Settings: a "Mouse" group with two switches on the Active
   window subpage. The module still does not implement CornerTarget (it lives
   in the centre section).
+- 2026-09-11 — Users settings page (user request: GNOME Settings' Users panel
+  minus Automatic Login and Language, and an Add User dialog that has no
+  "set password on first login" — the password is set right there).
+  Backend = **AccountsService** (`org.freedesktop.Accounts` on the system
+  bus, installed and active here; GNOME's backend), spoken directly over
+  GDBus from `settings/users_page.cpp` — no config.json involvement, since
+  accounts are system state. Polkit decides the prompts: own name and
+  picture are free (`change-own-user-data` allow yes), `change-own-password`
+  and `user-administration` are `auth_admin(_keep)`, so the session's polkit
+  agent asks for the administrator password — that prompt stands in for the
+  "current password" field of GNOME's own-password dialog (GNOME drives
+  `passwd` through a pty for that; not ported, so a non-admin changing their
+  own password needs an administrator's password — the dialog says so).
+  SetPassword takes a crypt(3) hash: yescrypt via libxcrypt's
+  `crypt_gensalt_ra("$y$")` + `crypt_r` (new settings dependency). Add User
+  = `CreateUser(name, fullname, type)` then `SetPassword` on the returned
+  object (one `auth_admin_keep` covers both; a cancelled dialog still sets
+  the password so no account is left locked); username proposed from the
+  full name (first word, initial+last, word+N — the first free one), useradd's
+  name regex, `getpwnam` for "already in use", strength meter = our own
+  length/character-class heuristic (libpwquality not added). Other users
+  list on the root page (AccountsService's cached users minus system
+  accounts) → pushed page with Name / Password / Administrator
+  (`SetAccountType`, admin group is `wheel` per accounts-daemon's build) /
+  "Remove User…" (`DeleteUser(uid, remove_files)` after GNOME's Keep Files /
+  Delete Files alert). Data reloads on `UserAdded` / `UserDeleted` /
+  `User.Changed` (150 ms coalesce); a name row with focus is never
+  overwritten by a reload. **Picture**: decoded at a size whose short side
+  is 512, centre-cropped, saved as PNG (JPEG if that exceeds the daemon's
+  1 MiB icon limit) — to `~/.face` for ourselves (what the shell reads), to
+  a cache staging file for another user —, then `SetIconFile` (the daemon
+  copies it to /var/lib/AccountsService/icons/<user> and announces it), then
+  **one pkexec** installs it as `<FacesDir>/<user>.face.icon` for SDDM
+  (FacesDir from SDDM's config via the shared `sddm_config_value()`, default
+  /usr/share/sddm/faces; the greeter runs as sddm and cannot read a 0700
+  home, which is why the copy exists) and, for another user, as their
+  `~/.face` — skipped entirely without sddm on PATH. Remove = delete
+  `~/.face`, `SetIconFile("")`, pkexec `rm` of the copies. **Shell side**:
+  `user_display_name()` reads passwd with `getpwuid_r` on every call (GLib
+  caches `g_get_real_name()` for the process), the control center re-reads
+  name + picture on every open (re-decoding only when ~/.face's mtime
+  changed) and the lock screen re-reads them when locking / previewing, so
+  a change shows without restarting the shell. UI notes: Administrator is
+  an AdwActionRow with the info icon *then* a GtkSwitch (an AdwSwitchRow
+  puts its switch before any added suffix; GNOME's row has the icon first);
+  the info glyph is `help-about-symbolic` because Adwaita's
+  `dialog-information-symbolic` is a light bulb; libadwaita bumped to >= 1.6
+  for AdwButtonRow ("Add User ›") and AdwSpinner. Status text under the
+  picture / rows reports polkit refusals ("Authorisation was not granted.").
+  Tested live: page load, the picture pipeline through `HS_USERS_PICTURE`
+  (file → 512×512 → AccountsService copy → page refresh, original restored),
+  both dialogs' layout; NOT exercised: any privileged path (Add User,
+  passwords, other users, the pkexec copies) — the machine has one account
+  and prompts must not pop up unattended. Not ported from GNOME: built-in
+  avatar gallery / camera, fingerprint, parental controls, enterprise login,
+  the "unlock" banner (polkit prompts per action instead), password hints.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

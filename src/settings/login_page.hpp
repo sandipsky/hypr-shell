@@ -11,6 +11,8 @@
 
 #include <adwaita.h>
 
+#include <string>
+
 namespace hyprshell::settings {
 
 // sddm on PATH, the Elegant theme present, and selected as SDDM's current
@@ -19,5 +21,11 @@ bool login_page_available();
 
 // Returns a ready AdwPreferencesPage. `window` parents the file dialog.
 GtkWidget* build_login_page(GtkWindow* window);
+
+// `key` from `[section]` across SDDM's config files — the packaged defaults
+// under /usr/lib/sddm/sddm.conf.d, /etc/sddm.conf, /etc/sddm.conf.d — with
+// the last file that sets it winning, like SDDM. "" when unset. Shared with
+// the Users page (FacesDir).
+std::string sddm_config_value(const char* section, const char* key);
 
 } // namespace hyprshell::settings

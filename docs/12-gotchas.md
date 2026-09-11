@@ -389,3 +389,30 @@ libraries; compare `Pss` / `Private_Dirty` from
 
 **The Segoe font is proprietary.** Strip `data/fonts/SegoeIcons.ttf` (and
 its install line) before publishing the repository.
+
+## AccountsService and polkit (settings app, Users page)
+
+- `SetIconFile` refuses files over 1 MiB and copies anything outside
+  `/usr/share` or its own icon dir into `/var/lib/AccountsService/icons/<user>`
+  — the `IconFile` property then points at that copy, not at `~/.face`. The
+  shell keeps reading `~/.face`; the page prefers it too for the current user.
+- Pass `G_DBUS_CALL_FLAGS_ALLOW_INTERACTIVE_AUTHORIZATION` and no timeout
+  (`G_MAXINT`) to calls that polkit may gate: the agent's prompt can sit for
+  a long time, and the default 25 s timeout would fail the call underneath it.
+- `change-own-password` is `auth_admin` on this distro: even changing your
+  own password prompts for an administrator password. GNOME avoids that by
+  driving `passwd` through a pty; we accept the prompt and say so in the dialog.
+- `g_get_real_name()` is cached by GLib for the process lifetime; read
+  `getpwuid_r` when the GECOS name may change at runtime.
+
+## libadwaita rows
+
+- `adw_action_row_add_suffix()` on an `AdwSwitchRow` lands *after* its
+  switch. For an icon before the switch (GNOME's Administrator row) build an
+  `AdwActionRow` with the icon and a `GtkSwitch` as suffixes yourself, and set
+  the switch as the activatable widget.
+- Adwaita's `dialog-information-symbolic` is a light bulb; the circled "i" is
+  `help-about-symbolic`.
+- An `AdwEntryRow` with `show-apply-button` only shows the apply button after
+  *user* edits (the row must have focus when the text changes), so
+  programmatic `gtk_editable_set_text` during a reload does not arm it.

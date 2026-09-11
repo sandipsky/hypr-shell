@@ -50,6 +50,8 @@ AdwNavigationSplitView
      ├─ "ui_page": AdwPreferencesPage for the top-level ui object (theme)
      ├─ "hotspot_page": build_hotspot_page() — NetworkManager state, no config.json
      ├─ "vpn_page": build_vpn_page() — NetworkManager profiles, no config.json
+     ├─ "users_page": build_users_page() — an AdwNavigationView of its own:
+     │    root = current user, other users' pages pushed on demand
      └─ "about_page": build_about_page() — read-only system facts
 ```
 
@@ -116,6 +118,41 @@ suffix asks with an `AdwAlertDialog` before `connection delete`, and the
 group's header button imports a `.conf` (WireGuard) or `.ovpn` (OpenVPN)
 file through `GtkFileDialog`. Rows are rebuilt on every refresh (map + 3 s
 poll), so there is no per-row state to keep in sync.
+
+### Users (`users_page.cpp`)
+
+GNOME Settings' Users panel without Automatic Login and Language. The state
+is the system's: everything goes through AccountsService
+(`org.freedesktop.Accounts` on the system bus) with plain
+`g_dbus_connection_call` — `ListCachedUsers` + `FindUserById(getuid())`,
+`GetAll` on each user object, then `SetRealName`, `SetPassword`,
+`SetAccountType`, `SetIconFile`, `CreateUser`, `DeleteUser`. Polkit prompts
+through the session's agent for anything beyond one's own name and picture
+(`ALLOW_INTERACTIVE_AUTHORIZATION`, no call timeout). `SetPassword` wants a
+crypt(3) hash — `crypt_gensalt_ra("$y$")` + `crypt_r` from libxcrypt.
+
+Layout: an `AdwAvatar` inside a `GtkOverlay` with two round buttons (change
+→ `GtkFileDialog`, remove), an `AdwEntryRow` "Name" with the apply button,
+an "Password" action row opening the Change Password dialog, and on the root
+page the "Other Users" group (one row per non-system account, pushed as its
+own page with an Administrator switch and "Remove User…") plus an
+`AdwButtonRow` "Add User". The Add User dialog (`AdwDialog` with a header
+bar: Cancel / Add) proposes a username from the full name and requires the
+password right away: `CreateUser` then `SetPassword` on the new object.
+
+Pictures are decoded at a 512-px short side, centre-cropped and saved as
+PNG (JPEG if over the daemon's 1 MiB limit) to `~/.face` — the file the
+shell's lock screen and control center read — then handed to `SetIconFile`
+(the daemon keeps its own copy under `/var/lib/AccountsService/icons`) and
+finally installed as `<FacesDir>/<user>.face.icon` for SDDM through one
+`pkexec install`, because the greeter runs as the sddm user and cannot read
+a 0700 home. Without `sddm` on PATH that step is skipped.
+
+The page reloads on `UserAdded` / `UserDeleted` / `User.Changed` (150 ms
+coalesce) and never overwrites a name row that has keyboard focus. When the
+daemon is missing the root shows an `AdwStatusPage` asking for the
+accountsservice package. Dev hooks: `HS_USERS_ADD`, `HS_USERS_PASSWORD`,
+`HS_USERS_PICTURE=<image>` (+ `HS_USERS_NO_PKEXEC=1`).
 
 ### About (`about_page.cpp`)
 

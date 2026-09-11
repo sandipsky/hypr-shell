@@ -15,6 +15,7 @@
 #include "settings/about_page.hpp"
 #include "settings/hotspot_page.hpp"
 #include "settings/login_page.hpp"
+#include "settings/users_page.hpp"
 #include "settings/search.hpp"
 #include "settings/vpn_page.hpp"
 
@@ -156,6 +157,7 @@ constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"clipboard_page", "Clipboard", "edit-paste-symbolic"},
     {"session_page", "Session menu", "system-shutdown-symbolic"},
     {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
+    {"users_page", "Users", "system-users-symbolic"},
     {"login_page", "Login screen", "glyph:\uEBA7"}, // tabler login; row hidden without SDDM+Elegant
     {"idle_page", "Idle", "alarm-symbolic"},
     {"osd_page", "On-screen display", "display-brightness-symbolic"},
@@ -3924,6 +3926,12 @@ void build_secondary_pages(Settings* s) {
     gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
     gtk_stack_add_named(GTK_STACK(stack), nd_view, "notifications_page");
 
+    // -- Users: AccountsService accounts (GNOME's Users panel; no config.json).
+    // The navigation view carries its own header bars (other users' pages
+    // are pushed onto it), so it goes into the stack unwrapped.
+    gtk_stack_add_named(GTK_STACK(stack), hyprshell::settings::build_users_page(GTK_WINDOW(win)),
+                        "users_page");
+
     // -- Login screen: the Elegant SDDM theme's theme.conf.user (root-owned,
     // written through pkexec on Apply — not config.json) ----------------------
     GtkWidget* login_view = adw_toolbar_view_new();
@@ -3987,6 +3995,14 @@ void on_activate(GtkApplication* app, gpointer) {
         ".wp-tile:hover .wp-thumb, .wp-tile.current .wp-thumb { opacity: 1; }"
         ".wp-tile label { color: @dim_label_color; }"
         ".wp-tile:hover label, .wp-tile.current label { color: @window_fg_color; }"
+        // Users page: the round picture buttons over the avatar (GNOME's user
+        // page look — opaque so they read against any photo)
+        "button.avatar-button { min-width: 34px; min-height: 34px; padding: 0;"
+        "  background-color: var(--headerbar-bg-color);"
+        "  border: 1px solid alpha(var(--window-fg-color), 0.1);"
+        "  box-shadow: 0 1px 3px alpha(black, 0.35); }"
+        "button.avatar-button:hover { filter: brightness(1.2); }"
+        "button.avatar-remove image { color: var(--error-color); }"
         // search result target flash (removed again by the search module)
         "row.search-hit { background-color: alpha(@accent_bg_color, 0.28); }"
         // tabler glyph standing in for an icon (sidebar + search results)

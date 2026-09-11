@@ -187,14 +187,16 @@ executable(
     'src/settings/about_page.cpp',
     'src/settings/hotspot_page.cpp',
     'src/settings/login_page.cpp',
+    'src/settings/users_page.cpp',
     'src/settings/vpn_page.cpp',
     'src/settings/command.cpp',
     'src/settings/search.cpp',
   ),
   cpp_args: ['-DHS_VERSION="' + meson.project_version() + '"'],
   dependencies: [
-    dependency('libadwaita-1', version: '>= 1.4'),
+    dependency('libadwaita-1', version: '>= 1.6'), # AdwButtonRow / AdwSpinner (Users page)
     dependency('nlohmann_json'),
+    dependency('libxcrypt'), # crypt_r for AccountsService's SetPassword (Users page)
   ],
   include_directories: include_directories('src'),
   install: true,

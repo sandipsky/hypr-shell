@@ -56,6 +56,7 @@ public:
 
 private:
     void build_profile();
+    void refresh_profile(); // picture + name, re-read on every open
     void update_uptime();
     void build_audio();
     void build_brightness();
@@ -77,6 +78,8 @@ private:
     Gtk::Picture avatar_;
     Gtk::Label avatar_fallback_;
     Gtk::Label name_, uptime_;
+    std::string avatar_path_; // what avatar_ shows, "" = fallback
+    gint64 avatar_mtime_ = -1;
     Gtk::Button settings_button_, power_button_;
     Gtk::Label settings_icon_, power_icon_;
     sigc::connection uptime_timer_;

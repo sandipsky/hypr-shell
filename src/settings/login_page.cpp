@@ -91,41 +91,7 @@ bool is_hex_color(const std::string& s) {
     return true;
 }
 
-// Current=<theme> from every SDDM config file, the last one wins like SDDM.
-std::string current_sddm_theme() {
-    std::string theme;
-    auto scan = [&theme](const std::string& path) {
-        std::ifstream in(path);
-        std::string line;
-        bool in_theme = false;
-        while (std::getline(in, line)) {
-            line = trim(line);
-            if (!line.empty() && line[0] == '[') {
-                in_theme = line == "[Theme]";
-                continue;
-            }
-            if (in_theme && line.rfind("Current=", 0) == 0)
-                theme = trim(line.substr(8));
-        }
-    };
-    auto scan_dir = [&scan](const char* dir) {
-        GDir* d = g_dir_open(dir, 0, nullptr);
-        if (d == nullptr)
-            return;
-        std::vector<std::string> files;
-        while (const char* name = g_dir_read_name(d))
-            if (g_str_has_suffix(name, ".conf"))
-                files.push_back(std::string(dir) + "/" + name);
-        g_dir_close(d);
-        std::sort(files.begin(), files.end());
-        for (const auto& f : files)
-            scan(f);
-    };
-    scan_dir("/usr/lib/sddm/sddm.conf.d");
-    scan("/etc/sddm.conf");
-    scan_dir("/etc/sddm.conf.d");
-    return theme;
-}
+std::string current_sddm_theme() { return sddm_config_value("Theme", "Current"); }
 
 std::vector<Session> list_sessions() {
     std::vector<Session> out;
@@ -389,6 +355,43 @@ void on_browse_clicked(GtkButton* button, gpointer data) {
 }
 
 } // namespace
+
+std::string sddm_config_value(const char* section, const char* key) {
+    std::string value;
+    const std::string header = std::string("[") + section + "]";
+    const std::string prefix = std::string(key) + "=";
+    auto scan = [&](const std::string& path) {
+        std::ifstream in(path);
+        std::string line;
+        bool in_section = false;
+        while (std::getline(in, line)) {
+            line = trim(line);
+            if (!line.empty() && line[0] == '[') {
+                in_section = line == header;
+                continue;
+            }
+            if (in_section && line.rfind(prefix, 0) == 0)
+                value = trim(line.substr(prefix.size()));
+        }
+    };
+    auto scan_dir = [&scan](const char* dir) {
+        GDir* d = g_dir_open(dir, 0, nullptr);
+        if (d == nullptr)
+            return;
+        std::vector<std::string> files;
+        while (const char* name = g_dir_read_name(d))
+            if (g_str_has_suffix(name, ".conf"))
+                files.push_back(std::string(dir) + "/" + name);
+        g_dir_close(d);
+        std::sort(files.begin(), files.end());
+        for (const auto& f : files)
+            scan(f);
+    };
+    scan_dir("/usr/lib/sddm/sddm.conf.d");
+    scan("/etc/sddm.conf");
+    scan_dir("/etc/sddm.conf.d");
+    return value;
+}
 
 bool login_page_available() {
     gchar* sddm = g_find_program_in_path("sddm");

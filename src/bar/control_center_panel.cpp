@@ -327,6 +327,7 @@ void ControlCenterPanel::set_open(bool open) {
     uptime_timer_.disconnect();
     if (open) {
         Brightness::get().refresh();
+        refresh_profile();
         update_uptime();
         uptime_timer_ = Glib::signal_timeout().connect_seconds(
             [this] {
@@ -344,6 +345,38 @@ void ControlCenterPanel::set_open(bool open) {
 // -- profile card (Noctalia's ProfileCard): avatar, name + uptime, settings
 // and power buttons (its close button dropped per user) ------------------------
 
+// The settings app's Users page rewrites ~/.face and the GECOS name while
+// the shell runs; both are re-read on every open, the picture only decoded
+// when the file actually changed.
+void ControlCenterPanel::refresh_profile() {
+    name_.set_text(user_display_name());
+    const std::string path = user_avatar_path();
+    gint64 mtime = -1;
+    if (!path.empty()) {
+        if (auto file = Gio::File::create_for_path(path)) {
+            try {
+                auto info = file->query_info(G_FILE_ATTRIBUTE_TIME_MODIFIED "," G_FILE_ATTRIBUTE_TIME_MODIFIED_USEC);
+                mtime = info->get_attribute_uint64(G_FILE_ATTRIBUTE_TIME_MODIFIED) * 1000000
+                        + info->get_attribute_uint32(G_FILE_ATTRIBUTE_TIME_MODIFIED_USEC);
+            } catch (const Glib::Error&) {
+            }
+        }
+    }
+    if (path == avatar_path_ && mtime == avatar_mtime_ && (avatar_.get_paintable() || avatar_fallback_.get_visible()))
+        return;
+    avatar_path_ = path;
+    avatar_mtime_ = mtime;
+    if (auto texture = load_avatar_texture(path, 41)) {
+        avatar_.set_paintable(texture);
+        avatar_.set_visible(true);
+        avatar_fallback_.set_visible(false);
+    } else {
+        avatar_.set_paintable({});
+        avatar_.set_visible(false);
+        avatar_fallback_.set_visible(true);
+    }
+}
+
 void ControlCenterPanel::build_profile() {
     profile_card_.add_css_class("cc-card");
     profile_card_.set_size_request(-1, kCardProfile);
@@ -352,26 +385,23 @@ void ControlCenterPanel::build_profile() {
     avatar_ring_.set_size_request(45, 45);
     avatar_ring_.set_valign(Gtk::Align::CENTER);
     avatar_ring_.set_halign(Gtk::Align::CENTER);
-    if (auto texture = load_avatar_texture(user_avatar_path(), 41)) {
-        avatar_.set_paintable(texture);
-        avatar_.set_content_fit(Gtk::ContentFit::COVER);
-        avatar_.set_can_shrink(true);
-        avatar_.set_size_request(41, 41);
-        avatar_.add_css_class("cc-avatar");
-        avatar_.set_overflow(Gtk::Overflow::HIDDEN);
-        avatar_ring_.append(avatar_);
-    } else {
-        avatar_fallback_.set_text(kUser);
-        avatar_fallback_.add_css_class("cc-avatar-fallback");
-        avatar_fallback_.set_size_request(41, 41);
-        avatar_ring_.append(avatar_fallback_);
-    }
+    avatar_.set_content_fit(Gtk::ContentFit::COVER);
+    avatar_.set_can_shrink(true);
+    avatar_.set_size_request(41, 41);
+    avatar_.add_css_class("cc-avatar");
+    avatar_.set_overflow(Gtk::Overflow::HIDDEN);
+    avatar_fallback_.set_text(kUser);
+    avatar_fallback_.add_css_class("cc-avatar-fallback");
+    avatar_fallback_.set_size_request(41, 41);
+    avatar_fallback_.set_visible(false);
+    avatar_ring_.append(avatar_);
+    avatar_ring_.append(avatar_fallback_);
+    refresh_profile();
     profile_card_.append(avatar_ring_);
 
     auto* texts = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     texts->set_valign(Gtk::Align::CENTER);
     texts->set_hexpand(true);
-    name_.set_text(user_display_name());
     name_.add_css_class("cc-name");
     name_.set_xalign(0.0f);
     name_.set_ellipsize(Pango::EllipsizeMode::END);
