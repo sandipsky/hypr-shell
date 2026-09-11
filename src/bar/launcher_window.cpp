@@ -404,6 +404,8 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Calendar system (AD / BS)", "Bar › Clock", "clock"},
         {"Active window title", "Bar › Active window", "active_window"},
         {"Window icon", "Bar › Active window", "active_window"},
+        {"Left click maximizes window", "Bar › Active window", "active_window"},
+        {"Right click closes window", "Bar › Active window", "active_window"},
         {"Bluetooth auto-connect", "Bar › Bluetooth", "bluetooth"},
         {"Control center cards", "Bar › Control center", "control_center"},
         {"Media player card", "Bar › Control center", "control_center"},

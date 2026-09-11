@@ -50,6 +50,15 @@ public:
     // focusWindow: focus + alter_zorder top).
     void focus_window(const std::string& address);
 
+    // Toggle the focused window's maximized state — Hyprland's non-exclusive
+    // fullscreen (the bar stays visible; `hl.dsp.window.fullscreen({ mode =
+    // "maximized", action = "toggle" })`, the user's own Super+F bind).
+    void toggle_maximize_active();
+
+    // Close the focused window (`hl.dsp.window.close()`, the default config's
+    // Super+C bind) — a graceful close request, not a kill.
+    void close_active_window();
+
     // Press a shortcut in the focused window through the seat's real keyboard
     // (`hl.dsp.send_shortcut({ mods, key })`, no window = current focus).
     // Unlike wtype's virtual keyboard this reaches Chromium/Electron apps.

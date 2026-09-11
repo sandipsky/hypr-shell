@@ -79,7 +79,7 @@ is missing.
 | `app_menu` | `Gtk::Box` + icon / text label | Apps | Noctalia's Launcher bar widget (`bar.app_menu.display` / `icon` / `text`); click toggles `AppMenuPanel`, also via `hypr-shell --app-menu`. Default section: left. |
 | `workspaces` | `Gtk::Box` of buttons | Hyprland | Rebuilds from `j/workspaces` + `j/activeworkspace` (serial-guarded). Scroll steps locally; fixed mode shows 1..N with placeholders. |
 | `taskbar` | `Gtk::Box` → capsule → items box of `Gtk::Overlay`s | Hyprland + Apps | Noctalia's Taskbar: running windows (`j/clients`, filtered to the bar's monitor / active workspaces) merged with the pinned apps in pinned order; focus/hover indicator, wheel cycles focus, drag reorders, hide modes, optional titles; no capsule background and no right-click menu (per user). |
-| `active_window` | `Gtk::Box` (icon + label + rotated drawing area) | Hyprland | `activewindow` event (`class,title`). Icon via `Gio::DesktopAppInfo`. Vertical bars draw the title rotated. |
+| `active_window` | `Gtk::Box` (icon + label + rotated drawing area) | Hyprland | `activewindow` event (`class,title`). Icon via `Gio::DesktopAppInfo`. Vertical bars draw the title rotated. Left click maximizes / right click closes (config toggles). |
 | `network` | `Gtk::Box` + icon label | NetworkManager | Glyph from connectivity + strength; ethernet wins. Click → `NetworkPanel`. |
 | `bluetooth` | `Gtk::Box` + icon label | Bluez | off / on / connected glyphs, tooltip = first connected device. Click → `BluetoothPanel`. |
 | `volume` | `Gtk::Box` + icon label | Pulse | Glyph from mute/level. Left click → `AudioPanel`; right click toggles mute; wheel steps the volume by `bar.volume.scroll_step`. |
@@ -127,7 +127,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | Service | Talks to | How |
 |---------|----------|-----|
 | `config` | `~/.config/hypr-shell/config.json` | Sync first read, `Gio::FileMonitor` reloads. One getter per `bar.*` field; structs `Notifications` and `Launcher` for the top-level objects. **Add new keys here.** |
-| `hyprland` | Hyprland's two sockets | Async `Gio::SocketClient`. `request(cmd, cb)`, `dispatch(lua)`, `signal_event()`. Typed helpers `focus_workspace`, `focus_window`, `set_monitor_mode`. |
+| `hyprland` | Hyprland's two sockets | Async `Gio::SocketClient`. `request(cmd, cb)`, `dispatch(lua)`, `signal_event()`. Typed helpers `focus_workspace`, `focus_window`, `toggle_maximize_active`, `close_active_window`, `set_monitor_mode`. |
 | `upower` | `org.freedesktop.UPower` | `Gio::DBus::Proxy` on `DisplayDevice`; second proxy on the real battery for health. |
 | `power_profiles` | `net.hadess.PowerProfiles` | Proxy; `set_profile()` writes `ActiveProfile` optimistically. |
 | `network_manager` | `org.freedesktop.NetworkManager` + `nmcli` | Proxy chain root → ActiveConnection → AccessPoint, serial-guarded. Wi-Fi actions via `Gio::Subprocess`. Pending-target guard for the radio switch. |

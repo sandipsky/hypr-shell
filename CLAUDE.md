@@ -1629,6 +1629,21 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   token to the format entry that had focus last (Noctalia's tokenClicked
   into its single field; ours has three), defaulting to the horizontal one.
   The list scrolls inside a 360px cap like the wallpaper grid.
+- 2026-09-11 — Active window module: hover pill + click actions (user
+  request). Left click toggles the focused window's **maximized** state
+  (`bar.active_window.left_click_maximize`, default on) — Hyprland's
+  non-exclusive fullscreen, the bar stays visible; right click asks the window
+  to close (`right_click_close`, default on). Grammar taken from the user's own
+  keybinds.lua, not probed: `hl.dsp.window.fullscreen({ mode = "maximized",
+  action = "toggle" })` and `hl.dsp.window.close()`, wrapped as
+  `Hyprland::toggle_maximize_active()` / `close_active_window()`. One
+  GestureClick with button 0 branches on `get_current_button()`; nothing fires
+  without a focused window. The `.module:hover` opt-out stays, but a
+  `clickable` class (set while a window is focused and at least one action is
+  on) brings the `@mHover` pill back, so the "No active window" placeholder
+  never highlights. Settings: a "Mouse" group with two switches on the Active
+  window subpage. The module still does not implement CornerTarget (it lives
+  in the centre section).
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

@@ -159,6 +159,10 @@ decides *whether*.
 | `title_mode` | `"title"` \| `"appname"` | `"title"` | Window title or desktop-entry display name. |
 | `no_window_text` | `"default"` \| `"desktop"` \| `"none"` | `"default"` | "No active window" / "Desktop" / nothing. |
 | `show_icon` | bool | `true` | |
+| `left_click_maximize` | bool | `true` | Left click toggles the focused window's maximized state (Hyprland's non-exclusive fullscreen; the bar stays visible). |
+| `right_click_close` | bool | `true` | Right click asks the focused window to close. |
+
+While a window is focused and at least one click action is on, the module shows the bar's hover pill.
 
 ## `bar.clock`
 

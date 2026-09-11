@@ -75,8 +75,11 @@ void Hyprland::focus_workspace(int id) {
 Typed helpers today: `focus_workspace(int)`, `focus_workspace(selector)`,
 `focus_window(address)` (Lua `hl.dsp.focus({ window = "address:0x…" })`,
 used by notifications to focus the sender after a fuzzy class match over
-`j/clients`), and `set_monitor_mode(...)`. The launcher's logout entry uses
-`hl.dsp.exit()`.
+`j/clients`), `toggle_maximize_active()` (`hl.dsp.window.fullscreen({ mode =
+"maximized", action = "toggle" })` — the non-exclusive fullscreen, used by the
+active-window module's left click), `close_active_window()`
+(`hl.dsp.window.close()`, its right click), and `set_monitor_mode(...)`. The
+launcher's logout entry uses `hl.dsp.exit()`.
 
 Raw Lua runs through `eval <code>`. `eval` only replies `ok` or `error`, so
 to introspect values you smuggle them out through an error message:

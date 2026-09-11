@@ -63,6 +63,8 @@ public:
     ActiveWindowText active_window_title_mode() const { return aw_title_mode_; }
     ActiveWindowEmpty active_window_empty_text() const { return aw_empty_; }
     bool active_window_show_icon() const { return aw_show_icon_; }
+    bool active_window_click_maximize() const { return aw_click_maximize_; }
+    bool active_window_right_click_close() const { return aw_right_click_close_; }
 
     // bar.taskbar.* — Noctalia's Taskbar widget settings. The first five are
     // on the settings subpage; the rest (titles, smart width, icon scale, gap)
@@ -364,6 +366,8 @@ private:
     ActiveWindowText aw_title_mode_ = ActiveWindowText::Title;
     ActiveWindowEmpty aw_empty_ = ActiveWindowEmpty::Default;
     bool aw_show_icon_ = true;
+    bool aw_click_maximize_ = true;     // left click toggles maximized
+    bool aw_right_click_close_ = true;  // right click closes the window
     Notifications notifications_;
     Launcher launcher_;
     Clipboard clipboard_;

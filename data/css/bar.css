@@ -56,7 +56,8 @@ window.bar.right .module {
 }
 
 /* hover pill on the clickable modules (user request); workspaces and the
- * taskbar highlight their own items, the window title is not clickable */
+ * taskbar highlight their own items, the window title only while a window
+ * is focused and a click action is enabled (`.clickable`) */
 .module:hover {
   background: @mHover; /* the shared hover grey, clearly lighter than the bar */
 }
@@ -65,6 +66,10 @@ window.bar.right .module {
 .taskbar:hover,
 .active-window:hover {
   background: transparent;
+}
+
+.active-window.clickable:hover {
+  background: @mHover;
 }
 
 /* workspaces */

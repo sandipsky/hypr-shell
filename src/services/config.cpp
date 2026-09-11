@@ -100,6 +100,8 @@ void Config::load() {
     aw_title_mode_ = ActiveWindowText::Title;
     aw_empty_ = ActiveWindowEmpty::Default;
     aw_show_icon_ = true;
+    aw_click_maximize_ = true;
+    aw_right_click_close_ = true;
     notifications_ = Notifications{};
     launcher_ = Launcher{};
     clipboard_ = Clipboard{};
@@ -181,6 +183,8 @@ void Config::load() {
                         : empty == "none"  ? ActiveWindowEmpty::None
                                            : ActiveWindowEmpty::Default;
             aw_show_icon_ = it->value("show_icon", true);
+            aw_click_maximize_ = it->value("left_click_maximize", true);
+            aw_right_click_close_ = it->value("right_click_close", true);
         }
         if (auto it = bar.find("bluetooth"); it != bar.end() && it->is_object()) {
             bt_auto_connect_ = it->value("auto_connect", false);

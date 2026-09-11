@@ -421,6 +421,8 @@ struct Settings {
     AdwComboRow* aw_text = nullptr;      // Window title / Application name
     AdwComboRow* aw_empty = nullptr;     // "No active window" / "Desktop" / Nothing
     AdwSwitchRow* aw_icon = nullptr;
+    AdwSwitchRow* aw_click_max = nullptr;   // left click toggles maximized
+    AdwSwitchRow* aw_click_close = nullptr; // right click closes
 
     std::array<std::vector<std::string>, 3> layout; // resolved section contents
     GtkWidget* layout_groups[3] = {};
@@ -620,7 +622,7 @@ void populate(Settings* s, PopulateStage stage) {
     }
 
     std::string aw_hide = "hidden", aw_text = "title", aw_empty = "default";
-    bool aw_show_title = true, aw_icon = true;
+    bool aw_show_title = true, aw_icon = true, aw_click_max = true, aw_click_close = true;
     try {
         const json aw =
             s->root.value("bar", json::object()).value("active_window", json::object());
@@ -629,6 +631,8 @@ void populate(Settings* s, PopulateStage stage) {
         aw_text = aw.value("title_mode", aw_text);
         aw_empty = aw.value("no_window_text", aw_empty);
         aw_icon = aw.value("show_icon", true);
+        aw_click_max = aw.value("left_click_maximize", true);
+        aw_click_close = aw.value("right_click_close", true);
     } catch (const json::exception&) {
     }
 
@@ -854,6 +858,8 @@ void populate(Settings* s, PopulateStage stage) {
         if (aw_empty == kAwEmptyKeys[i])
             adw_combo_row_set_selected(s->aw_empty, i);
     adw_switch_row_set_active(s->aw_icon, aw_icon);
+    adw_switch_row_set_active(s->aw_click_max, aw_click_max);
+    adw_switch_row_set_active(s->aw_click_close, aw_click_close);
     update_aw_row_visibility(s);
     }
     if (!bar) {
@@ -2557,6 +2563,24 @@ void on_aw_icon_toggled(GObject*, GParamSpec*, gpointer data) {
     if (s->loading)
         return;
     active_window_object(s)["show_icon"] = adw_switch_row_get_active(s->aw_icon) != FALSE;
+    save(s);
+}
+
+void on_aw_click_max_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    active_window_object(s)["left_click_maximize"] =
+        adw_switch_row_get_active(s->aw_click_max) != FALSE;
+    save(s);
+}
+
+void on_aw_click_close_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    active_window_object(s)["right_click_close"] =
+        adw_switch_row_get_active(s->aw_click_close) != FALSE;
     save(s);
 }
 
@@ -4353,6 +4377,33 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(aw_page), ADW_PREFERENCES_GROUP(aw_group));
 
+    // mouse actions on the title
+    GtkWidget* aw_mouse_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(aw_mouse_group), "Mouse");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(aw_mouse_group),
+        "Clicking the title acts on the focused window.");
+
+    GtkWidget* aw_click_max_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aw_click_max_row),
+                                  "Left click maximizes");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(aw_click_max_row),
+                                "Toggle the window between maximized and its normal size. "
+                                "The bar stays visible (not exclusive fullscreen).");
+    s->aw_click_max = ADW_SWITCH_ROW(aw_click_max_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(aw_mouse_group), aw_click_max_row);
+
+    GtkWidget* aw_click_close_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(aw_click_close_row),
+                                  "Right click closes");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(aw_click_close_row),
+                                "Ask the focused window to close.");
+    s->aw_click_close = ADW_SWITCH_ROW(aw_click_close_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(aw_mouse_group), aw_click_close_row);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(aw_page),
+                             ADW_PREFERENCES_GROUP(aw_mouse_group));
+
     // -- Bluetooth subpage ------------------------------------------------------
     GtkWidget* bt_page = adw_preferences_page_new();
     GtkWidget* bt_group = adw_preferences_group_new();
@@ -4698,6 +4749,9 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(aw_text_row, "notify::selected", G_CALLBACK(on_aw_text_changed), s);
     g_signal_connect(aw_empty_row, "notify::selected", G_CALLBACK(on_aw_empty_changed), s);
     g_signal_connect(aw_icon_row, "notify::active", G_CALLBACK(on_aw_icon_toggled), s);
+    g_signal_connect(aw_click_max_row, "notify::active", G_CALLBACK(on_aw_click_max_toggled), s);
+    g_signal_connect(aw_click_close_row, "notify::active",
+                     G_CALLBACK(on_aw_click_close_toggled), s);
     g_signal_connect(am_display_row, "notify::selected", G_CALLBACK(on_am_display_changed), s);
     g_signal_connect(am_text_row, "changed", G_CALLBACK(on_am_entry_changed), s);
     g_signal_connect(am_icon_row, "notify::selected", G_CALLBACK(on_am_icon_changed), s);

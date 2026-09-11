@@ -15,6 +15,7 @@ public:
 private:
     void update();
     void apply_icon();
+    void on_click_released(int button);
     void on_vertical_draw(const Cairo::RefPtr<Cairo::Context>& cr, int width, int height);
 
     Gtk::Image icon_;
@@ -23,6 +24,7 @@ private:
     Glib::ustring text_;
     std::string klass_;
     std::string title_;
+    bool has_window_ = false;
 };
 
 } // namespace hyprshell

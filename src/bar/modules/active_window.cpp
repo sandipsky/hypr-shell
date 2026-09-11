@@ -55,6 +55,16 @@ ActiveWindow::ActiveWindow() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 6) {
     append(label_);
     append(vertical_label_);
 
+    // left click maximizes / right click closes the focused window (both
+    // optional, bar.active_window.*); one gesture for any button
+    auto click = Gtk::GestureClick::create();
+    click->set_button(0);
+    auto* gesture = click.get(); // the controller owns the gesture; no RefPtr cycle
+    click->signal_released().connect([this, gesture](int, double, double) {
+        on_click_released(static_cast<int>(gesture->get_current_button()));
+    });
+    add_controller(click);
+
     auto& hypr = Hyprland::get();
     hypr.signal_event().connect([this](const std::string& name, const std::string& data) {
         if (name == "activewindow") {
@@ -88,6 +98,14 @@ ActiveWindow::ActiveWindow() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 6) {
 void ActiveWindow::update() {
     auto& cfg = Config::get();
     const bool has_window = !klass_.empty() || !title_.empty();
+    has_window_ = has_window;
+    // the hover pill only while there is a window to act on
+    const bool clickable =
+        has_window && (cfg.active_window_click_maximize() || cfg.active_window_right_click_close());
+    if (clickable)
+        add_css_class("clickable");
+    else
+        remove_css_class("clickable");
 
     // text: window title, application name, or the no-window placeholder
     Glib::ustring text;
@@ -155,6 +173,16 @@ void ActiveWindow::update() {
     }
     set_opacity(opacity);
     set_visible(shown);
+}
+
+void ActiveWindow::on_click_released(int button) {
+    if (!has_window_)
+        return;
+    auto& cfg = Config::get();
+    if (button == GDK_BUTTON_PRIMARY && cfg.active_window_click_maximize())
+        Hyprland::get().toggle_maximize_active();
+    else if (button == GDK_BUTTON_SECONDARY && cfg.active_window_right_click_close())
+        Hyprland::get().close_active_window();
 }
 
 void ActiveWindow::on_vertical_draw(const Cairo::RefPtr<Cairo::Context>& cr, int width,

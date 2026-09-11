@@ -128,6 +128,14 @@ void Hyprland::focus_window(const std::string& address) {
              "\" })");
 }
 
+void Hyprland::toggle_maximize_active() {
+    dispatch("hl.dsp.window.fullscreen({ mode = \"maximized\", action = \"toggle\" })");
+}
+
+void Hyprland::close_active_window() {
+    dispatch("hl.dsp.window.close()");
+}
+
 void Hyprland::send_shortcut(const std::string& mods, const std::string& key) {
     // grammar verified on 0.56.2 against a non-existent window target
     dispatch("hl.dsp.send_shortcut({ mods = \"" + mods + "\", key = \"" + key + "\" })");
