@@ -44,7 +44,7 @@ launcher).
     "workspaces":    { "mode": "dynamic", "fixed_count": 5, "scroll_wrap": true },
     "active_window": { "hide_mode": "hidden", "show_title": true, "title_mode": "title",
                        "no_window_text": "default", "show_icon": true },
-    "clock":         { "first_day_of_week": 0,
+    "clock":         { "first_day_of_week": 0, "calendar": "ad",
                        "format_horizontal": "%H:%M %a, %b %d", "format_vertical": "%H %M",
                        "tooltip_format": "%A, %B %-d, %Y" },
     "battery":       { "show_power_profiles": true, "show_brightness": true, "show_refresh_rate": true },
@@ -165,6 +165,7 @@ decides *whether*.
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `first_day_of_week` | `0` (Sun) \| `1` (Mon) | `0` | Calendar grid start. |
+| `calendar` | `"ad"` \| `"bs"` | `"ad"` | Calendar system the popover opens with: Gregorian or Bikram Sambat (Nepali). The popover's AD / BS switch overrides it for the session; BS covers 2000–2090 BS (1943–2034 AD, `services/nepali_date.hpp`). |
 | `format_horizontal` | strftime | `"%H:%M %a, %b %d"` | Top/bottom bars. |
 | `format_vertical` | strftime | `"%H %M"` | Left/right bars; space-separated tokens stack. |
 | `tooltip_format` | strftime | `"%A, %B %-d, %Y"` | Tooltip while hovering the clock; empty string = no tooltip. |

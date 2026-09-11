@@ -135,6 +135,7 @@ opt-in hooks that open them about 0.8 s after startup:
 | Variable | Effect |
 |----------|--------|
 | `HS_OPEN_CALENDAR=1` | Opens the calendar popover (every `HS_OPEN_*` value above 1 = delay in ms, e.g. `3000`) |
+| `HS_CALENDAR_NAV=<delta>` | With `HS_OPEN_CALENDAR`: steps the shown month by `delta` 1.5 s after the popover opened (arrow clicks cannot be scripted) |
 | `HS_OPEN_BATTERY=1` | Opens the battery panel |
 | `HS_OPEN_AUDIO=1` | Opens the audio panel |
 | `HS_OPEN_NETWORK=1` | Opens the Wi-Fi panel |

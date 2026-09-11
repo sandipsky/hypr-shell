@@ -43,6 +43,13 @@ Clock::Clock() {
                 calendar_->reset_to_today();
                 place_bar_popover(popover_);
                 popover_.popup();
+                // HS_CALENDAR_NAV=<delta> steps the month 1.5 s later (a
+                // click on the arrows cannot be scripted)
+                if (const char* nav = g_getenv("HS_CALENDAR_NAV")) {
+                    const int delta = std::atoi(nav);
+                    Glib::signal_timeout().connect_once(
+                        [this, delta] { calendar_->navigate(delta); }, 1500);
+                }
             },
             delay);
     }

@@ -99,7 +99,7 @@ is missing.
 | `modules/corner_target.hpp` | every clickable module, `Bar` | `CornerTarget::activate_corner(bool start)`: the bar's corner click (padding between the outermost module and the screen corner) triggers the first / last module's primary action; workspaces and taskbar pick their first / last item. |
 | `frame_probe.hpp` | popovers, launcher, clipboard | `log_first_frame()`: with `HS_FRAME_DEBUG=1`, logs the ms from open to the first painted frame (first-open lag). |
 | `icon_cache.{hpp,cpp}` | app menu, launcher | `IconCache`: app icons rasterized once, a few per idle, into texture-backed paintables (`find` / `request` / `signal_rendered`) so a panel's first frame does not render 20 SVGs. |
-| `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month. |
+| `calendar.{hpp,cpp}` | clock | Header card with seconds ring (cairo) + month grid; scroll changes month; AD / BS switch (Gregorian or Bikram Sambat, `bar.clock.calendar` default). |
 | `battery_panel.{hpp,cpp}` | battery | Charge card, power-profile slider, brightness slider, refresh-rate buttons; cards hide per backend / `bar.battery`. |
 | `audio_panel.{hpp,cpp}` | volume | Output and Input cards: device, slider, percent, mute. |
 | `network_panel.{hpp,cpp}` | network | Wi-Fi switch, header refresh button (spinner while scanning), Connected card, scrolled Available list (the connecting row shows a spinner), inline password. Fixed 330×440. |
@@ -147,6 +147,7 @@ Every service is `class Foo { static Foo& get(); ... sigc::signal<void()>& signa
 | `mpris` | `org.mpris.MediaPlayer2.*` on the session bus | One `Gio::DBus::Proxy` pair per player (NameOwnerChanged adds/removes), metadata / status / capabilities from PropertiesChanged, Position polled every second while playing (+ Seeked), `active()` = playing else most recent; PlayPause / Next / Previous / SetPosition / Volume. |
 | `system_stats` | `/proc/stat`, `/proc/meminfo`, hwmon / thermal zones, `statvfs` | Noctalia's SystemStatService subset: CPU usage + temperature every 1 s, memory 5 s, disk 30 s — only while a consumer is registered (the sysmon card while its panel is open). |
 | `user_info.hpp` | GLib user info (header-only) | `user_display_name()` (GECOS, else login) and `user_avatar_path()` (`~/.face`, `HS_LOCK_AVATAR` override). |
+| `nepali_date.hpp` | glibmm Date (header-only) | Bikram Sambat ↔ Gregorian: the per-year month-length table (BS 2000–2090), `from_gregorian()` / `to_gregorian()` via Julian day counts from 1 Baishakh 2000 = 1943-04-14, month names. Used by the calendar popover's AD / BS switch. |
 | `palette.hpp` | nothing (header-only) | `derive_palette(accent, dark)` → the 17 `m*` tokens as hex, `palette_css()` (`@define-color` lines), hex/HSL helpers; shared with the settings app, which uses it for libadwaita's accent. |
 | `theme` | Config | `Theme::get()`: palette + font + dark flag from `ui.*`, recomputed on config change (`signal_changed`); `rgba("mPrimary")` for cairo/GSK drawing, `css()` for the theme provider. |
 | `wallpaper_files.hpp` | nothing (header-only) | Image extension list + `is_wallpaper_image()`, shared with the settings app's grid. |

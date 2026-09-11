@@ -2,8 +2,10 @@
 #include "services/theme.hpp"
 
 #include "services/config.hpp"
+#include "services/nepali_date.hpp"
 
 #include <cmath>
+#include <optional>
 #include <string>
 
 namespace hyprshell {
@@ -88,8 +90,29 @@ Calendar::Calendar() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     prev->signal_clicked().connect([this] { navigate(-1); });
     today->signal_clicked().connect([this] { reset_to_today(); });
     next->signal_clicked().connect([this] { navigate(+1); });
+
+    // AD / BS switch: two grouped toggles styled as one pill
+    system_box_.add_css_class("cal-system");
+    system_box_.set_valign(Gtk::Align::CENTER);
+    for (auto* button : {&ad_button_, &bs_button_}) {
+        button->add_css_class("cal-system-btn");
+        button->set_valign(Gtk::Align::CENTER);
+        system_box_.append(*button);
+    }
+    bs_button_.set_group(ad_button_);
+    ad_button_.set_active(true);
+    ad_button_.signal_toggled().connect([this] {
+        if (!syncing_buttons_ && ad_button_.get_active())
+            set_system(System::Gregorian);
+    });
+    bs_button_.signal_toggled().connect([this] {
+        if (!syncing_buttons_ && bs_button_.get_active())
+            set_system(System::Bikram);
+    });
+
     nav->append(nav_title_);
     nav->append(*divider);
+    nav->append(system_box_);
     nav->append(*prev);
     nav->append(*today);
     nav->append(*next);
@@ -120,8 +143,12 @@ Calendar::Calendar() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
 
     append(body_);
 
-    // config may change the first day of the week
-    Config::get().signal_changed().connect(sigc::mem_fun(*this, &Calendar::rebuild_grid));
+    // config may change the first day of the week or the default calendar system
+    Config::get().signal_changed().connect([this] {
+        adopt_config_system();
+        rebuild_grid();
+    });
+    adopt_config_system();
 
     // tick the header clock/ring only while the popover is shown
     signal_map().connect([this] {
@@ -138,19 +165,91 @@ Calendar::Calendar() : Gtk::Box(Gtk::Orientation::VERTICAL, 9) {
     reset_to_today();
 }
 
+// Today as a BS date, or nullopt once the table runs out (BS 2091+).
+static std::optional<nepali::Date> bikram_today() {
+    auto now = Glib::DateTime::create_now_local();
+    return nepali::from_gregorian(now.get_year(), now.get_month(), now.get_day_of_month());
+}
+
 void Calendar::reset_to_today() {
     auto now = Glib::DateTime::create_now_local();
-    shown_year_ = now.get_year();
-    shown_month_ = now.get_month();
+    if (system_ == System::Bikram) {
+        if (auto bs = bikram_today()) {
+            shown_year_ = bs->year;
+            shown_month_ = bs->month;
+        } else {
+            set_system(System::Gregorian); // recurses with the Gregorian branch
+            return;
+        }
+    } else {
+        shown_year_ = now.get_year();
+        shown_month_ = now.get_month();
+    }
     update_header();
     rebuild_grid();
 }
 
+// The config value is adopted only when it changes (like DND), so a switch
+// made in the popover survives unrelated config reloads.
+void Calendar::adopt_config_system() {
+    const std::string& wanted = Config::get().clock_calendar();
+    if (wanted == config_system_)
+        return;
+    config_system_ = wanted;
+    set_system(wanted == "bs" ? System::Bikram : System::Gregorian);
+}
+
+void Calendar::set_system(System system) {
+    // the table ends in 2034 AD; after that only the Gregorian view is available
+    const auto today_bs = bikram_today();
+    system_box_.set_visible(today_bs.has_value());
+    if (system == System::Bikram && !today_bs)
+        system = System::Gregorian;
+
+    if (system != system_) {
+        // keep the shown month: convert its 1st into the other system
+        if (system == System::Bikram) {
+            auto bs = nepali::from_gregorian(shown_year_, shown_month_, 1);
+            if (!bs)
+                bs = today_bs;
+            shown_year_ = bs->year;
+            shown_month_ = bs->month;
+        } else {
+            auto g = nepali::to_gregorian({shown_year_, shown_month_, 1});
+            auto now = Glib::DateTime::create_now_local();
+            shown_year_ = g ? static_cast<int>(g->get_year()) : now.get_year();
+            shown_month_ = g ? static_cast<int>(g->get_month()) : now.get_month();
+        }
+        system_ = system;
+    }
+
+    syncing_buttons_ = true;
+    (system_ == System::Bikram ? bs_button_ : ad_button_).set_active(true);
+    syncing_buttons_ = false;
+    update_header();
+    rebuild_grid();
+}
+
+bool Calendar::month_valid(int year, int month) const {
+    if (system_ == System::Bikram)
+        return nepali::days_in_month(year, month) > 0;
+    return Glib::Date::valid_year(static_cast<Glib::Date::Year>(year));
+}
+
 void Calendar::update_header() {
     auto now = Glib::DateTime::create_now_local();
-    day_big_.set_text(std::to_string(now.get_day_of_month()));
-    month_.set_text(kMonths[now.get_month() - 1]);
-    year_.set_text(std::to_string(now.get_year()));
+    std::optional<nepali::Date> bs;
+    if (system_ == System::Bikram)
+        bs = bikram_today();
+    if (bs) {
+        day_big_.set_text(std::to_string(bs->day));
+        month_.set_text(nepali::kMonths[bs->month - 1]);
+        year_.set_text(std::to_string(bs->year));
+    } else {
+        day_big_.set_text(std::to_string(now.get_day_of_month()));
+        month_.set_text(kMonths[now.get_month() - 1]);
+        year_.set_text(std::to_string(now.get_year()));
+    }
     time_h_.set_text(now.format("%H"));
     time_m_.set_text(now.format("%M"));
     ring_fraction_ = now.get_second() / 60.0;
@@ -158,16 +257,56 @@ void Calendar::update_header() {
 }
 
 void Calendar::navigate(int delta_months) {
-    shown_month_ += delta_months;
-    while (shown_month_ < 1) {
-        shown_month_ += 12;
-        --shown_year_;
+    int year = shown_year_;
+    int month = shown_month_ + delta_months;
+    while (month < 1) {
+        month += 12;
+        --year;
     }
-    while (shown_month_ > 12) {
-        shown_month_ -= 12;
-        ++shown_year_;
+    while (month > 12) {
+        month -= 12;
+        ++year;
     }
+    if (!month_valid(year, month))
+        return; // the BS table ends here
+    shown_year_ = year;
+    shown_month_ = month;
     rebuild_grid();
+}
+
+Calendar::MonthInfo Calendar::month_info() const {
+    MonthInfo info;
+    const int prev_month = shown_month_ == 1 ? 12 : shown_month_ - 1;
+    const int prev_year = shown_month_ == 1 ? shown_year_ - 1 : shown_year_;
+    auto now = Glib::DateTime::create_now_local();
+
+    if (system_ == System::Bikram) {
+        info.title = std::string(nepali::kMonths[shown_month_ - 1]) + " " +
+                     std::to_string(shown_year_);
+        info.days_in_month = nepali::days_in_month(shown_year_, shown_month_);
+        // the month before 1 Baishakh 2000 is outside the table: pad with 32,
+        // the largest BS month, so the dimmed lead-in days still count down
+        info.days_in_prev = nepali::days_in_month(prev_year, prev_month);
+        if (info.days_in_prev == 0)
+            info.days_in_prev = 32;
+        if (auto first = nepali::to_gregorian({shown_year_, shown_month_, 1}))
+            info.first_weekday = static_cast<int>(first->get_weekday()) % 7; // Mon=1..Sun=7
+        if (auto today = bikram_today();
+            today && today->year == shown_year_ && today->month == shown_month_)
+            info.today = today->day;
+        return info;
+    }
+
+    info.title = std::string(kMonths[shown_month_ - 1]) + " " + std::to_string(shown_year_);
+    auto first = Glib::DateTime::create_local(shown_year_, shown_month_, 1, 0, 0, 0);
+    info.first_weekday = first.get_day_of_week() % 7; // GLib: Mon=1..Sun=7
+    info.days_in_month = static_cast<int>(Glib::Date::get_days_in_month(
+        static_cast<Glib::Date::Month>(shown_month_), shown_year_));
+    info.days_in_prev = static_cast<int>(Glib::Date::get_days_in_month(
+        static_cast<Glib::Date::Month>(prev_month), prev_year));
+    if (now.get_year() == shown_year_ && now.get_month() == shown_month_)
+        info.today = now.get_day_of_month();
+    return info;
 }
 
 void Calendar::rebuild_grid() {
@@ -183,24 +322,17 @@ void Calendar::rebuild_grid() {
         grid_.attach(*label, i, 0);
     }
 
-    nav_title_.set_text(std::string(kMonths[shown_month_ - 1]) + " " +
-                        std::to_string(shown_year_));
+    const MonthInfo info = month_info();
+    nav_title_.set_text(info.title);
 
-    // day-of-week of the 1st, as an index where 0 == Sunday
-    auto first = Glib::DateTime::create_local(shown_year_, shown_month_, 1, 0, 0, 0);
-    const int dow = first.get_day_of_week() % 7; // GLib: Mon=1..Sun=7
-    const int days_before = (dow - first_day + 7) % 7;
-    const int days_in_month = static_cast<int>(Glib::Date::get_days_in_month(
-        static_cast<Glib::Date::Month>(shown_month_), shown_year_));
-    const int prev_month = shown_month_ == 1 ? 12 : shown_month_ - 1;
-    const int prev_year = shown_month_ == 1 ? shown_year_ - 1 : shown_year_;
-    const int days_in_prev = static_cast<int>(Glib::Date::get_days_in_month(
-        static_cast<Glib::Date::Month>(prev_month), prev_year));
-    const int cells = days_before + days_in_month;
-    const int days_after = (7 - cells % 7) % 7;
-
-    auto now = Glib::DateTime::create_now_local();
-    const bool this_month = now.get_year() == shown_year_ && now.get_month() == shown_month_;
+    const int days_before = (info.first_weekday - first_day + 7) % 7;
+    const int days_in_month = info.days_in_month;
+    const int days_in_prev = info.days_in_prev;
+    // Always six week rows (Noctalia's MonthGrid does the same): a mapped
+    // popover on Hyprland cannot grow, so a 5-row -> 6-row month change would
+    // dismiss it instead (seen live: September -> August 2026 closed the popup).
+    constexpr int kRows = 6;
+    const int days_after = kRows * 7 - days_before - days_in_month;
 
     auto add_cell = [this](int index, int day, bool dim, bool today) {
         auto* label = Gtk::make_managed<Gtk::Label>(std::to_string(day));
@@ -222,7 +354,7 @@ void Calendar::rebuild_grid() {
         add_cell(index, days_in_prev - days_before + 1 + i, true, false);
     }
     for (int day = 1; day <= days_in_month; ++day, ++index) {
-        add_cell(index, day, false, this_month && day == now.get_day_of_month());
+        add_cell(index, day, false, day == info.today);
     }
     for (int day = 1; day <= days_after; ++day, ++index) {
         add_cell(index, day, true, false);

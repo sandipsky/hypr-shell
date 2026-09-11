@@ -24,7 +24,10 @@ window is unmapped. `App::on_activate()` calls `hold()` so
 `bar.visibility = "hidden"` works.
 
 **A mapped popover never resizes on Hyprland.** Panels whose content changes
-while open need a fixed size. See [panels](08-panels-and-popovers.md).
+while open need a fixed size. See [panels](08-panels-and-popovers.md). Growing
+is worse than clipping: when the calendar stepped from a 5-row to a 6-row
+month the popover was dismissed outright, which is why the month grid always
+lays out six week rows.
 
 **Popup grabs from the 1px trigger window are denied**, so a popover opened
 from the trigger dismisses instantly. Users click the bar, not the strip.

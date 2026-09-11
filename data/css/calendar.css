@@ -73,6 +73,36 @@ button.cal-icon-btn:hover {
   background: alpha(@mOnSurface, 0.16);
 }
 
+/* AD / BS switch in the nav row: two grouped toggles drawn as one pill */
+.cal-system {
+  background: alpha(@mOnSurface, 0.08);
+  border-radius: 999px;
+  padding: 3px;
+  margin-right: 4px;
+}
+
+button.cal-system-btn {
+  font-size: 12px;
+  font-weight: 700;
+  color: alpha(@mOnSurface, 0.7);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 26px;
+  min-height: 24px;
+  padding: 0 4px;
+}
+
+button.cal-system-btn:hover {
+  color: @mOnSurface;
+}
+
+button.cal-system-btn:checked {
+  background: @mPrimary;
+  color: @mOnPrimary;
+}
+
 .cal-weekday {
   font-size: 14px;
   font-weight: 700;

@@ -320,6 +320,9 @@ public:
     const std::string& clock_format_vertical() const { return clock_format_vertical_; }
     // bar.clock.tooltip_format: strftime for the module tooltip; empty = none
     const std::string& clock_tooltip_format() const { return clock_tooltip_format_; }
+    // bar.clock.calendar: the calendar system the popover opens with —
+    // "ad" (Gregorian, default) or "bs" (Bikram Sambat); the popover has a switch
+    const std::string& clock_calendar() const { return clock_calendar_; }
 
     sigc::signal<void()>& signal_changed() { return changed_; }
 
@@ -355,6 +358,7 @@ private:
     std::string clock_format_horizontal_ = "%H:%M %a, %b %d";
     std::string clock_format_vertical_ = "%H %M";
     std::string clock_tooltip_format_ = "%A, %B %-d, %Y";
+    std::string clock_calendar_ = "ad";
     ActiveWindowHide aw_hide_ = ActiveWindowHide::Hidden;
     bool aw_show_title_ = true;
     ActiveWindowText aw_title_mode_ = ActiveWindowText::Title;

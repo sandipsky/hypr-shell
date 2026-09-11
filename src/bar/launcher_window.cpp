@@ -401,6 +401,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Clock format", "Bar › Clock", "clock"},
         {"Clock tooltip format", "Bar › Clock", "clock"},
         {"First day of week", "Bar › Clock", "clock"},
+        {"Calendar system (AD / BS)", "Bar › Clock", "clock"},
         {"Active window title", "Bar › Active window", "active_window"},
         {"Window icon", "Bar › Active window", "active_window"},
         {"Bluetooth auto-connect", "Bar › Bluetooth", "bluetooth"},

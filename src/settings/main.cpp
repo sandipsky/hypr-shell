@@ -254,6 +254,7 @@ struct Settings {
     AdwSwitchRow* ws_wrap = nullptr;
 
     AdwComboRow* clock_fdow = nullptr; // Sunday / Monday
+    AdwComboRow* clock_calendar = nullptr; // Gregorian (AD) / Bikram Sambat (BS)
     AdwEntryRow* clock_fmt_h = nullptr;
     AdwEntryRow* clock_fmt_v = nullptr;
     AdwEntryRow* clock_fmt_tip = nullptr; // bar.clock.tooltip_format
@@ -771,12 +772,14 @@ void populate(Settings* s, PopulateStage stage) {
     }
 
     int clock_fdow = 0;
+    guint clock_calendar = 0; // 0 = ad, 1 = bs
     std::string fmt_h = "%H:%M %a, %b %d";
     std::string fmt_v = "%H %M";
     std::string fmt_tip = "%A, %B %-d, %Y";
     try {
         const json clock = s->root.value("bar", json::object()).value("clock", json::object());
         clock_fdow = std::clamp(clock.value("first_day_of_week", 0), 0, 1);
+        clock_calendar = clock.value("calendar", "ad") == std::string("bs") ? 1 : 0;
         fmt_h = clock.value("format_horizontal", fmt_h);
         fmt_v = clock.value("format_vertical", fmt_v);
         fmt_tip = clock.value("tooltip_format", fmt_tip);
@@ -838,6 +841,7 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->notif_hide_zero, notif_hide_zero);
     adw_switch_row_set_active(s->notif_hide_zero_unread, notif_hide_zero_unread);
     adw_combo_row_set_selected(s->clock_fdow, clock_fdow);
+    adw_combo_row_set_selected(s->clock_calendar, clock_calendar);
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_h), fmt_h.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_v), fmt_v.c_str());
     gtk_editable_set_text(GTK_EDITABLE(s->clock_fmt_tip), fmt_tip.c_str());
@@ -2639,6 +2643,15 @@ void on_clock_fdow_changed(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
+void on_clock_calendar_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    clock_object(s)["calendar"] =
+        adw_combo_row_get_selected(s->clock_calendar) == 1 ? "bs" : "ad";
+    save(s);
+}
+
 // -- bar.layout: section + order per module ---------------------------------
 // Mirrors the shell's resolution: unknown names dropped, duplicates keep the
 // first placement, unmentioned modules land at the end of their default section.
@@ -4168,6 +4181,18 @@ void on_activate(GtkApplication* app, gpointer) {
     g_object_unref(fdow_model);
     s->clock_fdow = ADW_COMBO_ROW(fdow_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(clock_group), fdow_row);
+
+    GtkWidget* cal_sys_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(cal_sys_row), "Calendar");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(cal_sys_row),
+                                "Shown when the calendar opens; its AD / BS switch "
+                                "changes it for the current session");
+    const char* cal_sys_options[] = {"Gregorian (AD)", "Bikram Sambat (BS)", nullptr};
+    GtkStringList* cal_sys_model = gtk_string_list_new(cal_sys_options);
+    adw_combo_row_set_model(ADW_COMBO_ROW(cal_sys_row), G_LIST_MODEL(cal_sys_model));
+    g_object_unref(cal_sys_model);
+    s->clock_calendar = ADW_COMBO_ROW(cal_sys_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(clock_group), cal_sys_row);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(clock_page),
                              ADW_PREFERENCES_GROUP(clock_group));
 
@@ -4664,6 +4689,7 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(ws_wrap_row, "notify::active", G_CALLBACK(on_ws_wrap_toggled), s);
     g_signal_connect(bt_auto_row, "notify::active", G_CALLBACK(on_bt_auto_toggled), s);
     g_signal_connect(fdow_row, "notify::selected", G_CALLBACK(on_clock_fdow_changed), s);
+    g_signal_connect(cal_sys_row, "notify::selected", G_CALLBACK(on_clock_calendar_changed), s);
     g_signal_connect(fmt_h_row, "changed", G_CALLBACK(on_clock_format_changed), s);
     g_signal_connect(fmt_v_row, "changed", G_CALLBACK(on_clock_format_changed), s);
     g_signal_connect(fmt_tip_row, "changed", G_CALLBACK(on_clock_format_changed), s);

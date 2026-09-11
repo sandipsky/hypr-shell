@@ -71,6 +71,8 @@ src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                volume, battery, bluetooth, control_center,
                                clipboard, notifications, session)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
+src/services/nepali_date.hpp            Bikram Sambat ↔ Gregorian (month-length table BS 2000–2090,
+                                        Julian-day conversion), header-only, used by the calendar
 src/services/palette.hpp                theme palette derivation (accent + dark/light → the m*
                                         tokens), header-only, shared with the settings app
 src/services/theme.{hpp,cpp}            Theme singleton: derived palette / font from `ui.*`;
@@ -191,6 +193,8 @@ settings.json.pre-hypr-shell-nightlight).
 Panel dev hooks: `HS_OPEN_<PANEL>=1` pops a panel 800ms after startup; a
 value above 1 is the delay in ms (`=3000`) — the main loop can stall for ~1s during startup and a popup issued
 meanwhile is dismissed at once (the HS_OPEN_AUDIO freeze noted in memory).
+`HS_CALENDAR_NAV=<delta>` (with `HS_OPEN_CALENDAR`) steps the calendar's
+month 1.5 s after it opened, e.g. `-1` for the previous month.
 `HS_POPOVER_DEBUG=1` logs each module popover's anchor / natural size /
 alignment and its final surface position (see `bar/bar_popover.hpp`), which
 verifies placement even when a screenshot is impossible (locked screen).
@@ -1583,6 +1587,36 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   every minute. Settings: a "Tooltip" entry row under the Clock subpage's
   Time format group, saved through the same `format-key` handler as the two
   label formats.
+- 2026-09-11 — AD / BS switch in the calendar popover (user request). The
+  month card shows either the Gregorian or the Bikram Sambat (Nepali civil)
+  calendar: a two-toggle pill (`.cal-system`, AD | BS) in the nav row flips
+  it, converting the shown month's 1st so the same weeks stay on screen, and
+  the header card shows today in the chosen system ("26 BHADRA 2083"). BS
+  has no arithmetic month rule, so `services/nepali_date.hpp` carries the
+  per-year month-length table (BS 2000–2090 = 1943-04-14 .. 2034-04-13, the
+  range the common nepali-date libraries share; 2081+ are the calendar
+  committee's projections and may be revised) and converts through Julian
+  day counts from 1 Baishakh 2000. Verified: every year sums to 365/366, seven
+  anchors (2000/2077/2080–2083 new years, 2026-09-11 = 2083-05-26 — matches
+  Hamro Patro) round-trip, as does every day in range. The weekday of a BS
+  1st comes from converting it to Gregorian; navigation stops at the table's
+  edges; if today falls past the table (2034+) the pill hides and only AD is
+  offered. Config `bar.clock.calendar` = "ad" (default) / "bs" is the system
+  the popover opens with, adopted on value-change edges like DND so a
+  popover-side switch survives unrelated reloads; settings: a "Calendar"
+  combo row under the Clock subpage's Calendar group. Not done: Devanagari
+  digits, the other system's date inside each cell, BS tokens in the bar
+  clock's strftime label.
+- 2026-09-11 — Calendar popover closed on "previous month" (user report).
+  Stepping from a 5-row month to a 6-row one (September → August 2026) made
+  the popover taller, and a mapped popover on Hyprland cannot grow — here it
+  did not clip, it was dismissed outright; stepping to a same-height month
+  was fine, and HEAD's calendar (before the AD/BS work) did the same, so the
+  bug dates from the calendar's first version. Fix: the grid always lays out
+  six week rows (Noctalia's MonthGrid does too), so the popover keeps one
+  size across months and both calendar systems (a 32-day BS month with six
+  lead-in days is 38 cells, within 42). Dev hook: `HS_CALENDAR_NAV=<delta>`
+  with `HS_OPEN_CALENDAR`.
 - 2026-09-05 — Clock format guide in the settings app (user request):
   Noctalia's NDateTimeTokens ported under the Clock subpage's Time format
   group as a "Format guide" boxed list — category badge (libadwaita's
