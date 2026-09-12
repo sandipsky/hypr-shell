@@ -3400,7 +3400,8 @@ void build_secondary_pages(Settings* s) {
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_size_row), "Font size");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_size_row),
                                 "Size of the system font in applications, in points. "
-                                "The shell keeps its own sizes.");
+                                "The shell keeps its own sizes, and so do Qt apps — they "
+                                "follow the family only.");
     s->ui_font_size = ADW_SPIN_ROW(ui_font_size_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_size_row);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_font_group));

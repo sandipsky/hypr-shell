@@ -71,7 +71,46 @@ void write_ini(const char* dir, const std::string& value) {
     g_key_file_free(key_file);
 }
 
+// ~/.config/fontconfig/conf.d/ is included by fontconfig's 50-user.conf before
+// ~/.config/fontconfig/fonts.conf, so this alias wins over one written there.
+// A <prefer> alias only reorders the fallback list — if the family is not
+// installed, fontconfig moves on to the next sans (Noto, DejaVu, ...).
+void write_fontconfig(const std::string& family) {
+    const std::string path = system_font_fontconfig_path();
+    gchar* escaped = g_markup_escape_text(family.c_str(), -1);
+    const std::string xml = std::string(
+        "<?xml version=\"1.0\"?>\n"
+        "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+        "<!-- Written by hypr-shell-settings (User interface > Font) — the system\n"
+        "     font's family as the preferred generic sans-serif, so Qt apps, which\n"
+        "     read neither GSettings nor settings.ini, follow it too. Edits here\n"
+        "     are overwritten by the next font change in the settings app. -->\n"
+        "<fontconfig>\n"
+        "  <alias binding=\"strong\">\n"
+        "    <family>sans-serif</family>\n"
+        "    <prefer><family>") + escaped + std::string("</family></prefer>\n"
+        "  </alias>\n"
+        "</fontconfig>\n");
+    g_free(escaped);
+    gchar* parent = g_path_get_dirname(path.c_str());
+    g_mkdir_with_parents(parent, 0755);
+    g_free(parent);
+    GError* error = nullptr;
+    if (!g_file_set_contents(path.c_str(), xml.c_str(), static_cast<gssize>(xml.size()), &error)) {
+        g_warning("system font: cannot write %s: %s", path.c_str(), error->message);
+        g_clear_error(&error);
+    }
+}
+
 } // namespace
+
+std::string system_font_fontconfig_path() {
+    gchar* path = g_build_filename(g_get_user_config_dir(), "fontconfig", "conf.d",
+                                   "50-hypr-shell-sans-serif.conf", nullptr);
+    std::string result = path;
+    g_free(path);
+    return result;
+}
 
 std::string SystemFont::to_string() const {
     std::string text = family;
@@ -124,6 +163,7 @@ void system_font_write(const SystemFont& font) {
     }
     write_ini("gtk-3.0", value);
     write_ini("gtk-4.0", value);
+    write_fontconfig(font.family);
 }
 
 } // namespace hyprshell::settings

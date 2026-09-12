@@ -157,8 +157,9 @@ src/settings/users_page.{hpp,cpp}       "Users" page: GNOME's Users panel over A
 src/settings/command.{hpp,cpp}          run_command(): async GSubprocess helper + string utils
                                         shared by the hotspot and VPN pages
 src/settings/system_font.{hpp,cpp}      system font (GSettings org.gnome.desktop.interface font-name +
-                                        gtk-3.0/gtk-4.0 settings.ini): read / write / watch, used by the
-                                        User interface page's Font + Font size rows
+                                        gtk-3.0/gtk-4.0 settings.ini + fontconfig sans-serif alias for
+                                        Qt apps): read / write / watch, used by the User interface
+                                        page's Font + Font size rows
 src/settings/system_cursor.{hpp,cpp}    mouse cursor: installed theme scan, GSettings cursor-theme/-size +
                                         settings.ini + ~/.icons/default/index.theme, SDDM drop-in via pkexec
 src/settings/system_icons.{hpp,cpp}     icon theme of applications: installed-theme scan, GSettings icon-theme
@@ -234,9 +235,11 @@ so the test raises no polkit prompt. **Never let a pkexec or polkit prompt
 appear from the tool shell unattended**, and never submit Add User / Change
 Password / Remove User against the real account.
 User interface page: `HS_UI_FONT_SIZE=<pt>` sets the Font size row 1.5s
-after startup (writes the SYSTEM font via gsettings + settings.ini — back up
-`gsettings get org.gnome.desktop.interface font-name` and
-~/.config/gtk-3.0/settings.ini first and restore them).
+after startup (writes the SYSTEM font via gsettings + settings.ini + the
+fontconfig sans-serif snippet — back up
+`gsettings get org.gnome.desktop.interface font-name`,
+~/.config/gtk-3.0/settings.ini and
+~/.config/fontconfig/conf.d/50-hypr-shell-sans-serif.conf first and restore them).
 `HS_UI_CURSOR=<theme>:<size>` sets the Cursor rows the same way and runs the
 change handler even for unchanged values (config.json `ui.cursor_*`, gsettings,
 settings.ini, ~/.icons/default, and the SDDM drop-in — set
@@ -1745,8 +1748,21 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   GKeyFile). A size change keeps family + style ("Fira Sans Book 12" → "…
   13"); a family change writes "<family> <size>" without the old style name,
   which may not exist in the new family. The page follows external changes
-  through GSettings' `changed::font-name`. Qt apps are not covered (no qt5ct/
-  qt6ct/Kvantum configured here). Dev hook: `HS_UI_FONT_SIZE=<pt>`.
+  through GSettings' `changed::font-name`. Dev hook: `HS_UI_FONT_SIZE=<pt>`.
+  Follow-up the same day (user request, "will changing font from
+  hypr-settings change qt apps as well?"): Qt apps read neither GSettings nor
+  settings.ini and the dotfiles desktop runs them without a Qt platform theme
+  (the gtk3 theme imports the GTK *size* too, far too big on top of its
+  global `QT_SCALE_FACTOR=1.25`), so Qt asks fontconfig for the generic
+  "Sans Serif" at its own 9pt. `system_font_write()` therefore also writes
+  `~/.config/fontconfig/conf.d/50-hypr-shell-sans-serif.conf`, a `<prefer>`
+  alias making sans-serif resolve to the chosen family (XML-escaped via
+  `g_markup_escape_text`; conf.d is included before the user's fonts.conf,
+  so it wins over an alias there). Family only — Qt keeps its size, which the
+  Font size row's subtitle says. Fontconfig is read at process start, so
+  running Qt apps change at their next launch. The dotfiles repo seeds the
+  same file (`config/fontconfig/conf.d/`) with Fira Sans so a fresh install
+  matches before the settings app is ever opened.
 - 2026-09-12 — Cursor option on the User interface page (user request,
   "also for SDDM if installed"): a "Cursor" group with Cursor theme (combo of
   installed themes — directories with `cursors/` or `hyprcursors/` under

@@ -129,7 +129,11 @@ sans; the bar still works.
 The settings page's Font row also sets the **system font** (GSettings
 `org.gnome.desktop.interface font-name` and the GTK `settings.ini` files) to
 the same family, and its Font size row changes that system font's size only —
-the shell never reads a size from anywhere but its CSS. See
+the shell never reads a size from anywhere but its CSS. Qt apps read none of
+those, so the same write also drops a fontconfig snippet
+(`~/.config/fontconfig/conf.d/50-hypr-shell-sans-serif.conf`) that makes the
+generic sans-serif family prefer the chosen one — Qt without a platform theme
+asks for "Sans Serif" and so follows the family, at its own size. See
 `src/settings/system_font.cpp`.
 
 Icons come from two icon fonts installed to
