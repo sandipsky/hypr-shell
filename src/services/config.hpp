@@ -279,6 +279,11 @@ public:
         std::string font = "Fira Sans";
         std::string accent = "#bfc2ff";
         bool dark_mode = true;
+        // Mouse cursor applied to Hyprland (setcursor) at startup and on
+        // change; empty theme = leave the compositor's own cursor alone. The
+        // settings app writes the GTK / Xcursor / SDDM sides itself.
+        std::string cursor_theme;
+        int cursor_size = 24;
     };
     const Ui& ui() const { return ui_; }
 

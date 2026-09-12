@@ -71,6 +71,10 @@ public:
     // exact form is known to do what it says; never probe it blind.
     void set_dpms(bool on);
 
+    // `setcursor <theme> <size>`: the compositor's cursor theme + size (Hyprland
+    // also mirrors them into gsettings when cursor:sync_gsettings_theme is on).
+    void set_cursor(const std::string& theme, int size);
+
     // Apply a monitor mode via the Lua config API (`eval hl.monitor{...}`) —
     // Hyprland >= 0.56 rejects the old `keyword monitor` grammar. `output`
     // must not contain quotes. on_done(true) only on an explicit "ok" reply.

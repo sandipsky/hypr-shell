@@ -167,6 +167,25 @@ the sidebar row: sddm on PATH, the theme's `Main.qml` present, and
 reader behind that check (packaged defaults, /etc/sddm.conf, /etc/sddm.conf.d;
 last file wins) — is exported for the Users page's FacesDir lookup.
 
+`system_font.{hpp,cpp}` — the system font behind the User interface page's
+Font and Font size rows: `system_font_read()` parses GSettings
+`org.gnome.desktop.interface font-name` (else `gtk-font-name` from
+`~/.config/gtk-4.0` / `gtk-3.0/settings.ini`) into family / style / size,
+`system_font_write()` writes all three places, `system_font_settings()` hands
+out the GSettings object to watch. Not config.json: the desktop owns it.
+
+`system_cursor.{hpp,cpp}` — the Cursor group: `cursor_themes()` scans the icon
+directories for themes with `cursors/` or `hyprcursors/`, `system_cursor_read()`
+/ `system_cursor_write()` cover GSettings, settings.ini and
+`~/.icons/default/index.theme`, `sddm_cursor_apply()` writes the SDDM drop-in
+through `pkexec` (async, `done(ok, message)`). Hyprland itself is fed by the
+shell from `ui.cursor_theme` / `ui.cursor_size` (`App::apply_cursor` →
+`Hyprland::set_cursor`).
+
+`system_icons.{hpp,cpp}` — the Icon theme combo: `icon_themes()` (index.theme
+with `Directories=`), `system_icon_theme_read()` / `system_icon_theme_write()`
+over GSettings `icon-theme` and `gtk-icon-theme-name`. System only.
+
 The settings app, one file, libadwaita C API.
 
 1. **Tables**: `kModules[]` (key, title, subtitle, default section) and the

@@ -145,6 +145,15 @@ void Hyprland::set_dpms(bool on) {
     dispatch(std::string("hl.dsp.dpms({ action = \"") + (on ? "on" : "off") + "\" })");
 }
 
+void Hyprland::set_cursor(const std::string& theme, int size) {
+    if (theme.empty() || theme.find_first_of(" \t\n") != std::string::npos)
+        return;
+    request("setcursor " + theme + " " + std::to_string(size), [theme](const std::string& reply) {
+        if (reply.rfind("ok", 0) != 0)
+            g_warning("Hyprland setcursor %s: %s", theme.c_str(), reply.c_str());
+    });
+}
+
 void Hyprland::set_monitor_mode(const std::string& output, int width, int height,
                                 int rate, double scale, int transform, int x, int y,
                                 std::function<void(bool)> on_done) {

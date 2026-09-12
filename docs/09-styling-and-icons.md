@@ -126,6 +126,12 @@ configured family, so **never put a text `font-family` on a widget class**
 per-area files. If the font is not installed, GTK falls back to the system
 sans; the bar still works.
 
+The settings page's Font row also sets the **system font** (GSettings
+`org.gnome.desktop.interface font-name` and the GTK `settings.ini` files) to
+the same family, and its Font size row changes that system font's size only —
+the shell never reads a size from anywhere but its CSS. See
+`src/settings/system_font.cpp`.
+
 Icons come from two icon fonts installed to
 `~/.local/share/fonts/hypr-shell/` by `meson install`:
 

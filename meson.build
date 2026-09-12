@@ -191,6 +191,9 @@ executable(
     'src/settings/vpn_page.cpp',
     'src/settings/command.cpp',
     'src/settings/search.cpp',
+    'src/settings/system_font.cpp',
+    'src/settings/system_cursor.cpp',
+    'src/settings/system_icons.cpp',
   ),
   cpp_args: ['-DHS_VERSION="' + meson.project_version() + '"'],
   dependencies: [

@@ -423,6 +423,11 @@ void Config::load() {
             if (parse_hex_color(accent, probe)) // "#rrggbb" only
                 ui_.accent = accent;
             ui_.dark_mode = it->value("dark_mode", true);
+            const std::string cursor = it->value("cursor_theme", std::string());
+            // a directory name: no path separators or whitespace
+            if (cursor.find_first_of("/ \t\n\"") == std::string::npos)
+                ui_.cursor_theme = cursor;
+            ui_.cursor_size = std::clamp(it->value("cursor_size", 24), 8, 128);
         }
         if (auto it = j.find("night_light"); it != j.end() && it->is_object()) {
             auto& n = night_light_;

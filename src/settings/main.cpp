@@ -17,6 +17,9 @@
 #include "settings/login_page.hpp"
 #include "settings/users_page.hpp"
 #include "settings/search.hpp"
+#include "settings/system_font.hpp"
+#include "settings/system_cursor.hpp"
+#include "settings/system_icons.hpp"
 #include "settings/vpn_page.hpp"
 
 #include <sys/stat.h>
@@ -335,6 +338,19 @@ struct Settings {
     GtkWidget* ui_style_preview[2] = {}; // Default (light) / Dark tiles' drawing areas
     GtkWidget* ui_swatches[kAccentCount] = {}; // GtkCheckButtons, one per kAccents
     GtkWidget* ui_font_button = nullptr;   // GtkFontDialogButton
+    AdwSpinRow* ui_font_size = nullptr;    // system font size (points), not config.json
+    GSettings* ui_interface_settings = nullptr; // org.gnome.desktop.interface, may be null
+    double ui_font_size_hook = 0;          // HS_UI_FONT_SIZE dev hook
+    AdwComboRow* ui_cursor_theme = nullptr; // installed cursor themes
+    std::vector<std::string> ui_cursor_ids;  // theme id per combo index
+    AdwSpinRow* ui_cursor_size = nullptr;
+    GtkWidget* ui_cursor_sddm_row = nullptr; // "Login screen" status + Apply (SDDM only)
+    GtkWidget* ui_cursor_sddm_button = nullptr;
+    guint ui_cursor_sddm_source = 0;         // debounced pkexec apply after a change
+    bool ui_cursor_sddm_busy = false;
+    std::shared_ptr<bool> ui_alive = std::make_shared<bool>(true); // async guards
+    AdwComboRow* ui_icon_theme = nullptr;  // system icon theme (GSettings), not config.json
+    std::vector<std::string> ui_icon_ids;   // theme id per combo index
     GtkCssProvider* ui_accent_css = nullptr; // this app's own accent color
 
     // Wallpaper sidebar page (top-level "wallpaper" object)
@@ -496,6 +512,9 @@ json& ui_object(Settings* s) {
 // The Bar page is populated before the first frame, the other pages once
 // they exist (build_secondary_pages, right after that frame).
 enum class PopulateStage { Bar, Secondary };
+
+void select_cursor_theme(Settings* s, const std::string& theme);
+void select_icon_theme(Settings* s, const std::string& theme);
 
 void populate(Settings* s, PopulateStage stage) {
     hs_mark(stage == PopulateStage::Bar ? "populate bar" : "populate secondary");
@@ -917,6 +936,17 @@ void populate(Settings* s, PopulateStage stage) {
         PangoFontDescription* desc = pango_font_description_from_string(font.c_str());
         gtk_font_dialog_button_set_font_desc(GTK_FONT_DIALOG_BUTTON(s->ui_font_button), desc);
         pango_font_description_free(desc);
+        adw_spin_row_set_value(s->ui_font_size, hyprshell::settings::system_font_read().size);
+        // cursor: config.json when the page has set it, else the desktop's current one
+        hyprshell::settings::SystemCursor cursor = hyprshell::settings::system_cursor_read();
+        const std::string cfg_theme = ui_object(s).value("cursor_theme", std::string());
+        if (!cfg_theme.empty()) {
+            cursor.theme = cfg_theme;
+            cursor.size = ui_object(s).value("cursor_size", cursor.size);
+        }
+        select_cursor_theme(s, cursor.theme);
+        adw_spin_row_set_value(s->ui_cursor_size, cursor.size);
+        select_icon_theme(s, hyprshell::settings::system_icon_theme_read());
     }
     gtk_adjustment_set_value(s->nl_temp, nl_temp);
     for (guint i = 0; i < kNlTimeOptions; ++i) {
@@ -1718,6 +1748,138 @@ void on_ui_font_changed(GObject*, GParamSpec*, gpointer data) {
         return;
     ui_object(s)["font"] = family;
     save(s);
+    // The system font follows the family (user request): applications get the
+    // same face as the shell. A new family starts in its regular style — the old
+    // style name ("Book", "Semi-Bold") may not exist in it — and keeps the size.
+    hyprshell::settings::SystemFont font = hyprshell::settings::system_font_read();
+    if (font.family == family)
+        return;
+    font.family = family;
+    font.style.clear();
+    hyprshell::settings::system_font_write(font);
+}
+
+// Font size applies to the system font only; the shell's CSS owns its own sizes.
+void on_ui_font_size_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    hyprshell::settings::SystemFont font = hyprshell::settings::system_font_read();
+    const double size = adw_spin_row_get_value(s->ui_font_size);
+    if (std::fabs(font.size - size) < 0.01)
+        return;
+    font.size = size;
+    hyprshell::settings::system_font_write(font);
+}
+
+// Another tool (gsettings, GNOME Tweaks) changed the system font: show its size.
+void on_system_font_setting_changed(GSettings*, const gchar*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const bool was_loading = s->loading;
+    s->loading = true;
+    adw_spin_row_set_value(s->ui_font_size, hyprshell::settings::system_font_read().size);
+    s->loading = was_loading;
+}
+
+// Selects `theme` in the cursor combo, appending it when it is not installed
+// (a config value for a theme that was removed still shows what is set).
+void select_cursor_theme(Settings* s, const std::string& theme) {
+    auto it = std::find(s->ui_cursor_ids.begin(), s->ui_cursor_ids.end(), theme);
+    if (it == s->ui_cursor_ids.end()) {
+        auto* model = GTK_STRING_LIST(adw_combo_row_get_model(s->ui_cursor_theme));
+        gtk_string_list_append(model, theme.c_str());
+        s->ui_cursor_ids.push_back(theme);
+        it = std::prev(s->ui_cursor_ids.end());
+    }
+    adw_combo_row_set_selected(s->ui_cursor_theme,
+                               static_cast<guint>(it - s->ui_cursor_ids.begin()));
+}
+
+// Icon theme combo: the current system theme is appended when it is not in
+// the scanned list (a hidden or removed theme still shows what is set).
+void select_icon_theme(Settings* s, const std::string& theme) {
+    auto it = std::find(s->ui_icon_ids.begin(), s->ui_icon_ids.end(), theme);
+    if (it == s->ui_icon_ids.end()) {
+        auto* model = GTK_STRING_LIST(adw_combo_row_get_model(s->ui_icon_theme));
+        gtk_string_list_append(model, theme.c_str());
+        s->ui_icon_ids.push_back(theme);
+        it = std::prev(s->ui_icon_ids.end());
+    }
+    adw_combo_row_set_selected(s->ui_icon_theme, static_cast<guint>(it - s->ui_icon_ids.begin()));
+}
+
+// System only: GSettings + settings.ini; the shell has no key for it.
+void on_ui_icon_theme_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const guint selected = adw_combo_row_get_selected(s->ui_icon_theme);
+    if (selected == GTK_INVALID_LIST_POSITION || selected >= s->ui_icon_ids.size())
+        return;
+    hyprshell::settings::system_icon_theme_write(s->ui_icon_ids[selected]);
+}
+
+void on_system_icon_theme_setting_changed(GSettings*, const gchar*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const bool was_loading = s->loading;
+    s->loading = true;
+    select_icon_theme(s, hyprshell::settings::system_icon_theme_read());
+    s->loading = was_loading;
+}
+
+hyprshell::settings::SystemCursor current_cursor(Settings* s) {
+    hyprshell::settings::SystemCursor cursor;
+    const guint selected = adw_combo_row_get_selected(s->ui_cursor_theme);
+    if (selected != GTK_INVALID_LIST_POSITION && selected < s->ui_cursor_ids.size())
+        cursor.theme = s->ui_cursor_ids[selected];
+    cursor.size = static_cast<int>(std::lround(adw_spin_row_get_value(s->ui_cursor_size)));
+    return cursor;
+}
+
+void apply_cursor_to_sddm(Settings* s) {
+    if (s->ui_cursor_sddm_busy)
+        return;
+    s->ui_cursor_sddm_busy = true;
+    gtk_widget_set_sensitive(s->ui_cursor_sddm_button, FALSE);
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(s->ui_cursor_sddm_row), "Waiting for authorisation…");
+    std::weak_ptr<bool> alive = s->ui_alive;
+    hyprshell::settings::sddm_cursor_apply(current_cursor(s), [s, alive](bool, std::string message) {
+        if (alive.expired())
+            return;
+        s->ui_cursor_sddm_busy = false;
+        gtk_widget_set_sensitive(s->ui_cursor_sddm_button, TRUE);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(s->ui_cursor_sddm_row), message.c_str());
+    });
+}
+
+void on_ui_cursor_sddm_apply(GtkButton*, gpointer data) {
+    apply_cursor_to_sddm(static_cast<Settings*>(data));
+}
+
+// Theme or size changed: config.json (the shell applies it to Hyprland), the
+// GTK / Xcursor files, and — debounced, since it raises a polkit prompt — the
+// SDDM drop-in when SDDM is installed.
+void on_ui_cursor_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const hyprshell::settings::SystemCursor cursor = current_cursor(s);
+    if (cursor.theme.empty())
+        return;
+    ui_object(s)["cursor_theme"] = cursor.theme;
+    ui_object(s)["cursor_size"] = cursor.size;
+    save(s);
+    hyprshell::settings::system_cursor_write(cursor);
+    if (s->ui_cursor_sddm_row == nullptr || !gtk_widget_get_visible(s->ui_cursor_sddm_row))
+        return;
+    if (s->ui_cursor_sddm_source != 0)
+        g_source_remove(s->ui_cursor_sddm_source);
+    s->ui_cursor_sddm_source = g_timeout_add(2000, [](gpointer d) -> gboolean {
+        auto* s = static_cast<Settings*>(d);
+        s->ui_cursor_sddm_source = 0;
+        apply_cursor_to_sddm(s);
+        return G_SOURCE_REMOVE;
+    }, s);
 }
 
 
@@ -3224,7 +3386,7 @@ void build_secondary_pages(Settings* s) {
     GtkWidget* ui_font_row = adw_action_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_row), "Font");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_row),
-                                "Text font of the bar, panels and lock screen");
+                                "Text font of the shell and of applications");
     GtkFontDialog* font_dialog = gtk_font_dialog_new();
     gtk_font_dialog_set_title(font_dialog, "Shell font");
     s->ui_font_button = gtk_font_dialog_button_new(font_dialog);
@@ -3234,7 +3396,71 @@ void build_secondary_pages(Settings* s) {
     gtk_widget_set_valign(s->ui_font_button, GTK_ALIGN_CENTER);
     adw_action_row_add_suffix(ADW_ACTION_ROW(ui_font_row), s->ui_font_button);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_row);
+    GtkWidget* ui_font_size_row = adw_spin_row_new_with_range(6, 32, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_font_size_row), "Font size");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_font_size_row),
+                                "Size of the system font in applications, in points. "
+                                "The shell keeps its own sizes.");
+    s->ui_font_size = ADW_SPIN_ROW(ui_font_size_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_font_group), ui_font_size_row);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_font_group));
+
+    // Icons: system state only (GSettings), like the font size.
+    GtkWidget* ui_icon_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_icon_group), "Icons");
+    GtkStringList* icon_model = gtk_string_list_new(nullptr);
+    for (const auto& theme : hyprshell::settings::icon_themes()) {
+        gtk_string_list_append(icon_model, theme.name.c_str());
+        s->ui_icon_ids.push_back(theme.id);
+    }
+    GtkWidget* ui_icon_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_icon_row), "Icon theme");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_icon_row),
+                                "Icon theme of applications. Not part of the shell's configuration.");
+    adw_combo_row_set_model(ADW_COMBO_ROW(ui_icon_row), G_LIST_MODEL(icon_model));
+    g_object_unref(icon_model);
+    s->ui_icon_theme = ADW_COMBO_ROW(ui_icon_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_icon_group), ui_icon_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_icon_group));
+
+    // Cursor: desktop state like the system font, plus ui.cursor_* in
+    // config.json so the shell can hand it to Hyprland at every start.
+    const bool sddm = hyprshell::settings::sddm_installed();
+    GtkWidget* ui_cursor_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ui_cursor_group), "Cursor");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(ui_cursor_group),
+        sddm ? "Mouse cursor of applications, Hyprland and the login screen."
+             : "Mouse cursor of applications and Hyprland.");
+    GtkStringList* cursor_model = gtk_string_list_new(nullptr);
+    for (const auto& theme : hyprshell::settings::cursor_themes()) {
+        gtk_string_list_append(cursor_model, theme.name.c_str());
+        s->ui_cursor_ids.push_back(theme.id);
+    }
+    GtkWidget* ui_cursor_theme_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_cursor_theme_row), "Cursor theme");
+    adw_combo_row_set_model(ADW_COMBO_ROW(ui_cursor_theme_row), G_LIST_MODEL(cursor_model));
+    g_object_unref(cursor_model);
+    s->ui_cursor_theme = ADW_COMBO_ROW(ui_cursor_theme_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_cursor_group), ui_cursor_theme_row);
+    GtkWidget* ui_cursor_size_row = adw_spin_row_new_with_range(16, 64, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_cursor_size_row), "Cursor size");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_cursor_size_row), "In pixels");
+    s->ui_cursor_size = ADW_SPIN_ROW(ui_cursor_size_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_cursor_group), ui_cursor_size_row);
+    GtkWidget* ui_cursor_sddm_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ui_cursor_sddm_row), "Login screen");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ui_cursor_sddm_row),
+                                "Uses the same cursor. Changing it asks for the administrator "
+                                "password.");
+    s->ui_cursor_sddm_button = gtk_button_new_with_label("Apply");
+    gtk_widget_set_valign(s->ui_cursor_sddm_button, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(s->ui_cursor_sddm_button, "Write the cursor to SDDM's configuration now");
+    adw_action_row_add_suffix(ADW_ACTION_ROW(ui_cursor_sddm_row), s->ui_cursor_sddm_button);
+    gtk_widget_set_visible(ui_cursor_sddm_row, sddm);
+    s->ui_cursor_sddm_row = ui_cursor_sddm_row;
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ui_cursor_group), ui_cursor_sddm_row);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ui_page), ADW_PREFERENCES_GROUP(ui_cursor_group));
 
     // -- Night light sidebar page (top-level "night_light" object) -------------
     GtkWidget* nl_page = adw_preferences_page_new();
@@ -3916,6 +4142,18 @@ void build_secondary_pages(Settings* s) {
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(ui_view), ui_page);
     gtk_stack_add_named(GTK_STACK(stack), ui_view, "ui_page");
     g_signal_connect(s->ui_font_button, "notify::font-desc", G_CALLBACK(on_ui_font_changed), s);
+    g_signal_connect(s->ui_font_size, "notify::value", G_CALLBACK(on_ui_font_size_changed), s);
+    g_signal_connect(s->ui_cursor_theme, "notify::selected", G_CALLBACK(on_ui_cursor_changed), s);
+    g_signal_connect(s->ui_icon_theme, "notify::selected", G_CALLBACK(on_ui_icon_theme_changed), s);
+    g_signal_connect(s->ui_cursor_size, "notify::value", G_CALLBACK(on_ui_cursor_changed), s);
+    g_signal_connect(s->ui_cursor_sddm_button, "clicked", G_CALLBACK(on_ui_cursor_sddm_apply), s);
+    s->ui_interface_settings = hyprshell::settings::system_font_settings();
+    if (s->ui_interface_settings != nullptr)
+        g_signal_connect(s->ui_interface_settings, "changed::font-name",
+                         G_CALLBACK(on_system_font_setting_changed), s);
+    if (s->ui_interface_settings != nullptr)
+        g_signal_connect(s->ui_interface_settings, "changed::icon-theme",
+                         G_CALLBACK(on_system_icon_theme_setting_changed), s);
     gtk_stack_add_named(GTK_STACK(stack), wp_view, "wallpaper_page");
     gtk_stack_add_named(GTK_STACK(stack), nl_view, "night_light_page");
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
@@ -4063,6 +4301,10 @@ void on_activate(GtkApplication* app, gpointer) {
                 g_source_remove(source);
         g_clear_object(&s->wp_dir_monitor);
         g_clear_object(&s->wp_state_monitor);
+        g_clear_object(&s->ui_interface_settings);
+        if (s->ui_cursor_sddm_source != 0)
+            g_source_remove(s->ui_cursor_sddm_source);
+        *s->ui_alive = false;
         delete s;
     });
     s->window = win;
@@ -5079,6 +5321,52 @@ void on_activate(GtkApplication* app, gpointer) {
                 gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), sidebar_row));
         else
             adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
+    }
+    // dev hook: HS_UI_FONT_SIZE=<points> sets the Font size row 1.5 s after
+    // startup, exercising the system-font write path (spin rows can't be clicked
+    // from the tool shell). Restore the font afterwards — it changes gsettings.
+    if (const char* size = g_getenv("HS_UI_FONT_SIZE")) {
+        s->ui_font_size_hook = g_ascii_strtod(size, nullptr);
+        g_timeout_add(1500, [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            if (s->ui_font_size != nullptr && s->ui_font_size_hook > 0)
+                adw_spin_row_set_value(s->ui_font_size, s->ui_font_size_hook);
+            return G_SOURCE_REMOVE;
+        }, s);
+    }
+
+    // dev hook: HS_UI_ICON_THEME=<id> selects that icon theme 1.5 s after
+    // startup and runs the handler (gsettings + settings.ini) even if unchanged.
+    if (g_getenv("HS_UI_ICON_THEME") != nullptr) {
+        g_timeout_add(1500, [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            if (s->ui_icon_theme == nullptr)
+                return G_SOURCE_REMOVE;
+            s->loading = true;
+            select_icon_theme(s, g_getenv("HS_UI_ICON_THEME"));
+            s->loading = false;
+            on_ui_icon_theme_changed(nullptr, nullptr, s);
+            return G_SOURCE_REMOVE;
+        }, s);
+    }
+    // dev hook: HS_UI_CURSOR=<theme>:<size> sets both cursor rows 1.5 s after
+    // startup. It writes gsettings / settings.ini / ~/.icons/default and, with
+    // SDDM installed, raises the pkexec prompt unless HS_CURSOR_SDDM_ROOT is set.
+    if (const char* spec = g_getenv("HS_UI_CURSOR")) {
+        g_timeout_add(1500, [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            const std::string spec = g_getenv("HS_UI_CURSOR");
+            const auto colon = spec.find(':');
+            if (s->ui_cursor_theme == nullptr || colon == std::string::npos)
+                return G_SOURCE_REMOVE;
+            s->loading = true; // one handler run, after both rows are set
+            adw_spin_row_set_value(s->ui_cursor_size, g_ascii_strtod(spec.c_str() + colon + 1, nullptr));
+            select_cursor_theme(s, spec.substr(0, colon));
+            s->loading = false;
+            on_ui_cursor_changed(nullptr, nullptr, s); // even when nothing changed
+            return G_SOURCE_REMOVE;
+        }, s);
+        (void)spec;
     }
 
     adw_application_window_set_content(ADW_APPLICATION_WINDOW(win), split);

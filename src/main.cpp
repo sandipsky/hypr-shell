@@ -9,6 +9,7 @@
 #include "bar/wallpaper_window.hpp"
 #include "services/battery_alerts.hpp"
 #include "services/config.hpp"
+#include "services/hyprland.hpp"
 #include "services/theme.hpp"
 #include "services/wallpaper.hpp"
 #include "services/idle.hpp"
@@ -167,6 +168,9 @@ protected:
         apply_theme();
         Config::get().signal_changed().connect(
             sigc::mem_fun(*this, &App::apply_theme));
+        apply_cursor();
+        Config::get().signal_changed().connect(
+            sigc::mem_fun(*this, &App::apply_cursor));
         bar_ = std::make_unique<Bar>();
         add_window(*bar_);
         // bar.visibility = "hidden" starts the shell with no bar mapped;
@@ -317,6 +321,20 @@ private:
         theme_provider_->load_from_data(css);
     }
 
+    // ui.cursor_theme / ui.cursor_size → Hyprland's cursor (persistence across
+    // logins, and the live change when the settings app edits them). Absent
+    // keys leave whatever the user's hyprland.conf environment chose.
+    void apply_cursor() {
+        const auto& ui = Config::get().ui();
+        if (ui.cursor_theme.empty())
+            return;
+        const std::string wanted = ui.cursor_theme + " " + std::to_string(ui.cursor_size);
+        if (wanted == applied_cursor_)
+            return;
+        applied_cursor_ = wanted;
+        Hyprland::get().set_cursor(ui.cursor_theme, ui.cursor_size);
+    }
+
     void reload_user_css() {
         try {
             if (Glib::file_test(user_css_path_, Glib::FileTest::EXISTS)) {
@@ -344,6 +362,7 @@ private:
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;
     Glib::RefPtr<Gtk::CssProvider> theme_provider_;
+    std::string applied_cursor_; // last "theme size" sent to Hyprland
     Glib::RefPtr<Gtk::CssProvider> user_provider_;
     Glib::RefPtr<Gio::FileMonitor> css_monitor_;
     std::string user_css_path_;

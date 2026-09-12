@@ -156,6 +156,13 @@ src/settings/users_page.{hpp,cpp}       "Users" page: GNOME's Users panel over A
                                         password, other users, Add User with password set now)
 src/settings/command.{hpp,cpp}          run_command(): async GSubprocess helper + string utils
                                         shared by the hotspot and VPN pages
+src/settings/system_font.{hpp,cpp}      system font (GSettings org.gnome.desktop.interface font-name +
+                                        gtk-3.0/gtk-4.0 settings.ini): read / write / watch, used by the
+                                        User interface page's Font + Font size rows
+src/settings/system_cursor.{hpp,cpp}    mouse cursor: installed theme scan, GSettings cursor-theme/-size +
+                                        settings.ini + ~/.icons/default/index.theme, SDDM drop-in via pkexec
+src/settings/system_icons.{hpp,cpp}     icon theme of applications: installed-theme scan, GSettings icon-theme
+                                        + settings.ini (system only, no config key)
 docs/                                   long-form developer docs (start at docs/README.md)
 ```
 
@@ -226,6 +233,17 @@ with AccountsService), `HS_USERS_NO_PKEXEC=1` skips the privileged SDDM copy
 so the test raises no polkit prompt. **Never let a pkexec or polkit prompt
 appear from the tool shell unattended**, and never submit Add User / Change
 Password / Remove User against the real account.
+User interface page: `HS_UI_FONT_SIZE=<pt>` sets the Font size row 1.5s
+after startup (writes the SYSTEM font via gsettings + settings.ini — back up
+`gsettings get org.gnome.desktop.interface font-name` and
+~/.config/gtk-3.0/settings.ini first and restore them).
+`HS_UI_CURSOR=<theme>:<size>` sets the Cursor rows the same way and runs the
+change handler even for unchanged values (config.json `ui.cursor_*`, gsettings,
+settings.ini, ~/.icons/default, and the SDDM drop-in — set
+`HS_CURSOR_SDDM_ROOT=<dir>` so it writes under that dir instead of raising
+pkexec). Test with the current theme/size so nothing changes on screen.
+`HS_UI_ICON_THEME=<id>` does the same for the Icon theme row (gsettings +
+settings.ini only).
 Clipboard testing: `HS_OPEN_CLIPBOARD=3000` opens the history window after 3s
 (`hypr-shell --clipboard` against a running instance also works);
 `HS_CLIPBOARD_DELETE=<ms>` presses the selected row's trash button that long
@@ -1714,6 +1732,67 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   and prompts must not pop up unattended. Not ported from GNOME: built-in
   avatar gallery / camera, fingerprint, parental controls, enterprise login,
   the "unlock" banner (polkit prompts per action instead), password hints.
+- 2026-09-12 — System font from the User interface page (user request):
+  picking a font now also sets the **system font** for applications, and a
+  new "Font size" spin row (6–32 pt) changes the system font's size only —
+  the shell's CSS keeps owning its sizes, so `ui.font` stays a bare family
+  and config.json gained no key. **The system font is desktop state, not
+  config**: `settings/system_font.{hpp,cpp}` writes GSettings
+  `org.gnome.desktop.interface font-name` (what GTK3/GTK4 read on Wayland
+  when gsettings-desktop-schemas is installed — the settings window itself
+  re-renders live) and `gtk-font-name` in `~/.config/gtk-{3,4}.0/
+  settings.ini` (the fallback without the schemas; other keys preserved via
+  GKeyFile). A size change keeps family + style ("Fira Sans Book 12" → "…
+  13"); a family change writes "<family> <size>" without the old style name,
+  which may not exist in the new family. The page follows external changes
+  through GSettings' `changed::font-name`. Qt apps are not covered (no qt5ct/
+  qt6ct/Kvantum configured here). Dev hook: `HS_UI_FONT_SIZE=<pt>`.
+- 2026-09-12 — Cursor option on the User interface page (user request,
+  "also for SDDM if installed"): a "Cursor" group with Cursor theme (combo of
+  installed themes — directories with `cursors/` or `hyprcursors/` under
+  ~/.icons, ~/.local/share/icons, $XDG_DATA_DIRS/icons, named from
+  index.theme; a configured theme that is no longer installed is appended so
+  the row shows what is set), Cursor size (16–64 px) and, only with `sddm`
+  on PATH, a "Login screen" status row with an Apply button. Four consumers,
+  four writes (`settings/system_cursor.cpp`): (1) **config.json**
+  `ui.cursor_theme` / `ui.cursor_size` — the shell runs Hyprland's
+  `setcursor <theme> <size>` request (`Hyprland::set_cursor`, still the text
+  grammar on 0.56 — `hyprctl setcursor` replied "ok") at startup and on
+  change, which is the persistence path: Hyprland only takes the cursor from
+  its startup environment (the user's environment.lua exports XCURSOR_*),
+  and absent keys leave that alone; Hyprland's `cursor:sync_gsettings_theme`
+  (on by default) mirrors setcursor into gsettings as well. (2) GSettings
+  `cursor-theme` / `cursor-size` + `gtk-cursor-theme-name/-size` in both
+  settings.ini files (GTK apps; the shell itself re-reads them live).
+  (3) `~/.icons/default/index.theme` `Inherits=<theme>` — the Xcursor
+  "default" theme, so XWayland clients and anything without XCURSOR_THEME
+  follow. (4) **SDDM**: `/etc/sddm.conf.d/zz-hypr-shell-cursor.conf` with
+  `[Theme] CursorTheme / CursorSize` and `[General] GreeterEnvironment`
+  re-emitted from the effective value (`sddm_config_value`) with its
+  XCURSOR_* / HYPRCURSOR_* entries replaced — SDDM applies GreeterEnvironment
+  after [Theme]'s cursor keys, and the user's 10-theme.conf sets
+  XCURSOR_THEME there. The drop-in sorts last so it wins per key. It is
+  root-owned, so the write goes through one `pkexec install`, **debounced
+  2 s after the last theme/size change** (one polkit prompt per adjustment,
+  not per tick; the Apply button retries after a dismissed prompt); status
+  text in the row like the login page. Only the pkexec path itself is
+  untested — verified with `HS_CURSOR_SDDM_ROOT` (drop-in content) and the
+  current BreezeX-Light 24 so nothing changed on screen; Qt apps are again
+  not covered. Dev hook: `HS_UI_CURSOR=<theme>:<size>`.
+- 2026-09-12 — Icon theme row (user request: "for the system only"): an
+  "Icons" group on the User interface page with one combo of installed icon
+  themes (`settings/system_icons.cpp`: directories whose index.theme has a
+  `Directories=` key under ~/.icons, ~/.local/share/icons, $XDG_DATA_DIRS/
+  icons — cursor-only themes lack it; hicolor skipped; `Hidden=true` themes
+  are listed anyway because GTK4's own Adwaita is marked hidden and is the
+  user's current theme). Writes GSettings `icon-theme` and
+  `gtk-icon-theme-name` in both settings.ini files, nothing in config.json —
+  the shell's app icons follow GTK's icon theme like any app's, so there is
+  nothing shell-specific to store. Follows external changes via
+  `changed::icon-theme`. While this landed the user had already installed
+  the cursor build and picked the Adwaita cursor — the real pkexec write of
+  the SDDM drop-in happened then (`/etc/sddm.conf.d/zz-hypr-shell-cursor.conf`,
+  11:38), so that path is verified too. Dev hook: `HS_UI_ICON_THEME=<id>`.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

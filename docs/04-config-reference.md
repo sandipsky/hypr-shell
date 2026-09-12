@@ -398,6 +398,8 @@ from these three values (see [styling](09-styling-and-icons.md#colours)).
 | `dark_mode` | bool | `true` | Dark surfaces with light text; `false` gives the light palette (Material tone-40 accent, near-white surfaces). Also forces the settings window's libadwaita colour scheme. |
 | `accent` | `"#rrggbb"` | `"#bfc2ff"` | Accent colour (the settings page offers ten swatches; any hex works by hand). Dark mode uses it as `mPrimary` verbatim, with the on-accent text chosen for contrast (dark shade on light accents, white on dark ones); light mode darkens it so white text reads on it. Invalid strings fall back to the default. |
 | `font` | string | `"Fira Sans"` | Text font family for every window and popover (icon fonts are unaffected). Sizes are not configurable. |
+| `cursor_theme` | string | absent | Mouse cursor theme (an icon-theme directory name such as `BreezeX-Light`). When set, the shell sends Hyprland `setcursor` at startup and on change. Absent or empty = the compositor keeps the cursor from its own environment. The settings page also writes GSettings, the GTK `settings.ini` files, `~/.icons/default/index.theme` and, with SDDM installed, `/etc/sddm.conf.d/zz-hypr-shell-cursor.conf`. |
+| `cursor_size` | 8..128 | `24` | Cursor size in pixels, used with `cursor_theme`. |
 
 ## `night_light` (top level)
 
