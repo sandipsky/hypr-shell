@@ -79,6 +79,8 @@ void Config::load() {
     workspaces_mode_ = WorkspacesMode::Dynamic;
     workspaces_fixed_count_ = 5;
     workspaces_scroll_wrap_ = true;
+    workspaces_flash_urgent_ = true;
+    workspaces_accent_active_ = false;
     bt_auto_connect_ = false;
     taskbar_ = Taskbar{};
     control_center_ = ControlCenter{};
@@ -168,6 +170,8 @@ void Config::load() {
                 workspaces_mode_ = WorkspacesMode::Fixed;
             workspaces_fixed_count_ = std::clamp(it->value("fixed_count", 5), 1, 50);
             workspaces_scroll_wrap_ = it->value("scroll_wrap", true);
+            workspaces_flash_urgent_ = it->value("flash_urgent", true);
+            workspaces_accent_active_ = it->value("accent_active", false);
         }
         if (auto it = bar.find("active_window"); it != bar.end() && it->is_object()) {
             const std::string hide = it->value("hide_mode", "hidden");

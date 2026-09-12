@@ -53,6 +53,11 @@ public:
     WorkspacesMode workspaces_mode() const { return workspaces_mode_; }
     int workspaces_fixed_count() const { return workspaces_fixed_count_; }
     bool workspaces_scroll_wrap() const { return workspaces_scroll_wrap_; }
+    // flash a non-active workspace when one of its windows requests attention
+    // (Hyprland's `urgent` event, Noctalia's isUrgent pill) or opens there
+    bool workspaces_flash_urgent() const { return workspaces_flash_urgent_; }
+    // focused pill in the accent colour (mPrimary) instead of mOnSurface
+    bool workspaces_accent_active() const { return workspaces_accent_active_; }
 
     // bar.active_window.* — Noctalia's ActiveWindow widget settings
     enum class ActiveWindowHide { Visible, Hidden, Transparent };
@@ -350,6 +355,8 @@ private:
     WorkspacesMode workspaces_mode_ = WorkspacesMode::Dynamic;
     int workspaces_fixed_count_ = 5;
     bool workspaces_scroll_wrap_ = true;
+    bool workspaces_flash_urgent_ = true;
+    bool workspaces_accent_active_ = false;
     bool bt_auto_connect_ = false;
     Taskbar taskbar_;
     ControlCenter control_center_;

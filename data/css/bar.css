@@ -110,6 +110,24 @@ window.bar.right .module {
   background: alpha(@mOnSurface, 0.48);
 }
 
+/* a window asked for attention on a workspace that is not on screen
+ * (bar.workspaces.flash_urgent): pulse a few times, then stay in the error
+ * colour until that workspace is focused — Noctalia's isUrgent pill */
+@keyframes ws-urgent {
+  0%, 100% { background: @mError; }
+  50% { background: alpha(@mError, 0.3); }
+}
+
+.workspaces button.urgent {
+  background: @mError;
+  color: @mOnError;
+  animation: ws-urgent 700ms ease-in-out 4;
+}
+
+.workspaces button.urgent:hover {
+  background: alpha(@mError, 0.85);
+}
+
 /* focused workspace: solid white */
 .workspaces button.active {
   background: @mOnSurface;
@@ -118,6 +136,16 @@ window.bar.right .module {
 
 .workspaces button.active:hover {
   background: alpha(@mOnSurface, 0.88);
+}
+
+/* bar.workspaces.accent_active: the focused pill in the accent colour */
+.workspaces.accent-active button.active {
+  background: @mPrimary;
+  color: @mOnPrimary;
+}
+
+.workspaces.accent-active button.active:hover {
+  background: @mPrimaryHover;
 }
 
 /* focused window title */

@@ -41,7 +41,8 @@ launcher).
       "right":  ["network", "bluetooth", "volume", "battery", "notifications", "clock"]
     },
 
-    "workspaces":    { "mode": "dynamic", "fixed_count": 5, "scroll_wrap": true },
+    "workspaces":    { "mode": "dynamic", "fixed_count": 5, "scroll_wrap": true,
+                       "flash_urgent": true, "accent_active": false },
     "active_window": { "hide_mode": "hidden", "show_title": true, "title_mode": "title",
                        "no_window_text": "default", "show_icon": true },
     "clock":         { "first_day_of_week": 0, "calendar": "ad",
@@ -149,6 +150,8 @@ decides *whether*.
 | `mode` | `"dynamic"` \| `"fixed"` | `"dynamic"` | Fixed shows 1..`fixed_count` with placeholders, plus real workspaces above the range. |
 | `fixed_count` | int 1..50 | `5` | |
 | `scroll_wrap` | bool | `true` | Scrolling past the end wraps. |
+| `flash_urgent` | bool | `true` | A workspace other than the active one gets a flashing mError button (`urgent` class) when a window opens there or requests attention (Hyprland's `urgent` event); cleared when that workspace is focused. |
+| `accent_active` | bool | `false` | The focused button uses mPrimary / mOnPrimary (`accent-active` class on the module) instead of white. |
 
 ## `bar.active_window`
 

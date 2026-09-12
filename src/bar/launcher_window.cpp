@@ -398,6 +398,8 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Workspaces mode", "Bar › Workspaces", "workspaces"},
         {"Fixed workspace count", "Bar › Workspaces", "workspaces"},
         {"Workspace scroll wrap-around", "Bar › Workspaces", "workspaces"},
+        {"Flash workspaces needing attention", "Bar › Workspaces", "workspaces"},
+        {"Accent color for the active workspace", "Bar › Workspaces", "workspaces"},
         {"Clock format", "Bar › Clock", "clock"},
         {"Clock tooltip format", "Bar › Clock", "clock"},
         {"First day of week", "Bar › Clock", "clock"},

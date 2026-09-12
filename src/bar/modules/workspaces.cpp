@@ -85,7 +85,22 @@ void Workspaces::step(int dir) {
     }
 }
 
-void Workspaces::on_event(const std::string& name, const std::string& /*data*/) {
+void Workspaces::on_event(const std::string& name, const std::string& data) {
+    if (name == "urgent") {
+        if (Config::get().workspaces_flash_urgent())
+            on_urgent(data);
+        return;
+    }
+    if (name == "openwindow") {
+        // ADDRESS,WORKSPACENAME,CLASS,TITLE — remember where the window went;
+        // rebuild() flags that workspace when it is not the active one.
+        const auto first = data.find(',');
+        const auto second = first == std::string::npos ? first : data.find(',', first + 1);
+        if (first != std::string::npos)
+            opened_workspace_ = data.substr(first + 1, second == std::string::npos
+                                                          ? std::string::npos
+                                                          : second - first - 1);
+    }
     static constexpr const char* interesting[] = {
         "workspace",        "workspacev2",        "createworkspace", "createworkspacev2",
         "destroyworkspace", "destroyworkspacev2", "renameworkspace", "focusedmon",
@@ -98,6 +113,32 @@ void Workspaces::on_event(const std::string& name, const std::string& /*data*/) 
             return;
         }
     }
+}
+
+// Hyprland emits `urgent>>ADDRESS` when a window requests activation (an app
+// opening a link in a browser that sits on another workspace, an XWayland
+// urgency hint). Resolve the window's workspace and flag it unless it is the
+// one on screen — Noctalia shows the same flag as its isUrgent pill.
+void Workspaces::on_urgent(const std::string& address) {
+    if (address.empty() || address.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+        return;
+    const std::string full = "0x" + address;
+    Hyprland::get().request("j/clients", [this, full](const std::string& reply) {
+        try {
+            for (const auto& client : json::parse(reply)) {
+                if (client.value("address", "") != full)
+                    continue;
+                const int id = client.value("workspace", json::object()).value("id", -1);
+                if (id >= 0 && id != active_id_) {
+                    urgent_ids_.insert(id);
+                    schedule_refresh();
+                }
+                return;
+            }
+        } catch (const std::exception& e) {
+            g_warning("urgent window lookup failed: %s", e.what());
+        }
+    });
 }
 
 void Workspaces::schedule_refresh() {
@@ -170,6 +211,25 @@ void Workspaces::rebuild(const std::vector<Entry>& entries, int active_id) {
         shown_ids_.push_back(entry.id);
     active_id_ = active_id;
 
+    // Urgency: a window that opened on a workspace other than the active one
+    // flags it; focusing a workspace clears its flag; gone workspaces drop out.
+    if (!cfg.workspaces_flash_urgent()) {
+        urgent_ids_.clear();
+    } else if (!opened_workspace_.empty()) {
+        for (const auto& entry : entries)
+            if (entry.name == opened_workspace_ && entry.id != active_id)
+                urgent_ids_.insert(entry.id);
+    }
+    opened_workspace_.clear();
+    urgent_ids_.erase(active_id);
+    for (auto it = urgent_ids_.begin(); it != urgent_ids_.end();) {
+        if (std::binary_search(shown_ids_.begin(), shown_ids_.end(), *it))
+            ++it;
+        else
+            it = urgent_ids_.erase(it);
+    }
+    set_class(*this, "accent-active", cfg.workspaces_accent_active());
+
     // Reuse the existing buttons: a workspace switch or a window open/close
     // only flips classes and labels — no widget churn on every event.
     while (buttons_.size() > shown.size()) {
@@ -192,6 +252,7 @@ void Workspaces::rebuild(const std::vector<Entry>& entries, int active_id) {
             button->set_label(shown[i].name);
         set_class(*button, "active", shown[i].id == active_id);
         set_class(*button, "occupied", shown[i].windows > 0);
+        set_class(*button, "urgent", urgent_ids_.count(shown[i].id) > 0);
     }
 }
 

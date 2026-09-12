@@ -1809,6 +1809,27 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   the cursor build and picked the Adwaita cursor — the real pkexec write of
   the SDDM drop-in happened then (`/etc/sddm.conf.d/zz-hypr-shell-cursor.conf`,
   11:38), so that path is verified too. Dev hook: `HS_UI_ICON_THEME=<id>`.
+- 2026-09-12 — Workspaces: urgent flash + accent option (user request).
+  `bar.workspaces.flash_urgent` (default on) ports Noctalia's isUrgent pill:
+  Hyprland emits `urgent>>ADDRESS` (hex, no 0x — verified live) when a window
+  requests activation (xdg-activation from a browser opening a link, an
+  XWayland urgency hint; Quickshell's HyprlandWorkspace.urgent is the same
+  event), the module resolves the window's workspace through `j/clients` and,
+  when that workspace is not the active one, gives its button an `urgent`
+  class — mError / mOnError, a 4× 700 ms CSS `@keyframes` pulse, then solid
+  until the workspace is focused (a finite animation so the bar does not
+  redraw forever). The user's wording "a window opened in another workspace"
+  is covered too: `openwindow>>ADDRESS,WORKSPACENAME,…` on a non-active
+  workspace (window rules) flags it the same way; a window opening on the
+  active workspace never does (Hyprland also fires `urgent` for a freshly
+  launched window that consumes its activation token — that one lands on the
+  active workspace and is correctly ignored). Flags drop with their
+  workspace. `bar.workspaces.accent_active` (default off, keeps the white
+  pill) adds an `accent-active` class to the module so the focused button is
+  mPrimary / mOnPrimary (Noctalia's focusedColor default). Settings: an
+  "Appearance" group with both switches on the Workspaces subpage. Tested
+  live: Chrome on workspace 2 receiving `xdg-open` while workspace 1 was
+  focused flashed 2, focusing 2 cleared it.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

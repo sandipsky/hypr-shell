@@ -257,6 +257,8 @@ struct Settings {
     AdwComboRow* ws_mode = nullptr; // Dynamic / Fixed number
     AdwSpinRow* ws_count = nullptr;
     AdwSwitchRow* ws_wrap = nullptr;
+    AdwSwitchRow* ws_flash_urgent = nullptr;
+    AdwSwitchRow* ws_accent_active = nullptr;
 
     AdwComboRow* clock_fdow = nullptr; // Sunday / Monday
     AdwComboRow* clock_calendar = nullptr; // Gregorian (AD) / Bikram Sambat (BS)
@@ -549,11 +551,15 @@ void populate(Settings* s, PopulateStage stage) {
     std::string ws_mode = "dynamic";
     int ws_count = 5;
     bool ws_wrap = true;
+    bool ws_flash_urgent = true;
+    bool ws_accent_active = false;
     try {
         const json ws = s->root.value("bar", json::object()).value("workspaces", json::object());
         ws_mode = ws.value("mode", ws_mode);
         ws_count = std::clamp(ws.value("fixed_count", ws_count), 1, 50);
         ws_wrap = ws.value("scroll_wrap", ws_wrap);
+        ws_flash_urgent = ws.value("flash_urgent", ws_flash_urgent);
+        ws_accent_active = ws.value("accent_active", ws_accent_active);
     } catch (const json::exception&) {
     }
 
@@ -830,6 +836,8 @@ void populate(Settings* s, PopulateStage stage) {
     adw_spin_row_set_value(s->ws_count, ws_count);
     gtk_widget_set_sensitive(GTK_WIDGET(s->ws_count), ws_mode == "fixed");
     adw_switch_row_set_active(s->ws_wrap, ws_wrap);
+    adw_switch_row_set_active(s->ws_flash_urgent, ws_flash_urgent);
+    adw_switch_row_set_active(s->ws_accent_active, ws_accent_active);
     adw_switch_row_set_active(s->bt_auto, bt_auto);
     for (guint i = 0; i < 3; ++i)
         if (am_display == kAmDisplayKeys[i])
@@ -1042,6 +1050,23 @@ void on_ws_wrap_toggled(GObject*, GParamSpec*, gpointer data) {
     if (s->loading)
         return;
     workspaces_object(s)["scroll_wrap"] = adw_switch_row_get_active(s->ws_wrap) != FALSE;
+    save(s);
+}
+
+void on_ws_flash_urgent_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    workspaces_object(s)["flash_urgent"] = adw_switch_row_get_active(s->ws_flash_urgent) != FALSE;
+    save(s);
+}
+
+void on_ws_accent_active_toggled(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    workspaces_object(s)["accent_active"] =
+        adw_switch_row_get_active(s->ws_accent_active) != FALSE;
     save(s);
 }
 
@@ -4449,6 +4474,30 @@ void on_activate(GtkApplication* app, gpointer) {
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(ws_page), ADW_PREFERENCES_GROUP(ws_group));
 
+    GtkWidget* ws_look_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(ws_look_group), "Appearance");
+
+    GtkWidget* ws_flash_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ws_flash_row),
+                                  "Flash workspaces needing attention");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ws_flash_row),
+                                "When a window opens or asks for attention on a workspace "
+                                "other than the current one, its button flashes until you "
+                                "switch to it");
+    s->ws_flash_urgent = ADW_SWITCH_ROW(ws_flash_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ws_look_group), ws_flash_row);
+
+    GtkWidget* ws_accent_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(ws_accent_row),
+                                  "Accent color for the active workspace");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(ws_accent_row),
+                                "Use the accent color instead of white for the focused "
+                                "workspace button");
+    s->ws_accent_active = ADW_SWITCH_ROW(ws_accent_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(ws_look_group), ws_accent_row);
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(ws_page), ADW_PREFERENCES_GROUP(ws_look_group));
+
     // -- Clock subpage --------------------------------------------------------
     GtkWidget* clock_page = adw_preferences_page_new();
     GtkWidget* clock_group = adw_preferences_group_new();
@@ -4997,6 +5046,8 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(ws_mode_row, "notify::selected", G_CALLBACK(on_ws_mode_changed), s);
     g_signal_connect(ws_count_row, "notify::value", G_CALLBACK(on_ws_count_changed), s);
     g_signal_connect(ws_wrap_row, "notify::active", G_CALLBACK(on_ws_wrap_toggled), s);
+    g_signal_connect(ws_flash_row, "notify::active", G_CALLBACK(on_ws_flash_urgent_toggled), s);
+    g_signal_connect(ws_accent_row, "notify::active", G_CALLBACK(on_ws_accent_active_toggled), s);
     g_signal_connect(bt_auto_row, "notify::active", G_CALLBACK(on_bt_auto_toggled), s);
     g_signal_connect(fdow_row, "notify::selected", G_CALLBACK(on_clock_fdow_changed), s);
     g_signal_connect(cal_sys_row, "notify::selected", G_CALLBACK(on_clock_calendar_changed), s);
