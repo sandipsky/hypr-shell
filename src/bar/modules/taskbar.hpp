@@ -21,6 +21,7 @@ class Taskbar : public Gtk::Box, public CornerTarget {
 public:
     // corner click = the first (start corner) or last (end corner) item
     void activate_corner(bool start) override;
+    void activate_beside(double x, double y) override;
     Taskbar();
     ~Taskbar() override;
 

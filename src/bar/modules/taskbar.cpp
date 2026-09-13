@@ -699,6 +699,19 @@ void Taskbar::activate_corner(bool start) {
     activate_item(start ? items_.front() : items_.back());
 }
 
+void Taskbar::activate_beside(double x, double y) {
+    std::vector<Gtk::Widget*> children;
+    std::vector<std::size_t> indices;
+    for (std::size_t i = 0; i < items_.size(); ++i)
+        if (items_[i].root) {
+            children.push_back(items_[i].root);
+            indices.push_back(i);
+        }
+    const int index = pick_child_along(*this, children, x, y, Config::get().bar_vertical());
+    if (index >= 0)
+        activate_item(items_[indices[static_cast<std::size_t>(index)]]);
+}
+
 void Taskbar::launch_pinned(const std::string& app_id) {
     auto& apps = Apps::get();
     const auto* entry = apps.find_by_id(app_id);

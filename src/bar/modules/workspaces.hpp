@@ -17,6 +17,7 @@ public:
 
     // corner click = the first (start corner) or last (end corner) workspace button
     void activate_corner(bool start) override;
+    void activate_beside(double x, double y) override;
 
 private:
     struct Entry {

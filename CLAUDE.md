@@ -2125,7 +2125,20 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   inside the module's rows, which on a top bar rejected the top-right corner
   pixel for the end module — the user's clock did nothing until this was
   fixed. Skipping hidden children matters: a battery module without UPower
-  is still the box's last child.
+  is still the box's last child. **2026-09-13** (user request): a start / end
+  section without a visible module hands its corner to the centre section —
+  its first module takes the start corner, its last the end corner — so a
+  layout with everything centred still gets both corners. An empty far
+  section is not consulted (its module would be nowhere near that corner).
+  Same day, after the user clicked the bar's top padding above a centred
+  clock and nothing happened: the rule is really about the bar padding, not
+  just the corners, so `CornerTarget` gained `activate_beside(x, y)` — a
+  click across the bar's thickness within any visible module's span along
+  the bar (the 3px strip above / below a horizontal bar's modules) counts as
+  a click on that module, in every section; default = `activate_corner(true)`,
+  workspaces / taskbar pick the item under the point (`pick_child_along`,
+  nearest child when the point falls in a gap). The beside test runs before
+  the corner test so the outermost multi-item module gets the right item.
 - 2026-09-08 — Wheel over the volume and battery icons (user request): the
   `volume` module steps the default sink by `bar.volume.scroll_step` percent
   per notch (default 5, Noctalia's volumeStep; capped at 100%, mute untouched)

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace hyprshell {
 
@@ -102,43 +103,81 @@ Bar::Bar() {
     layout_.set_end_widget(end_box_);
     set_child(layout_);
 
-    // Corner hit targets (user request, Windows' Start-button rule): a click
-    // between the outermost module — the first visible one in the start
-    // section, the last visible one in the end section, on any bar
-    // orientation — and the screen corner (the bar's padding, where nothing
-    // else listens) counts as a click on that module, so the pointer can be
-    // thrown into either corner without aiming. Modules opt in through
-    // CornerTarget; the bubble phase leaves the modules' own gestures first.
+    // Padding hit targets (user request, Windows' taskbar rule): the bar's
+    // padding listens to nothing, so a primary click there is handed to a
+    // module. Beside: a click within a module's span along the bar (the strip
+    // above / below it on a horizontal bar) counts as a click on that module.
+    // Corner: a click between the outermost module — the first visible one
+    // in the start section, the last visible one in the end section, or the
+    // centre section's first / last when that side is empty, on any bar
+    // orientation — and the screen corner counts as a click on it, so the
+    // pointer can be thrown into either corner without aiming. Modules opt
+    // in through CornerTarget; the bubble phase leaves their own gestures
+    // first.
     auto corner_click = Gtk::GestureClick::create();
     corner_click->set_button(GDK_BUTTON_PRIMARY);
     corner_click->set_propagation_phase(Gtk::PropagationPhase::BUBBLE);
     corner_click->signal_pressed().connect([this](int, double x, double y) {
         if (hidden_)
             return;
-        // the start corner belongs to the first module, the end corner to the last
-        for (const bool start : {true, false}) {
-            Gtk::Widget* widget =
-                start ? start_box_.get_first_child() : end_box_.get_last_child();
-            while (widget && !widget->get_visible())
-                widget = start ? widget->get_next_sibling() : widget->get_prev_sibling();
+        const bool vertical = Config::get().bar_vertical();
+        struct Hit {
+            CornerTarget* target;
+            double x1, y1, x2, y2;
+        };
+        auto hit_for = [this](Gtk::Widget* widget) -> std::optional<Hit> {
             auto* target = dynamic_cast<CornerTarget*>(widget);
             if (!target)
-                continue;
+                return std::nullopt;
             const auto bounds = widget->compute_bounds(*this);
             if (!bounds)
+                return std::nullopt;
+            return Hit{target, bounds->get_x(), bounds->get_y(),
+                       bounds->get_x() + bounds->get_width(),
+                       bounds->get_y() + bounds->get_height()};
+        };
+
+        // beside: the module whose span along the bar contains the click
+        for (Gtk::Widget* box : {&start_box_, &center_box_, &end_box_}) {
+            for (auto* w = box->get_first_child(); w; w = w->get_next_sibling()) {
+                if (!w->get_visible())
+                    continue;
+                const auto hit = hit_for(w);
+                if (!hit)
+                    continue;
+                if (x >= hit->x1 && x <= hit->x2 && y >= hit->y1 && y <= hit->y2)
+                    return; // the module handles its own clicks
+                const bool along = vertical ? (y >= hit->y1 && y <= hit->y2)
+                                            : (x >= hit->x1 && x <= hit->x2);
+                if (along) {
+                    hit->target->activate_beside(x - hit->x1, y - hit->y1);
+                    return;
+                }
+            }
+        }
+
+        // corner: the start corner belongs to the first module, the end corner to the last
+        for (const bool start : {true, false}) {
+            auto outermost = [start](Gtk::Widget& box) {
+                Gtk::Widget* w = start ? box.get_first_child() : box.get_last_child();
+                while (w && !w->get_visible())
+                    w = start ? w->get_next_sibling() : w->get_prev_sibling();
+                return w;
+            };
+            Gtk::Widget* widget = outermost(start ? start_box_ : end_box_);
+            if (!widget) // empty section: the centre module is the outermost one
+                widget = outermost(center_box_);
+            const auto hit = hit_for(widget);
+            if (!hit)
                 continue;
-            const double x1 = bounds->get_x(), y1 = bounds->get_y();
-            const double x2 = x1 + bounds->get_width(), y2 = y1 + bounds->get_height();
-            if (x >= x1 && x <= x2 && y >= y1 && y <= y2)
-                return; // the module handles its own clicks
             // Only the position along the bar decides: everything from the
             // module's far edge to the screen edge, across the bar's whole
             // thickness (the module is centred in the bar, so a click at the
             // corner pixel lies outside its own rows/columns).
-            const bool vertical = Config::get().bar_vertical();
-            const bool hit = vertical ? (start ? y <= y2 : y >= y1) : (start ? x <= x2 : x >= x1);
-            if (hit) {
-                target->activate_corner(start);
+            const bool in_corner = vertical ? (start ? y <= hit->y2 : y >= hit->y1)
+                                            : (start ? x <= hit->x2 : x >= hit->x1);
+            if (in_corner) {
+                hit->target->activate_corner(start);
                 return;
             }
         }

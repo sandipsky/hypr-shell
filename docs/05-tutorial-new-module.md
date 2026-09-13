@@ -371,9 +371,14 @@ meson compile -C build && pkill -x hypr-shell; ./build/hypr-shell
 - **Module with a click panel**: see [panels](08-panels-and-popovers.md).
 - **Clickable module**: also inherit `CornerTarget`
   (`bar/modules/corner_target.hpp`) and implement `activate_corner(bool
-  start)` with the same action as your primary click. When the module is the
-  outermost one in the bar, a click in the padding between it and the screen
-  corner then triggers it too (Windows' Start-button rule).
+  start)` with the same action as your primary click. A click in the bar's
+  padding directly above / below the module (within its span along the bar)
+  then triggers it, and when the module is the outermost one in the bar
+  (first in the start section, last in the end section, or the centre
+  section's first / last module when that side's section is empty) so does a
+  click between it and the screen corner (Windows' taskbar rule). Modules
+  with several items also override `activate_beside(x, y)` to pick the item
+  under the point (`pick_child_along`).
 - **Vertical bars**: if your module lays children out horizontally, flip
   the orientation in `update()` using `Config::get().bar_vertical()`, like
   `Workspaces::rebuild()` does.

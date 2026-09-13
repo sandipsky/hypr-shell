@@ -43,6 +43,16 @@ void Workspaces::activate_corner(bool start) {
     buttons_[start ? 0 : shown - 1]->activate(); // runs the button's click handler
 }
 
+void Workspaces::activate_beside(double x, double y) {
+    const std::size_t shown = shown_ids_.size();
+    if (shown == 0 || buttons_.size() < shown)
+        return;
+    std::vector<Gtk::Widget*> children(buttons_.begin(), buttons_.begin() + shown);
+    const int index = pick_child_along(*this, children, x, y, Config::get().bar_vertical());
+    if (index >= 0)
+        buttons_[static_cast<std::size_t>(index)]->activate();
+}
+
 bool Workspaces::on_scroll(double /*dx*/, double dy) {
     // Accumulate smooth-scroll deltas (touchpads send many small ones); a mouse
     // wheel notch is exactly ±1.0. Switch once per whole unit.
