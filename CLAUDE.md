@@ -2445,7 +2445,12 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   them on the section retunes the workspaces `calc()` and the taskbar rules
   with it, verified live on the left bar. No config key: the density combo is
   the user-facing control for bar metrics and these stay theme constants a
-  `style.css` can retune. (3) A stacked vertical clock mixed 2-digit lines with
+  `style.css` can retune. **Same-day follow-up (user request): the tighter
+  start section applies to VERTICAL bars only** — the two `.bar-start` blocks
+  are scoped to `window.bar.left / .right`, so a horizontal bar is back to the
+  uniform 6/8px module padding. `--module-pad` had to be scoped too, not just
+  `--module-pad-across`: a vertical bar reads it in
+  `window.bar.left .taskbar-capsule`. (3) A stacked vertical clock mixed 2-digit lines with
   "PM", which is far wider at the same size and made the column look ragged:
   `Clock::stacked_attributes()` measures each line with the widget's Pango
   layout and scales any line wider than the widest digits-only line down to

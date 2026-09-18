@@ -82,24 +82,27 @@ window.bar.right .module {
 }
 
 /* The three sections carry .bar-start / .bar-center / .bar-end so the theme
- * (and a user's style.css) can address one of them. The start section — left
- * on a horizontal bar, top on a vertical one — packs its modules tighter than
- * the rest (user request): redefining the padding variables here is enough,
- * because GTK custom properties inherit into the section's subtree, so the
- * workspaces and taskbar rules below follow along. */
-.bar-start {
+ * (and a user's style.css) can address one of them. On a VERTICAL bar the start
+ * section (top) packs its modules tighter than the rest (user request):
+ * redefining the padding variables here is enough, because GTK custom
+ * properties inherit into the section's subtree, so the workspaces and taskbar
+ * rules below follow along. Horizontal bars keep the uniform padding — the
+ * tighter left section was tried and reverted (user request). */
+window.bar.left .bar-start,
+window.bar.right .bar-start {
   --module-pad: 4px;
   --module-pad-across: 6px;
 }
 
-window.bar.density-comfortable .bar-start {
+window.bar.density-comfortable.left .bar-start,
+window.bar.density-comfortable.right .bar-start {
   --module-pad: 6px;
   --module-pad-across: 8px;
 }
 
-/* every module gets the same padding each side (6px compact, 4px in the start
- * section), so any two neighbours sit 12px (8px) apart (workspaces: 2px less +
- * the buttons' 2px margin; taskbar: the same) */
+/* every module gets the same padding each side (6px compact; 4px in a vertical
+ * bar's start section), so any two neighbours sit 12px (8px) apart
+ * (workspaces: 2px less + the buttons' 2px margin; taskbar: the same) */
 .module {
   padding: 0 var(--module-pad);
   font-size: var(--module-font);
