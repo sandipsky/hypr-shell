@@ -2425,6 +2425,16 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   was typing and their Enter launched Calculator — `HS_DESKTOP_MENU_CLOSE`
   now auto-closes hook menus, and `grim` needs `timeout` (it hangs while
   DPMS is off).
+- 2026-09-18 — Taskbar items sit closer (user request: "reduce the gap between
+  taskbar items without affecting hover state"). `bar.taskbar.item_gap` now
+  measures the gap between the item **icons**, and the hover pill's own
+  padding counts towards it — the box spacing is `max(0, item_gap - 2 × pad)`,
+  so at the default 6 the pills touch (Windows' taskbar look) and the icon
+  distance drops from 18 to 12px on a compact bar while the pill keeps its
+  size; with `item_hover` off the gap is the plain 6px as before, and 12px is
+  the floor since anything tighter would have to shrink the pill. The key was
+  config-only, so it also got an "Item spacing" spin row (0–24) on the Taskbar
+  subpage.
 - 2026-09-18 — App menu custom icon gets an image picker (user request): the
   "Custom icon" entry row on the App menu subpage carries a suffix button
   (image-x-generic-symbolic) that opens the same `GtkFileDialog` as the lock

@@ -287,6 +287,7 @@ struct Settings {
     AdwComboRow* tb_apps = nullptr;       // both / pinned / running
     AdwSwitchRow* tb_running_dot = nullptr;
     AdwSwitchRow* tb_item_hover = nullptr;
+    AdwSpinRow* tb_item_gap = nullptr;   // px between item icons
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
     AdwEntryRow* am_text = nullptr;
@@ -650,6 +651,7 @@ void populate(Settings* s, PopulateStage stage) {
                 adw_combo_row_set_selected(s->tb_apps, i);
         adw_switch_row_set_active(s->tb_running_dot, tb.value("running_indicator", false));
         adw_switch_row_set_active(s->tb_item_hover, tb.value("item_hover", true));
+        adw_spin_row_set_value(s->tb_item_gap, std::clamp(tb.value("item_gap", 6), 0, 24));
     } catch (const json::exception&) {
     }
     }
@@ -1251,6 +1253,14 @@ void on_tb_toggled(GObject* row, GParamSpec*, gpointer data) {
     if (key == nullptr)
         return;
     taskbar_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+void on_tb_item_gap_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    taskbar_object(s)["item_gap"] = static_cast<int>(adw_spin_row_get_value(s->tb_item_gap));
     save(s);
 }
 
@@ -5877,6 +5887,15 @@ void on_activate(GtkApplication* app, gpointer) {
         adw_preferences_group_add(ADW_PREFERENCES_GROUP(tb_group), sw);
         g_signal_connect(sw, "notify::active", G_CALLBACK(on_tb_toggled), s);
     }
+    GtkWidget* tb_gap_row = adw_spin_row_new_with_range(0, 24, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tb_gap_row), "Item spacing");
+    adw_action_row_set_subtitle(
+        ADW_ACTION_ROW(tb_gap_row),
+        "Pixels between item icons. With the hover highlight on, the buttons touch until the "
+        "spacing exceeds their padding.");
+    s->tb_item_gap = ADW_SPIN_ROW(tb_gap_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(tb_group), tb_gap_row);
+    g_signal_connect(tb_gap_row, "notify::value", G_CALLBACK(on_tb_item_gap_changed), s);
     g_signal_connect(tb_hide_row, "notify::selected", G_CALLBACK(on_tb_hide_changed), s);
     g_signal_connect(tb_apps_row, "notify::selected", G_CALLBACK(on_tb_apps_changed), s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(tb_page), ADW_PREFERENCES_GROUP(tb_group));

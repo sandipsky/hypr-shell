@@ -406,7 +406,7 @@ void Taskbar::rebuild(const std::vector<Item>& previous) {
     // so the root is grown into a Windows-style button — kHoverPad margins on
     // the inner row along the bar, and the capsule / items box FILL the
     // module across it (the module's content height on a horizontal bar, the
-    // bar's content width on a vertical one). item_gap then separates pills.
+    // bar's content width on a vertical one).
     const int pad = cfg.item_hover
                         ? static_cast<int>(std::lround(kHoverPad * Config::get().bar_density_scale()))
                         : 0;
@@ -415,7 +415,11 @@ void Taskbar::rebuild(const std::vector<Item>& previous) {
     items_box_.set_valign(vertical ? Gtk::Align::CENTER : across);
     capsule_.set_halign(vertical ? across : Gtk::Align::CENTER);
     items_box_.set_halign(vertical ? across : Gtk::Align::FILL);
-    items_box_.set_spacing(cfg.item_gap);
+    // item_gap is the gap between the ICONS, so the pill's own padding counts
+    // towards it: with the hover pill on, the buttons touch until the gap
+    // exceeds their padding (Windows' taskbar look) and the hover pill keeps
+    // its size either way.
+    items_box_.set_spacing(std::max(0, cfg.item_gap - 2 * pad));
     for (const char* name : {"vertical", "with-titles"})
         capsule_.remove_css_class(name);
     if (vertical)

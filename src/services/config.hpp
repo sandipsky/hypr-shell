@@ -99,7 +99,8 @@ public:
         bool smart_width = true;           // cap the whole widget to max_width_percent
         int max_width_percent = 40;        // of the screen width
         double icon_scale = 0.8;           // of the 25px capsule
-        int item_gap = 6;                  // px between items (Noctalia: 2; user wants more)
+        int item_gap = 6;                  // px between item icons — the hover pill's
+                                           // padding counts towards it (Noctalia: 2)
     };
     const Taskbar& taskbar() const { return taskbar_; }
 
