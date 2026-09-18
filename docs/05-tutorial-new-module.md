@@ -239,9 +239,10 @@ switches in the Modules group; keep it matching `kKnownModules`):
     {"load",          "System load",   "1-minute load average",        2},
 ```
 
-The enable/disable switch, the layout up/down rows and the section dropdown
-are all table-driven, so the new module already gets them. Cog buttons find
-their row with `module_index("key")`, so inserting anywhere is safe.
+The module's row on the Bar page (drag handle, switch, drag-and-drop placement
+and the move menu) is table-driven, so the new module already gets it. A cog
+opening a subpage is one call, `add_module_cog(s, "load", nav, "load", "System
+load settings")`, which slots the button in front of the row's switch.
 
 Now the interval setting. Follow the clock subpage as a template:
 

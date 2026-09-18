@@ -29,6 +29,7 @@
 #include <array>
 #include <deque>
 #include <memory>
+#include <climits>
 #include <cmath>
 #include <string>
 #include <string_view>
@@ -141,7 +142,11 @@ const char* format_token_css_class(const char* category) {
     return "neutral"; // Timezone, Literal: mOnSurface
 }
 constexpr const char* kSectionKeys[] = {"left", "center", "right"};
-constexpr const char* kSectionTitles[] = {"Left section", "Center section", "Right section"};
+// [vertical bar][section]: on a left/right bar the start section sits at the top
+constexpr const char* kSectionTitles[2][3] = {{"Left section", "Center section", "Right section"},
+                                              {"Top section", "Center section", "Bottom section"}};
+constexpr const char* kSectionNames[2][3] = {{"Left", "Center", "Right"},
+                                             {"Top", "Center", "Bottom"}};
 constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
 constexpr const char* kDensities[] = {"compact", "comfortable"};
 constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
@@ -261,7 +266,9 @@ struct Settings {
     AdwSwitchRow* show_ws_switch = nullptr; // auto-hide: peek on workspace switch
     AdwSwitchRow* show_ws_empty = nullptr;  // auto-hide: stay while workspace empty
     GtkAdjustment* opacity = nullptr;       // background opacity slider, 0..100 %
-    AdwSwitchRow* modules[kModuleCount] = {};
+    AdwActionRow* modules[kModuleCount] = {};    // one persistent row per module
+    GtkSwitch* module_switch[kModuleCount] = {};
+    GtkWidget* module_suffix[kModuleCount] = {}; // suffix box: [cog] [switch]
 
     AdwComboRow* ws_mode = nullptr; // Dynamic / Fixed number
     AdwSpinRow* ws_count = nullptr;
@@ -468,9 +475,15 @@ struct Settings {
 
     std::array<std::vector<std::string>, 3> layout; // resolved section contents
     GtkWidget* layout_groups[3] = {};
+    GtkWidget* layout_placeholders[3] = {};      // "Drop a module here" row of an empty section
+    std::vector<GtkWidget*> layout_rows[3];      // module rows currently in each group
+    std::string drag_key;                        // module being dragged (empty = none)
+    double drag_hot_x = 0, drag_hot_y = 0;       // grab point inside the dragged row
+    std::string menu_key;                        // module the move menu is open for
+    GtkWidget* module_menu = nullptr;            // shared GtkPopoverMenu, re-parented per row
+    GSimpleActionGroup* module_actions = nullptr; // "module." move-up / move-down / move-to
     GtkWidget* presets_group = nullptr;          // saved presets (config dir/presets)
     std::vector<GtkWidget*> preset_rows;
-    std::vector<GtkWidget*> layout_rows[3];
 };
 
 const ModuleInfo* module_info(const std::string& key) {
@@ -488,6 +501,21 @@ gsize module_index(const char* key) {
     g_warn_if_reached();
     return 0;
 }
+
+bool bar_vertical(Settings* s) {
+    return adw_combo_row_get_selected(s->position) >= 2; // kPositions: left, right
+}
+
+// a disabled module keeps its place in the list but reads dimmed
+void set_module_row_state(Settings* s, gsize i, bool enabled) {
+    gtk_switch_set_active(s->module_switch[i], enabled);
+    if (enabled)
+        gtk_widget_remove_css_class(GTK_WIDGET(s->modules[i]), "module-off");
+    else
+        gtk_widget_add_css_class(GTK_WIDGET(s->modules[i]), "module-off");
+}
+
+void update_layout_titles(Settings* s); // section group titles follow the bar orientation
 
 void load(Settings* s) {
     gchar* data = nullptr;
@@ -881,8 +909,9 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->show_ws_empty, ws_empty);
     gtk_adjustment_set_value(s->opacity, opacity * 100.0);
     update_bar_visibility_rows(s);
+    update_layout_titles(s);
     for (gsize i = 0; i < kModuleCount; ++i)
-        adw_switch_row_set_active(s->modules[i], enabled[i]);
+        set_module_row_state(s, i, enabled[i]);
     adw_combo_row_set_selected(s->ws_mode, ws_mode == "fixed" ? 1 : 0);
     adw_spin_row_set_value(s->ws_count, ws_count);
     gtk_widget_set_sensitive(GTK_WIDGET(s->ws_count), ws_mode == "fixed");
@@ -1346,7 +1375,7 @@ json& stat_object(Settings* s, const char* key) {
 // the text-position combo follows the Show percentage switch and the bar
 // orientation: Left / Right on a top or bottom bar, Above / Below on a side bar
 void update_stat_rows(Settings* s) {
-    const bool vertical = adw_combo_row_get_selected(s->position) >= 2; // kPositions: left, right
+    const bool vertical = bar_vertical(s);
     for (auto& rows : s->stat_rows) {
         const bool text = adw_switch_row_get_active(rows.show_text) != FALSE;
         gtk_widget_set_visible(GTK_WIDGET(rows.text_pos_h), text && !vertical);
@@ -3031,99 +3060,408 @@ void write_layout(Settings* s) {
     save(s);
 }
 
+void on_module_toggled(GObject* sw, GParamSpec*, gpointer data);
+
+// -- Module list: one persistent AdwActionRow per module ----------------------
+// The rows are created once (build_module_rows) and re-parented between the
+// three section groups on every layout change, so the cogs on_activate attaches
+// survive rebuilds. Look: drag handle · title / subtitle · [cog] [switch].
+// Reorder by dragging a row onto another (above / below its midline) or onto an
+// empty section's placeholder, or through the move menu (click the handle or
+// right-click the row).
+
 void rebuild_layout_rows(Settings* s);
 
 void schedule_layout_rebuild(Settings* s) {
-    // Rebuilding destroys the widget whose signal is mid-flight — defer it.
+    // The drop / menu handler runs on a row that the rebuild re-parents — defer.
     g_idle_add_once(
         [](gpointer data) { rebuild_layout_rows(static_cast<Settings*>(data)); }, s);
 }
 
-void on_layout_move(GtkButton* button, gpointer data) {
-    auto* s = static_cast<Settings*>(data);
-    const auto* key =
-        static_cast<const char*>(g_object_get_data(G_OBJECT(button), "module-key"));
-    const int dir = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "move-dir"));
-    for (auto& section : s->layout) {
-        const auto it = std::find(section.begin(), section.end(), key);
-        if (it == section.end())
-            continue;
-        const auto idx = static_cast<int>(it - section.begin());
-        const int target = idx + dir;
-        if (target >= 0 && target < static_cast<int>(section.size())) {
-            std::swap(section[idx], section[target]);
-            write_layout(s);
-            schedule_layout_rebuild(s);
-        }
-        return;
-    }
+const char* row_module_key(GtkWidget* row) {
+    return static_cast<const char*>(g_object_get_data(G_OBJECT(row), "module-key"));
 }
 
-void on_layout_section_changed(GObject* dropdown, GParamSpec*, gpointer data) {
-    auto* s = static_cast<Settings*>(data);
-    if (s->loading)
-        return;
-    const auto* key =
-        static_cast<const char*>(g_object_get_data(dropdown, "module-key"));
-    const auto target = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
-    if (target > 2)
-        return;
-    for (auto& section : s->layout) {
-        const auto it = std::find(section.begin(), section.end(), key);
-        if (it == section.end())
-            continue;
-        if (&section == &s->layout[target])
-            return; // already there
-        section.erase(it);
-        s->layout[target].emplace_back(key);
-        write_layout(s);
-        schedule_layout_rebuild(s);
-        return;
-    }
-}
-
-void rebuild_layout_rows(Settings* s) {
-    s->loading = true;
+// section holding `key` (and its index there), -1 if none
+int section_of(Settings* s, const std::string& key, int* index = nullptr) {
     for (int i = 0; i < 3; ++i) {
+        const auto it = std::find(s->layout[i].begin(), s->layout[i].end(), key);
+        if (it == s->layout[i].end())
+            continue;
+        if (index != nullptr)
+            *index = static_cast<int>(it - s->layout[i].begin());
+        return i;
+    }
+    return -1;
+}
+
+constexpr int kSectionEnd = INT_MAX;
+
+// move `key` so that it sits at insertion index `pos` of `section`, counted in
+// the list as it is BEFORE the move (kSectionEnd = append); saves + rebuilds
+void place_module(Settings* s, const std::string& key, int section, int pos) {
+    int from_idx = 0;
+    const int from = section_of(s, key, &from_idx);
+    if (from < 0 || section < 0 || section > 2)
+        return;
+    auto& dst = s->layout[section];
+    if (from == section && pos > from_idx)
+        --pos; // erasing the row shifts everything after it up by one
+    s->layout[from].erase(s->layout[from].begin() + from_idx);
+    pos = std::clamp(pos, 0, static_cast<int>(dst.size()));
+    dst.insert(dst.begin() + pos, key);
+    write_layout(s);
+    schedule_layout_rebuild(s);
+}
+
+void swap_module(Settings* s, const std::string& key, int dir) {
+    int idx = 0;
+    const int sec = section_of(s, key, &idx);
+    if (sec < 0)
+        return;
+    const int target = idx + dir;
+    if (target < 0 || target >= static_cast<int>(s->layout[sec].size()))
+        return;
+    std::swap(s->layout[sec][idx], s->layout[sec][target]);
+    write_layout(s);
+    schedule_layout_rebuild(s);
+}
+
+void clear_drop_marks(GtkWidget* row) {
+    gtk_widget_remove_css_class(row, "drop-above");
+    gtk_widget_remove_css_class(row, "drop-below");
+}
+
+// -- drag source (whole row) --------------------------------------------------
+GdkContentProvider* on_module_drag_prepare(GtkDragSource* source, double x, double y,
+                                           gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(source));
+    s->drag_key = row_module_key(row);
+    s->drag_hot_x = x;
+    s->drag_hot_y = y;
+    return gdk_content_provider_new_typed(G_TYPE_STRING, s->drag_key.c_str());
+}
+
+void on_module_drag_begin(GtkDragSource* source, GdkDrag* drag, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(source));
+    const auto* info = module_info(row_module_key(row));
+    gtk_widget_add_css_class(row, "dragging");
+
+    // the drag icon is the row "lifted" as a card, grabbed where the pointer was
+    GtkWidget* icon = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    gtk_widget_add_css_class(icon, "card");
+    gtk_widget_add_css_class(icon, "module-drag-icon");
+    gtk_widget_set_size_request(icon, gtk_widget_get_width(row), gtk_widget_get_height(row));
+    GtkWidget* handle = gtk_image_new_from_icon_name("list-drag-handle-symbolic");
+    gtk_widget_add_css_class(handle, "module-handle");
+    gtk_box_append(GTK_BOX(icon), handle);
+    GtkWidget* text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_valign(text, GTK_ALIGN_CENTER);
+    GtkWidget* title = gtk_label_new(info != nullptr ? info->title : "");
+    gtk_widget_set_halign(title, GTK_ALIGN_START);
+    gtk_box_append(GTK_BOX(text), title);
+    GtkWidget* subtitle = gtk_label_new(info != nullptr ? info->subtitle : "");
+    gtk_widget_set_halign(subtitle, GTK_ALIGN_START);
+    gtk_widget_add_css_class(subtitle, "dim-label");
+    gtk_widget_add_css_class(subtitle, "caption");
+    gtk_box_append(GTK_BOX(text), subtitle);
+    gtk_box_append(GTK_BOX(icon), text);
+    gtk_drag_icon_set_child(GTK_DRAG_ICON(gtk_drag_icon_get_for_drag(drag)), icon);
+    gdk_drag_set_hotspot(drag, static_cast<int>(s->drag_hot_x), static_cast<int>(s->drag_hot_y));
+}
+
+void on_module_drag_end(GtkDragSource* source, GdkDrag*, gboolean, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    gtk_widget_remove_css_class(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(source)),
+                                "dragging");
+    s->drag_key.clear();
+}
+
+// -- drop targets: rows (insert before / after) and placeholders (append) -----
+GdkDragAction on_module_row_drop_motion(GtkDropTarget* target, double, double y, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(target));
+    if (s->drag_key.empty() || s->drag_key == row_module_key(row)) {
+        clear_drop_marks(row);
+        return static_cast<GdkDragAction>(0); // nothing to do onto itself
+    }
+    const bool below = y >= gtk_widget_get_height(row) / 2.0;
+    gtk_widget_remove_css_class(row, below ? "drop-above" : "drop-below");
+    gtk_widget_add_css_class(row, below ? "drop-below" : "drop-above");
+    return GDK_ACTION_MOVE;
+}
+
+void on_module_row_drop_leave(GtkDropTarget* target, gpointer) {
+    clear_drop_marks(gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(target)));
+}
+
+gboolean on_module_row_drop(GtkDropTarget* target, const GValue* value, double, double y,
+                            gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(target));
+    clear_drop_marks(row);
+    if (!G_VALUE_HOLDS_STRING(value))
+        return FALSE;
+    const std::string key = g_value_get_string(value);
+    const std::string dest = row_module_key(row);
+    int dest_idx = 0;
+    const int dest_sec = section_of(s, dest, &dest_idx);
+    if (key == dest || dest_sec < 0 || module_info(key) == nullptr)
+        return FALSE;
+    const bool below = y >= gtk_widget_get_height(row) / 2.0;
+    place_module(s, key, dest_sec, dest_idx + (below ? 1 : 0));
+    return TRUE;
+}
+
+gboolean on_module_placeholder_drop(GtkDropTarget* target, const GValue* value, double, double,
+                                    gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(target));
+    if (!G_VALUE_HOLDS_STRING(value))
+        return FALSE;
+    const std::string key = g_value_get_string(value);
+    if (module_info(key) == nullptr)
+        return FALSE;
+    const int section = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row), "section"));
+    place_module(s, key, section, kSectionEnd);
+    return TRUE;
+}
+
+// -- move menu (handle click / right click): Move up, Move down, Move to … ------
+void show_module_menu(Settings* s, GtkWidget* row, double x, double y) {
+    s->menu_key = row_module_key(row);
+    int idx = 0;
+    const int sec = section_of(s, s->menu_key, &idx);
+    if (sec < 0)
+        return;
+    const int v = bar_vertical(s) ? 1 : 0;
+
+    GMenu* menu = g_menu_new();
+    GMenu* order = g_menu_new();
+    g_menu_append(order, "Move up", "module.move-up");
+    g_menu_append(order, "Move down", "module.move-down");
+    g_menu_append_section(menu, nullptr, G_MENU_MODEL(order));
+    g_object_unref(order);
+    GMenu* to = g_menu_new();
+    for (int i = 0; i < 3; ++i) {
+        if (i == sec)
+            continue;
+        const std::string label = std::string("Move to ") + kSectionNames[v][i];
+        GMenuItem* item = g_menu_item_new(label.c_str(), nullptr);
+        g_menu_item_set_action_and_target(item, "module.move-to", "s", kSectionKeys[i]);
+        g_menu_append_item(to, item);
+        g_object_unref(item);
+    }
+    g_menu_append_section(menu, nullptr, G_MENU_MODEL(to));
+    g_object_unref(to);
+    gtk_popover_menu_set_menu_model(GTK_POPOVER_MENU(s->module_menu), G_MENU_MODEL(menu));
+    g_object_unref(menu);
+
+    auto* up = G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(s->module_actions), "move-up"));
+    auto* down = G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(s->module_actions), "move-down"));
+    g_simple_action_set_enabled(up, idx > 0);
+    g_simple_action_set_enabled(down, idx + 1 < static_cast<int>(s->layout[sec].size()));
+
+    if (gtk_widget_get_parent(s->module_menu) != row) {
+        if (gtk_widget_get_parent(s->module_menu) != nullptr)
+            gtk_widget_unparent(s->module_menu);
+        gtk_widget_set_parent(s->module_menu, row);
+    }
+    const GdkRectangle at = {static_cast<int>(x), static_cast<int>(y), 1, 1};
+    gtk_popover_set_pointing_to(GTK_POPOVER(s->module_menu), &at);
+    gtk_popover_popup(GTK_POPOVER(s->module_menu));
+}
+
+// a plain click on the handle opens the menu; a press that moves becomes the
+// row's drag instead (the drag source claims the sequence once it starts)
+void on_module_handle_released(GtkGestureClick* gesture, int, double x, double y, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* handle = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+    GtkWidget* row = gtk_widget_get_ancestor(handle, ADW_TYPE_ACTION_ROW);
+    if (row == nullptr)
+        return;
+    // claim so the list box does not also activate the row (toggle the switch)
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    graphene_point_t p = GRAPHENE_POINT_INIT(static_cast<float>(x), static_cast<float>(y));
+    graphene_point_t in_row;
+    if (!gtk_widget_compute_point(handle, row, &p, &in_row))
+        in_row = p;
+    show_module_menu(s, row, in_row.x, in_row.y);
+}
+
+void on_module_row_right_click(GtkGestureClick* gesture, int, double x, double y, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    GtkWidget* row = gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(gesture));
+    gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    show_module_menu(s, row, x, y);
+}
+
+void update_layout_titles(Settings* s) {
+    const int v = bar_vertical(s) ? 1 : 0;
+    for (int i = 0; i < 3; ++i)
+        adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(s->layout_groups[i]),
+                                        kSectionTitles[v][i]);
+}
+
+// creates the 17 rows, the 3 placeholders, the shared move menu + its actions;
+// rows are ref-sunk so re-parenting between groups never destroys them
+void build_module_rows(Settings* s, GtkWidget* page) {
+    for (gsize i = 0; i < kModuleCount; ++i) {
+        GtkWidget* row = adw_action_row_new();
+        g_object_ref_sink(row);
+        gtk_widget_add_css_class(row, "module-row");
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), kModules[i].title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), kModules[i].subtitle);
+        g_object_set_data(G_OBJECT(row), "module-key", const_cast<char*>(kModules[i].key));
+
+        GtkWidget* handle = gtk_image_new_from_icon_name("list-drag-handle-symbolic");
+        gtk_widget_add_css_class(handle, "module-handle");
+        gtk_widget_set_tooltip_text(handle, "Drag to reorder · click for options");
+        gtk_widget_set_cursor_from_name(handle, "grab");
+        adw_action_row_add_prefix(ADW_ACTION_ROW(row), handle);
+        GtkGesture* handle_click = gtk_gesture_click_new();
+        g_signal_connect(handle_click, "released", G_CALLBACK(on_module_handle_released), s);
+        gtk_widget_add_controller(handle, GTK_EVENT_CONTROLLER(handle_click));
+
+        GtkWidget* suffix = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        gtk_widget_set_valign(suffix, GTK_ALIGN_CENTER);
+        GtkWidget* sw = gtk_switch_new();
+        gtk_widget_set_valign(sw, GTK_ALIGN_CENTER);
+        g_object_set_data(G_OBJECT(sw), "module-key", const_cast<char*>(kModules[i].key));
+        g_signal_connect(sw, "notify::active", G_CALLBACK(on_module_toggled), s);
+        gtk_box_append(GTK_BOX(suffix), sw);
+        adw_action_row_add_suffix(ADW_ACTION_ROW(row), suffix);
+        adw_action_row_set_activatable_widget(ADW_ACTION_ROW(row), sw);
+
+        GtkDragSource* drag = gtk_drag_source_new();
+        gtk_drag_source_set_actions(drag, GDK_ACTION_MOVE);
+        g_signal_connect(drag, "prepare", G_CALLBACK(on_module_drag_prepare), s);
+        g_signal_connect(drag, "drag-begin", G_CALLBACK(on_module_drag_begin), s);
+        g_signal_connect(drag, "drag-end", G_CALLBACK(on_module_drag_end), s);
+        gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(drag));
+
+        GtkDropTarget* drop = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_MOVE);
+        g_signal_connect(drop, "motion", G_CALLBACK(on_module_row_drop_motion), s);
+        g_signal_connect(drop, "leave", G_CALLBACK(on_module_row_drop_leave), s);
+        g_signal_connect(drop, "drop", G_CALLBACK(on_module_row_drop), s);
+        gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(drop));
+
+        GtkGesture* right = gtk_gesture_click_new();
+        gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right), GDK_BUTTON_SECONDARY);
+        g_signal_connect(right, "pressed", G_CALLBACK(on_module_row_right_click), s);
+        gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(right));
+
+        s->modules[i] = ADW_ACTION_ROW(row);
+        s->module_switch[i] = GTK_SWITCH(sw);
+        s->module_suffix[i] = suffix;
+    }
+
+    for (int i = 0; i < 3; ++i) {
+        GtkWidget* row = gtk_list_box_row_new();
+        g_object_ref_sink(row);
+        gtk_widget_add_css_class(row, "module-placeholder");
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
+        gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
+        gtk_widget_set_can_focus(row, FALSE);
+        gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), gtk_label_new("Drop a module here"));
+        g_object_set_data(G_OBJECT(row), "section", GINT_TO_POINTER(i));
+        GtkDropTarget* drop = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_MOVE);
+        g_signal_connect(drop, "drop", G_CALLBACK(on_module_placeholder_drop), s);
+        gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(drop));
+        s->layout_placeholders[i] = row;
+    }
+
+    s->module_actions = g_simple_action_group_new();
+    GSimpleAction* up = g_simple_action_new("move-up", nullptr);
+    GSimpleAction* down = g_simple_action_new("move-down", nullptr);
+    GSimpleAction* to = g_simple_action_new("move-to", G_VARIANT_TYPE_STRING);
+    g_signal_connect(up, "activate", G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* s = static_cast<Settings*>(data);
+                         swap_module(s, s->menu_key, -1);
+                     }),
+                     s);
+    g_signal_connect(down, "activate", G_CALLBACK(+[](GSimpleAction*, GVariant*, gpointer data) {
+                         auto* s = static_cast<Settings*>(data);
+                         swap_module(s, s->menu_key, +1);
+                     }),
+                     s);
+    g_signal_connect(to, "activate",
+                     G_CALLBACK(+[](GSimpleAction*, GVariant* target, gpointer data) {
+                         auto* s = static_cast<Settings*>(data);
+                         const char* section = g_variant_get_string(target, nullptr);
+                         for (int i = 0; i < 3; ++i)
+                             if (g_strcmp0(section, kSectionKeys[i]) == 0)
+                                 place_module(s, s->menu_key, i, kSectionEnd);
+                     }),
+                     s);
+    for (GSimpleAction* a : {up, down, to}) {
+        g_action_map_add_action(G_ACTION_MAP(s->module_actions), G_ACTION(a));
+        g_object_unref(a);
+    }
+    gtk_widget_insert_action_group(page, "module", G_ACTION_GROUP(s->module_actions));
+
+    s->module_menu = gtk_popover_menu_new_from_model(nullptr);
+    gtk_popover_set_has_arrow(GTK_POPOVER(s->module_menu), FALSE);
+    gtk_widget_set_halign(s->module_menu, GTK_ALIGN_START);
+}
+
+// cog opening a module's subpage, placed before the switch so switches align
+void add_module_cog(Settings* s, const char* key, GtkWidget* nav, const char* tag,
+                    const char* tooltip) {
+    GtkWidget* cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+    gtk_widget_add_css_class(cog, "flat");
+    gtk_widget_set_valign(cog, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(cog, tooltip);
+    g_object_set_data(G_OBJECT(cog), "nav", nav);
+    g_signal_connect(cog, "clicked",
+                     G_CALLBACK(+[](GtkButton* button, gpointer tag_ptr) {
+                         adw_navigation_view_push_by_tag(
+                             ADW_NAVIGATION_VIEW(g_object_get_data(G_OBJECT(button), "nav")),
+                             static_cast<const char*>(tag_ptr));
+                     }),
+                     const_cast<char*>(tag));
+    gtk_box_prepend(GTK_BOX(s->module_suffix[module_index(key)]), cog);
+}
+
+// window teardown: drop the refs build_module_rows took
+void release_module_rows(Settings* s) {
+    if (s->module_menu != nullptr && gtk_widget_get_parent(s->module_menu) != nullptr)
+        gtk_widget_unparent(s->module_menu);
+    for (auto* row : s->modules)
+        g_clear_object(&row);
+    for (auto*& row : s->layout_placeholders)
+        g_clear_object(&row);
+    g_clear_object(&s->module_actions);
+}
+
+// empties the three groups and refills them in layout order; an empty section
+// shows its placeholder so there is still something to drop onto
+void rebuild_layout_rows(Settings* s) {
+    if (s->module_menu != nullptr)
+        gtk_popover_popdown(GTK_POPOVER(s->module_menu));
+    for (int i = 0; i < 3; ++i) {
+        auto* group = ADW_PREFERENCES_GROUP(s->layout_groups[i]);
         for (auto* row : s->layout_rows[i])
-            adw_preferences_group_remove(ADW_PREFERENCES_GROUP(s->layout_groups[i]), row);
+            adw_preferences_group_remove(group, row);
         s->layout_rows[i].clear();
-
-        for (gsize pos = 0; pos < s->layout[i].size(); ++pos) {
-            const auto* info = module_info(s->layout[i][pos]);
-            GtkWidget* row = adw_action_row_new();
-            adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info->title);
-
-            GtkWidget* up = gtk_button_new_from_icon_name("go-up-symbolic");
-            GtkWidget* down = gtk_button_new_from_icon_name("go-down-symbolic");
-            GtkWidget* section = gtk_drop_down_new_from_strings(
-                (const char*[]){"Left", "Center", "Right", nullptr});
-            for (GtkWidget* w : {up, down, section}) {
-                gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-                g_object_set_data(G_OBJECT(w), "module-key",
-                                  const_cast<char*>(info->key));
-            }
-            gtk_widget_add_css_class(up, "flat");
-            gtk_widget_add_css_class(down, "flat");
-            gtk_widget_set_sensitive(up, pos > 0);
-            gtk_widget_set_sensitive(down, pos + 1 < s->layout[i].size());
-            gtk_drop_down_set_selected(GTK_DROP_DOWN(section), i);
-
-            g_object_set_data(G_OBJECT(up), "move-dir", GINT_TO_POINTER(-1));
-            g_object_set_data(G_OBJECT(down), "move-dir", GINT_TO_POINTER(+1));
-            g_signal_connect(up, "clicked", G_CALLBACK(on_layout_move), s);
-            g_signal_connect(down, "clicked", G_CALLBACK(on_layout_move), s);
-            g_signal_connect(section, "notify::selected",
-                             G_CALLBACK(on_layout_section_changed), s);
-
-            adw_action_row_add_suffix(ADW_ACTION_ROW(row), up);
-            adw_action_row_add_suffix(ADW_ACTION_ROW(row), down);
-            adw_action_row_add_suffix(ADW_ACTION_ROW(row), section);
-            adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->layout_groups[i]), row);
+        if (gtk_widget_get_parent(s->layout_placeholders[i]) != nullptr)
+            adw_preferences_group_remove(group, s->layout_placeholders[i]);
+    }
+    for (int i = 0; i < 3; ++i) {
+        auto* group = ADW_PREFERENCES_GROUP(s->layout_groups[i]);
+        if (s->layout[i].empty()) {
+            adw_preferences_group_add(group, s->layout_placeholders[i]);
+            continue;
+        }
+        for (const auto& key : s->layout[i]) {
+            GtkWidget* row = GTK_WIDGET(s->modules[module_index(key.c_str())]);
+            adw_preferences_group_add(group, row);
             s->layout_rows[i].push_back(row);
         }
     }
-    s->loading = false;
+    update_layout_titles(s);
 }
 
 // -- Presets: ~/.config/hypr-shell/presets/<slug>.json --------------------------
@@ -3574,6 +3912,7 @@ void on_opacity_changed(GtkAdjustment* adjustment, gpointer data) {
 void on_position_changed(GObject*, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     update_stat_rows(s);
+    update_layout_titles(s);
     if (s->loading)
         return;
     const auto selected = adw_combo_row_get_selected(s->position);
@@ -3590,15 +3929,17 @@ void on_density_changed(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
-void on_module_toggled(GObject* row, GParamSpec*, gpointer data) {
+void on_module_toggled(GObject* sw, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
+    const auto* key = static_cast<const char*>(g_object_get_data(sw, "module-key"));
+    const bool on = gtk_switch_get_active(GTK_SWITCH(sw)) != FALSE;
+    set_module_row_state(s, module_index(key), on);
     if (s->loading)
         return;
-    const auto* key = static_cast<const char*>(g_object_get_data(row, "module-key"));
     json& bar = bar_object(s);
     if (!bar["modules"].is_object())
         bar["modules"] = json::object();
-    bar["modules"][key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    bar["modules"][key] = on;
     save(s);
 }
 
@@ -4799,6 +5140,18 @@ void on_activate(GtkApplication* app, gpointer) {
         "  box-shadow: 0 1px 3px alpha(black, 0.35); }"
         "button.avatar-button:hover { filter: brightness(1.2); }"
         "button.avatar-remove image { color: var(--error-color); }"
+        // Bar page module list: drag handle, drop marks, dimmed disabled rows,
+        // the lifted-row drag icon and the empty section's drop zone
+        ".module-handle { opacity: 0.45; }"
+        "row.module-row:hover .module-handle { opacity: 0.8; }"
+        "row.module-row.module-off .title, row.module-row.module-off .subtitle { opacity: 0.5; }"
+        "row.module-row.dragging { opacity: 0.35; }"
+        "row.module-row.drop-above { box-shadow: inset 0 2px 0 0 var(--accent-bg-color); }"
+        "row.module-row.drop-below { box-shadow: inset 0 -2px 0 0 var(--accent-bg-color); }"
+        ".module-drag-icon { padding: 8px 12px; }"
+        "row.module-placeholder { min-height: 50px; }"
+        "row.module-placeholder label { color: var(--dim-label-color); }"
+        "row.module-placeholder:drop(active) { background-color: alpha(var(--accent-bg-color), 0.18); }"
         // search result target flash (removed again by the search module)
         "row.search-hit { background-color: alpha(@accent_bg_color, 0.28); }"
         // tabler glyph standing in for an icon (sidebar + search results)
@@ -4862,6 +5215,7 @@ void on_activate(GtkApplication* app, gpointer) {
         g_clear_object(&s->ui_interface_settings);
         if (s->ui_cursor_sddm_source != 0)
             g_source_remove(s->ui_cursor_sddm_source);
+        release_module_rows(s);
         *s->ui_alive = false;
         delete s;
     });
@@ -4951,35 +5305,18 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
                              ADW_PREFERENCES_GROUP(bar_group));
 
-    // -- Module toggles ----------------------------------------------------
-    GtkWidget* mod_group = adw_preferences_group_new();
-    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(mod_group), "Modules");
-
-    for (gsize i = 0; i < kModuleCount; ++i) {
-        GtkWidget* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), kModules[i].title);
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), kModules[i].subtitle);
-        g_object_set_data(G_OBJECT(row), "module-key",
-                          const_cast<char*>(kModules[i].key));
-        s->modules[i] = ADW_SWITCH_ROW(row);
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(mod_group), row);
-        g_signal_connect(row, "notify::active", G_CALLBACK(on_module_toggled), s);
-    }
-
-    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
-                             ADW_PREFERENCES_GROUP(mod_group));
-
-    // -- Layout: section + order ---------------------------------------------
+    // -- Modules: one list per bar section (switch, cog, drag to reorder) -------
     for (int i = 0; i < 3; ++i) {
         GtkWidget* group = adw_preferences_group_new();
-        adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group), kSectionTitles[i]);
         if (i == 0)
             adw_preferences_group_set_description(
                 ADW_PREFERENCES_GROUP(group),
-                "Where each module sits in the bar, and its order within a section");
+                "Switch modules on or off. Drag a module to reorder it or to move it to "
+                "another section; the handle's menu does the same.");
         s->layout_groups[i] = group;
         adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(group));
     }
+    build_module_rows(s, page);
     resolve_layout(s);
     rebuild_layout_rows(s);
 
@@ -5774,18 +6111,7 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(am_view, "App menu",
                                                              "app_menu"));
 
-    // cog on the App menu module row
-    GtkWidget* am_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(am_cog, "flat");
-    gtk_widget_set_valign(am_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(am_cog, "App menu settings");
-    g_signal_connect(am_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "app_menu");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("app_menu")]), am_cog);
+    add_module_cog(s, "app_menu", nav, "app_menu", "App menu settings");
 
     GtkWidget* notif_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(notif_view), adw_header_bar_new());
@@ -5794,82 +6120,17 @@ void on_activate(GtkApplication* app, gpointer) {
                             adw_navigation_page_new_with_tag(notif_view, "Notifications",
                                                              "notifications"));
 
-    // cog on the Notifications module row
-    GtkWidget* notif_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(notif_cog, "flat");
-    gtk_widget_set_valign(notif_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(notif_cog, "Notification settings");
-    g_signal_connect(notif_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "notifications");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("notifications")]),
-                              notif_cog);
+    add_module_cog(s, "notifications", nav, "notifications", "Notification settings");
 
-    // cog on the Bluetooth module row
-    GtkWidget* bt_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(bt_cog, "flat");
-    gtk_widget_set_valign(bt_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(bt_cog, "Bluetooth settings");
-    g_signal_connect(bt_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "bluetooth");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("bluetooth")]),
-                              bt_cog);
+    add_module_cog(s, "bluetooth", nav, "bluetooth", "Bluetooth settings");
 
-    // cog on the Control center module row
-    GtkWidget* cc_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(cc_cog, "flat");
-    gtk_widget_set_valign(cc_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(cc_cog, "Control center settings");
-    g_signal_connect(cc_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "control_center");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("control_center")]), cc_cog);
+    add_module_cog(s, "control_center", nav, "control_center", "Control center settings");
 
-    // cog on the Taskbar module row
-    GtkWidget* tb_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(tb_cog, "flat");
-    gtk_widget_set_valign(tb_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(tb_cog, "Taskbar settings");
-    g_signal_connect(tb_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "taskbar");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("taskbar")]), tb_cog);
+    add_module_cog(s, "taskbar", nav, "taskbar", "Taskbar settings");
 
-    // cog on the Battery module row
-    GtkWidget* bat_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(bat_cog, "flat");
-    gtk_widget_set_valign(bat_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(bat_cog, "Battery settings");
-    g_signal_connect(bat_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "battery");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("battery")]), bat_cog);
+    add_module_cog(s, "battery", nav, "battery", "Battery settings");
 
-    // cog on the Volume module row
-    GtkWidget* vol_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(vol_cog, "flat");
-    gtk_widget_set_valign(vol_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(vol_cog, "Volume settings");
-    g_signal_connect(vol_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr), "volume");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("volume")]), vol_cog);
+    add_module_cog(s, "volume", nav, "volume", "Volume settings");
 
     // CPU / Memory / Disk subpages + cogs
     for (int i = 0; i < 3; ++i) {
@@ -5879,62 +6140,15 @@ void on_activate(GtkApplication* app, gpointer) {
         adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
                                 adw_navigation_page_new_with_tag(view, stat_pages[i].title,
                                                                  kStatModules[i]));
-        GtkWidget* cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-        gtk_widget_add_css_class(cog, "flat");
-        gtk_widget_set_valign(cog, GTK_ALIGN_CENTER);
         const std::string tooltip = std::string(stat_pages[i].title) + " settings";
-        gtk_widget_set_tooltip_text(cog, tooltip.c_str());
-        g_object_set_data(G_OBJECT(cog), "nav", nav);
-        g_signal_connect(cog, "clicked",
-                         G_CALLBACK(+[](GtkButton* button, gpointer tag) {
-                             adw_navigation_view_push_by_tag(
-                                 ADW_NAVIGATION_VIEW(g_object_get_data(G_OBJECT(button), "nav")),
-                                 static_cast<const char*>(tag));
-                         }),
-                         const_cast<char*>(kStatModules[i]));
-        adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index(kStatModules[i])]), cog);
+        add_module_cog(s, kStatModules[i], nav, kStatModules[i], tooltip.c_str());
     }
 
-    // cog on the Active window module row
-    GtkWidget* aw_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(aw_cog, "flat");
-    gtk_widget_set_valign(aw_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(aw_cog, "Active window settings");
-    g_signal_connect(aw_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "active_window");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("active_window")]),
-                              aw_cog);
+    add_module_cog(s, "active_window", nav, "active_window", "Active window settings");
 
-    // cog on the Clock module row opens its subpage
-    GtkWidget* clock_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(clock_cog, "flat");
-    gtk_widget_set_valign(clock_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(clock_cog, "Clock settings");
-    g_signal_connect(clock_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "clock");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("clock")]), clock_cog);
+    add_module_cog(s, "clock", nav, "clock", "Clock settings");
 
-    // cog on the Workspaces module row opens its subpage
-    GtkWidget* ws_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
-    gtk_widget_add_css_class(ws_cog, "flat");
-    gtk_widget_set_valign(ws_cog, GTK_ALIGN_CENTER);
-    gtk_widget_set_tooltip_text(ws_cog, "Workspace settings");
-    g_signal_connect(ws_cog, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer nav_ptr) {
-                         adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav_ptr),
-                                                         "workspaces");
-                     }),
-                     nav);
-    adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("workspaces")]),
-                              ws_cog);
+    add_module_cog(s, "workspaces", nav, "workspaces", "Workspace settings");
 
     // -- GNOME-Settings-style sidebar: Bar, Launcher, Notifications ----------
     GtkWidget* stack = gtk_stack_new();
@@ -6059,6 +6273,28 @@ void on_activate(GtkApplication* app, gpointer) {
                         apply_preset(s, preset.file);
             if (g_getenv("HS_PRESET_DIALOG") != nullptr)
                 on_preset_save_clicked(nullptr, s);
+            return G_SOURCE_REMOVE;
+        }, s);
+    }
+    // dev hooks for the module list (pointer drags can't be scripted):
+    // HS_MODULE_MENU=<key> opens the move menu on that row, and
+    // HS_MODULE_MOVE=<key>:<left|center|right>:<index> places the module there
+    // like a drop would — each 1.5 s after startup. It writes bar.layout, so
+    // restore config.json afterwards.
+    if (g_getenv("HS_MODULE_MENU") != nullptr || g_getenv("HS_MODULE_MOVE") != nullptr) {
+        g_timeout_add(1500, [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            if (const char* key = g_getenv("HS_MODULE_MENU"))
+                if (module_info(key) != nullptr)
+                    show_module_menu(s, GTK_WIDGET(s->modules[module_index(key)]), 24, 24);
+            if (const char* spec = g_getenv("HS_MODULE_MOVE")) {
+                gchar** parts = g_strsplit(spec, ":", 3);
+                if (g_strv_length(parts) == 3 && module_info(parts[0]) != nullptr)
+                    for (int i = 0; i < 3; ++i)
+                        if (g_strcmp0(parts[1], kSectionKeys[i]) == 0)
+                            place_module(s, parts[0], i, atoi(parts[2]));
+                g_strfreev(parts);
+            }
             return G_SOURCE_REMOVE;
         }, s);
     }

@@ -202,8 +202,9 @@ The settings app, one file, libadwaita C API.
    return-and-create sub-objects (`bar.clock`, `bar.bluetooth`,
    `bar.notifications`, top-level `notifications` incl. `sounds` and
    `save_to_history`, top-level `launcher`).
-7. **Layout editor** (`resolve_layout`, `rebuild_layout_rows`) and **rules
-   editor** (`rebuild_rule_rows`, `AdwAlertDialog` for add/edit).
+7. **Module list** (`build_module_rows`, `resolve_layout`, `rebuild_layout_rows`:
+   one persistent row per module with switch, cog and drag-and-drop placement)
+   and **rules editor** (`rebuild_rule_rows`, `AdwAlertDialog` for add/edit).
 8. **`on_activate()`**: builds the Bar page + module subpages (Workspaces,
    Clock, Active window, Battery, Bluetooth, Notifications), the Launcher
    page, the Notifications page, connects signals, wires cogs, and

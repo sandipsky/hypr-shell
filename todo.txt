@@ -17,7 +17,7 @@
 - [x] layout / preset saving in conf folder 
  allow to rename and switch them 
 
-- bar module settings unifications and easy ux, draggable if possible
+- [x] bar module settings unifications and easy ux, draggable if possible
 
 - desktop context menu (toggle to enable or disable contextmenu, allow to reorder them , enable disable per item and show icon or not )
  - apps -> (sub menu listing all apps)

@@ -228,7 +228,12 @@ frames) and at every config.json write — a launch must print no write.
 `HS_PRESET_APPLY=<name>` switches to one and `HS_PRESET_DIALOG=1` opens the
 Save Preset dialog, each 1.5 s after startup (test presets live in
 ~/.config/hypr-shell/presets — delete them afterwards, and restore
-config.json after an apply). `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
+config.json after an apply). Bar module list: `HS_MODULE_MENU=<key>` opens
+the move menu on that module's row and `HS_MODULE_MOVE=<key>:<left|center|
+right>:<index>` places it like a drop would, each 1.5 s after startup (it
+writes `bar.layout` — restore config.json). Pointer drags cannot be scripted;
+`XDG_CONFIG_HOME=<dir>` points the settings app at a scratch config so a test
+never touches the live shell. `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
 settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
@@ -472,7 +477,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   bar applies "enabled" by (un)parenting modules, not set_visible(): modules
   keep set_visible() for their own service availability (battery with no UPower
   etc.) without fighting the config — an enabled-but-hidden fight was a real
-  bug. Settings app: per-module up/down + section dropdown, groups per section.
+  bug. Settings app: per-module up/down + section dropdown, groups per section
+  (superseded 2026-09-18 by the unified drag-and-drop module list).
 - 2026-08-31 — Per-module settings live under `bar.<module>` objects (first:
   `bar.workspaces` = mode "dynamic"/"fixed", fixed_count, scroll_wrap — semantics
   copied from Noctalia's workspaceMode/fixedWorkspaces: fixed shows 1..N with
@@ -1969,6 +1975,38 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   pin-menu lesson). Everything is in the snapshot, `wallpaper.current` and
   `ui.cursor_*` included — switching a preset switches those too. Dev hooks:
   `HS_PRESET_SAVE` / `HS_PRESET_APPLY` / `HS_PRESET_DIALOG`.
+- 2026-09-18 — Unified module list on the Bar page (user request, todo.txt:
+  "bar module settings unifications and easy ux, draggable if possible"). The
+  separate "Modules" switch list and the three up/down + dropdown "section"
+  groups became ONE list per section ("Left / Center / Right section", or
+  "Top / Center / Bottom section" on a vertical bar — `update_layout_titles`,
+  also called from populate since the position combo is filled before its
+  handler is connected): each module has one persistent `AdwActionRow` —
+  `list-drag-handle-symbolic` prefix, title / subtitle, `[cog] [switch]` in a
+  suffix box so the switches align (the old AdwSwitchRow put cogs *after* the
+  switch and the switches zig-zagged), the switch as the activatable widget,
+  `module-off` class dimming a disabled module. Rows are `g_object_ref_sink`ed
+  and re-parented between the groups on rebuild (`rebuild_layout_rows`), never
+  recreated, so the cogs stay attached; the ten copy-pasted cog blocks and the
+  stat loop's became `add_module_cog(s, key, nav, tag, tooltip)`. Reorder =
+  GTK4 DnD, GNOME Settings' Search-panel pattern: `GtkDragSource` on the row
+  (`G_TYPE_STRING` module key, `GDK_ACTION_MOVE`, drag icon = a `card` box the
+  row's size via `gtk_drag_icon_set_child`, hotspot at the grab point, source
+  row dimmed), `GtkDropTarget` on each row — above / below the midline shown as
+  a 2px accent inset line (`drop-above` / `drop-below` classes) — and on a
+  "Drop a module here" placeholder `GtkListBoxRow` that an empty section shows.
+  `place_module()` takes the insertion index as counted before the move
+  (same-section moves adjust after the erase). Keyboard / touch fallback: one
+  shared `GtkPopoverMenu` (re-parented to the row, actions `module.move-up` /
+  `move-down` / `move-to(s)` in an action group on the page) with Move up /
+  Move down / Move to <other sections>, opened by a plain click on the handle
+  (the click gesture claims the sequence on *release*, so a press that moves
+  still becomes the row's drag and a click does not toggle the switch through
+  row activation) or a right click on the row. Config unchanged (`bar.modules`
+  + `bar.layout`), so the shell needed nothing. Verified live: rendering,
+  `HS_MODULE_MOVE` into the empty centre section (placeholder swapped for the
+  row, layout written), the menu's enabled states and vertical wording; the
+  pointer drag itself could not be scripted.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

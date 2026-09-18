@@ -23,8 +23,9 @@ bar_object(s)         returns root["bar"], creating it as an object if needed
                       wallpaper ... objects
 populate(s)           loading = true; read root → set every widget; loading = false
 on_*_changed(...)     handlers: if (loading) return; write key; save()
-resolve_layout /      the bar.layout editor (up/down buttons, section dropdown)
-rebuild_layout_rows
+build_module_rows /   the Bar page's module list: one persistent row per module
+resolve_layout /      (switch + cog + drag handle) re-parented between the three
+rebuild_layout_rows   section groups; drag-and-drop or the move menu edit bar.layout
 rebuild_rule_rows     notification rules list (add/edit/delete via AdwAlertDialog)
 on_activate()         builds every page, calls populate(), connects signals, wires cogs,
                       assembles the sidebar split view
@@ -331,14 +332,33 @@ a small `update_*_visibility(s)` function that calls
 row's handler *before* the `loading` check (so it also runs during
 `populate()`).
 
-## Layout editor
+## Module list (enable + layout)
 
-Each section group lists its modules as `AdwActionRow`s with three suffix
-widgets: up, down, and a Left/Center/Right dropdown. Moving rewrites
-`bar.layout` fully (all three arrays) and rebuilds the rows. The rebuild is
-deferred with `g_idle_add_once()` because destroying the widget whose signal
-handler is currently running would crash. `resolve_layout()` must stay in
-sync with the shell's `Config::load()` rules; if you change one, change both.
+The Bar page has one group per bar section ("Left / Center / Right section",
+"Top / Center / Bottom section" on a vertical bar). Every module has exactly
+one `AdwActionRow`, created once by `build_module_rows()` and `g_object_ref_sink`ed
+so `rebuild_layout_rows()` can remove it from one group and add it to another
+without destroying it — the cogs attached in `on_activate()` therefore survive
+every rebuild. Row anatomy: `list-drag-handle-symbolic` prefix, title/subtitle,
+a suffix `GtkBox` holding `[cog] [GtkSwitch]` (`add_module_cog()` prepends into
+that box so the switches stay aligned), the switch as the row's activatable
+widget. A disabled module gets the `module-off` class (dimmed title). An empty
+section shows a placeholder `GtkListBoxRow` ("Drop a module here").
+
+Reordering: a `GtkDragSource` on the whole row (content = the module key as a
+`G_TYPE_STRING`, drag icon = a `card` box the size of the row via
+`gtk_drag_icon_set_child`), a `GtkDropTarget` on every row (above / below the
+midline → `drop-above` / `drop-below` CSS marks, drop → `place_module()`) and
+on every placeholder (append). Fallback without a pointer drag: the move menu
+(a single `GtkPopoverMenu` re-parented to the clicked row; actions `module.move-up`
+/ `move-down` / `move-to(s)` in an action group inserted on the page), opened by
+a plain click on the handle or a right click on the row. `place_module()` takes
+the insertion index counted in the list *before* the move; moving rewrites
+`bar.layout` fully (all three arrays) and rebuilds from an idle
+(`schedule_layout_rebuild`), because the handler runs on a row that the rebuild
+re-parents. `resolve_layout()` must stay in sync with the shell's
+`Config::load()` rules; if you change one, change both. Dev hooks:
+`HS_MODULE_MENU=<key>`, `HS_MODULE_MOVE=<key>:<section>:<index>`.
 
 ## Style and behaviour conventions
 
