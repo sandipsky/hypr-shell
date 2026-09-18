@@ -2463,3 +2463,10 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   "dialog-title" on the button) and writes the chosen path into the row, whose
   own change handler saves `bar.app_menu.custom_icon`. Typing a themed icon
   name still works.
+- 2026-09-18 — Bar auto-hide hides sooner (user request): `kHideDelayMs`
+  500 → 250 ms (`src/bar/bar.cpp`). The show delay (150 ms) and the ~200 ms
+  slide keep Noctalia's values, so revealing the bar feels unchanged; the
+  same constant is the re-check interval while a popover or an empty
+  workspace keeps the bar up. Still a compile-time constant, like
+  `kBarPopoverGap` — Noctalia exposes autoHideDelay, but the user asked for a
+  faster default, not a setting.

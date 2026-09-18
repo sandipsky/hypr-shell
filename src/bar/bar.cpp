@@ -15,8 +15,9 @@ namespace hyprshell {
 namespace {
 
 // Noctalia's auto-hide timings: autoHideDelay / autoShowDelay defaults and
-// the ~200ms slide (animationNormal * 2/3).
-constexpr unsigned kHideDelayMs = 500;
+// the ~200ms slide (animationNormal * 2/3). The hide delay is half Noctalia's
+// 500ms — the bar felt slow to get out of the way (user request).
+constexpr unsigned kHideDelayMs = 250;
 constexpr unsigned kShowDelayMs = 150;
 constexpr double kSlideMs = 200.0;
 constexpr int kSlideOvershootPx = 8; // clear the hairline border too
