@@ -146,6 +146,19 @@ first placement, unmentioned modules append to their default section
 (`kKnownModules` in `config.cpp`). `layout` decides *where*, `modules`
 decides *whether*.
 
+## Presets (`~/.config/hypr-shell/presets/`)
+
+Not a config key: the settings app's "Presets" sidebar page saves the WHOLE
+config.json under a name — one `<slug>.json` per preset holding
+`{"name": "…", "saved": "<ISO-8601 local time>", "config": {…}}` — and lists
+the saved ones (click to switch, pencil to rename, trash to delete; a check
+marks the preset whose snapshot equals the current file). Switching writes
+the snapshot back as config.json, which the shell reloads like any other
+edit, and the settings app re-populates every page; the shell itself knows
+nothing about presets. Saving under an existing name updates that preset; a
+rename that collides gets a numeric suffix. Dev hooks: `HS_PRESET_SAVE=<name>`,
+`HS_PRESET_APPLY=<name>`, `HS_PRESET_DIALOG=1`.
+
 ## `bar.workspaces`
 
 | Key | Type | Default | Meaning |

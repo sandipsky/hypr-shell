@@ -22,6 +22,7 @@
 #include "settings/system_icons.hpp"
 #include "settings/vpn_page.hpp"
 
+#include <glib/gstdio.h>
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -156,6 +157,7 @@ constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
 // Settings look; About last, like GNOME)
 constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
     {"bar", "Bar", "focus-top-bar-symbolic"},
+    {"presets_page", "Presets", "document-save-symbolic"},
     {"ui_page", "User interface", "preferences-desktop-appearance-symbolic"},
     {"wallpaper_page", "Wallpaper", "preferences-desktop-wallpaper-symbolic"},
     {"night_light_page", "Night light", "night-light-symbolic"},
@@ -466,6 +468,8 @@ struct Settings {
 
     std::array<std::vector<std::string>, 3> layout; // resolved section contents
     GtkWidget* layout_groups[3] = {};
+    GtkWidget* presets_group = nullptr;          // saved presets (config dir/presets)
+    std::vector<GtkWidget*> preset_rows;
     std::vector<GtkWidget*> layout_rows[3];
 };
 
@@ -499,6 +503,8 @@ void load(Settings* s) {
         g_warning("%s is not a JSON object — starting from defaults", s->path.c_str());
 }
 
+void update_preset_marks(Settings* s);
+
 void save(Settings* s) {
     hs_mark("save()");
     gchar* dir = g_path_get_dirname(s->path.c_str());
@@ -512,6 +518,8 @@ void save(Settings* s) {
         g_warning("failed to write %s: %s", s->path.c_str(), error->message);
         g_error_free(error);
     }
+    // the "in use" mark on the presets follows every edit
+    update_preset_marks(s);
 }
 
 // bar section of the config, created (and repaired to an object) on demand
@@ -3118,6 +3126,406 @@ void rebuild_layout_rows(Settings* s) {
     s->loading = false;
 }
 
+// -- Presets: ~/.config/hypr-shell/presets/<slug>.json --------------------------
+//
+// A preset is a snapshot of the WHOLE config.json under a name — bar,
+// notifications, OSD, wallpaper, idle, theme, everything. Switching writes it
+// back as config.json; the shell hot-reloads as with any other edit, so the
+// shell itself knows nothing about presets.
+
+struct Preset {
+    std::string file; // absolute path
+    std::string name;
+    std::string saved; // ISO-8601 local time, may be empty
+    json config;
+};
+
+std::string presets_dir(Settings* s) {
+    gchar* dir = g_path_get_dirname(s->path.c_str());
+    std::string result = std::string(dir) + "/presets";
+    g_free(dir);
+    return result;
+}
+
+// file name from the display name: alphanumerics kept, runs of anything
+// else become one '_'; the name itself lives inside the file
+std::string preset_slug(const std::string& name) {
+    std::string slug;
+    bool pending_sep = false;
+    for (const char* p = name.c_str(); *p != '\0'; p = g_utf8_next_char(p)) {
+        const gunichar c = g_utf8_get_char(p);
+        if (g_unichar_isalnum(c)) {
+            if (pending_sep && !slug.empty())
+                slug += '_';
+            pending_sep = false;
+            char buf[8];
+            const gint n = g_unichar_to_utf8(c, buf);
+            slug.append(buf, static_cast<std::size_t>(n));
+        } else {
+            pending_sep = true;
+        }
+    }
+    return slug.empty() ? "preset" : slug;
+}
+
+std::vector<Preset> list_presets(Settings* s) {
+    std::vector<Preset> presets;
+    const std::string dir = presets_dir(s);
+    GDir* handle = g_dir_open(dir.c_str(), 0, nullptr);
+    if (handle == nullptr)
+        return presets;
+    while (const char* entry = g_dir_read_name(handle)) {
+        if (!g_str_has_suffix(entry, ".json") || entry[0] == '.')
+            continue;
+        Preset preset;
+        preset.file = dir + "/" + entry;
+        gchar* data = nullptr;
+        gsize len = 0;
+        if (!g_file_get_contents(preset.file.c_str(), &data, &len, nullptr))
+            continue;
+        json parsed = json::parse(std::string_view(data, len), nullptr, false);
+        g_free(data);
+        if (!parsed.is_object() || !parsed["config"].is_object())
+            continue;
+        preset.name = parsed.value("name", std::string(entry, strlen(entry) - 5));
+        preset.saved = parsed.value("saved", "");
+        preset.config = parsed["config"];
+        presets.push_back(std::move(preset));
+    }
+    g_dir_close(handle);
+    std::sort(presets.begin(), presets.end(), [](const Preset& a, const Preset& b) {
+        gchar* ka = g_utf8_casefold(a.name.c_str(), -1);
+        gchar* kb = g_utf8_casefold(b.name.c_str(), -1);
+        const int cmp = g_utf8_collate(ka, kb);
+        g_free(ka);
+        g_free(kb);
+        return cmp < 0;
+    });
+    return presets;
+}
+
+// a name no other preset uses (" 2", " 3", … appended), `keep` being the
+// file that may already carry it (rename / overwrite of itself)
+std::string unique_preset_name(Settings* s, const std::string& wanted, const std::string& keep) {
+    const auto presets = list_presets(s);
+    auto taken = [&](const std::string& name) {
+        return std::any_of(presets.begin(), presets.end(),
+                           [&](const Preset& p) { return p.name == name && p.file != keep; });
+    };
+    std::string name = wanted;
+    for (int n = 2; taken(name); ++n)
+        name = wanted + " " + std::to_string(n);
+    return name;
+}
+
+std::string unused_preset_file(Settings* s, const std::string& name, const std::string& keep) {
+    const std::string dir = presets_dir(s);
+    const std::string slug = preset_slug(name);
+    std::string file = dir + "/" + slug + ".json";
+    for (int n = 2; file != keep && g_file_test(file.c_str(), G_FILE_TEST_EXISTS); ++n)
+        file = dir + "/" + slug + "-" + std::to_string(n) + ".json";
+    return file;
+}
+
+bool write_preset(Settings* s, const std::string& file, const std::string& name,
+                  const json& config, const std::string& saved) {
+    g_mkdir_with_parents(presets_dir(s).c_str(), 0755);
+    json doc = json::object();
+    doc["name"] = name;
+    doc["saved"] = saved;
+    doc["config"] = config;
+    const std::string text = doc.dump(2) + "\n";
+    GError* error = nullptr;
+    if (!g_file_set_contents(file.c_str(), text.c_str(), static_cast<gssize>(text.size()),
+                             &error)) {
+        g_warning("failed to write %s: %s", file.c_str(), error->message);
+        g_error_free(error);
+        return false;
+    }
+    return true;
+}
+
+std::string now_iso8601() {
+    GDateTime* now = g_date_time_new_now_local();
+    gchar* text = g_date_time_format(now, "%Y-%m-%dT%H:%M:%S");
+    std::string result = text != nullptr ? text : "";
+    g_free(text);
+    g_date_time_unref(now);
+    return result;
+}
+
+json current_config(Settings* s) {
+    return s->root.is_object() ? s->root : json::object();
+}
+
+std::string preset_subtitle(const Preset& preset) {
+    const json bar = preset.config.value("bar", json::object());
+    std::string position = bar.value("position", "top");
+    if (!position.empty())
+        position[0] = static_cast<char>(g_ascii_toupper(position[0]));
+    std::string text = position + " bar · " + bar.value("density", "compact");
+    const json ui = preset.config.value("ui", json::object());
+    text += ui.value("dark_mode", true) ? " · dark" : " · light";
+    if (GDateTime* saved = g_date_time_new_from_iso8601(preset.saved.c_str(),
+                                                        g_time_zone_new_local())) {
+        gchar* when = g_date_time_format(saved, "%b %-d, %H:%M");
+        text += std::string(" · saved ") + when;
+        g_free(when);
+        g_date_time_unref(saved);
+    }
+    return text;
+}
+
+void rebuild_preset_rows(Settings* s);
+
+// row buttons live in rows the rebuild removes, so every mutation reaches
+// the widget tree from an idle (the app menu's pin-menu crash lesson)
+void rebuild_preset_rows_later(Settings* s) {
+    g_idle_add_once([](gpointer data) { rebuild_preset_rows(static_cast<Settings*>(data)); }, s);
+}
+
+void apply_settings_theme(Settings* s);
+
+void apply_preset(Settings* s, const std::string& file) {
+    for (const auto& preset : list_presets(s)) {
+        if (preset.file != file)
+            continue;
+        s->root = preset.config;
+        save(s);
+        // every page shows the new values: the Bar page always exists, the
+        // others once build_secondary_pages ran
+        resolve_layout(s);
+        rebuild_layout_rows(s);
+        populate(s, PopulateStage::Bar);
+        if (s->secondary_built) {
+            populate(s, PopulateStage::Secondary);
+            apply_settings_theme(s);
+        }
+        rebuild_preset_rows_later(s);
+        return;
+    }
+}
+
+void on_preset_activated(AdwActionRow* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const char* file = static_cast<const char*>(g_object_get_data(G_OBJECT(row), "preset-file"));
+    if (file != nullptr)
+        apply_preset(s, file);
+}
+
+// save (file empty → new preset from the current config) or rename (file set)
+void on_preset_name_dialog_response(AdwAlertDialog* dialog, const char* response, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (g_strcmp0(response, "save") != 0)
+        return;
+    auto* entry = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(dialog), "entry"));
+    const char* file_ptr = static_cast<const char*>(g_object_get_data(G_OBJECT(dialog), "preset-file"));
+    const std::string file = file_ptr != nullptr ? file_ptr : "";
+    std::string name = gtk_editable_get_text(GTK_EDITABLE(entry));
+    const auto from = name.find_first_not_of(" \t");
+    if (from == std::string::npos)
+        return;
+    name = name.substr(from, name.find_last_not_of(" \t") - from + 1);
+
+    if (file.empty()) {
+        // a preset of that name is updated in place, like saving over a file
+        for (const auto& preset : list_presets(s))
+            if (preset.name == name) {
+                write_preset(s, preset.file, name, current_config(s), now_iso8601());
+                rebuild_preset_rows_later(s);
+                return;
+            }
+        write_preset(s, unused_preset_file(s, name, ""), name, current_config(s), now_iso8601());
+    } else {
+        for (const auto& preset : list_presets(s)) {
+            if (preset.file != file)
+                continue;
+            if (preset.name == name)
+                return;
+            const std::string unique = unique_preset_name(s, name, file);
+            const std::string target = unused_preset_file(s, unique, file);
+            if (write_preset(s, target, unique, preset.config, preset.saved) && target != file)
+                g_unlink(file.c_str());
+        }
+    }
+    rebuild_preset_rows_later(s);
+}
+
+void open_preset_name_dialog(Settings* s, const std::string& file, const std::string& name) {
+    AdwDialog* dialog = adw_alert_dialog_new(
+        file.empty() ? "Save Preset" : "Rename Preset",
+        file.empty() ? "Saves every setting — the bar, notifications, on-screen display, "
+                       "wallpaper, idle and the rest — under this name."
+                     : nullptr);
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "Cancel", "save",
+                                   file.empty() ? "Save" : "Rename", nullptr);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "save",
+                                             ADW_RESPONSE_SUGGESTED);
+    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "save");
+
+    GtkWidget* entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Preset name");
+    gtk_entry_set_activates_default(GTK_ENTRY(entry), TRUE);
+    gtk_editable_set_text(GTK_EDITABLE(entry), name.c_str());
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), entry);
+    adw_dialog_set_focus(dialog, entry);
+
+    g_object_set_data(G_OBJECT(dialog), "entry", entry);
+    g_object_set_data_full(G_OBJECT(dialog), "preset-file",
+                           file.empty() ? nullptr : g_strdup(file.c_str()), g_free);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_preset_name_dialog_response), s);
+    adw_dialog_present(dialog, s->window);
+}
+
+void on_preset_save_clicked(GtkButton*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    // propose "Preset N" for the first free N
+    const auto presets = list_presets(s);
+    std::string proposal;
+    for (int n = 1;; ++n) {
+        proposal = "Preset " + std::to_string(n);
+        if (std::none_of(presets.begin(), presets.end(),
+                         [&](const Preset& p) { return p.name == proposal; }))
+            break;
+    }
+    open_preset_name_dialog(s, "", proposal);
+}
+
+void on_preset_rename_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const char* file = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "preset-file"));
+    const char* name = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "preset-name"));
+    if (file != nullptr)
+        open_preset_name_dialog(s, file, name != nullptr ? name : "");
+}
+
+void on_preset_delete_response(AdwAlertDialog* dialog, const char* response, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (g_strcmp0(response, "delete") != 0)
+        return;
+    const char* file = static_cast<const char*>(g_object_get_data(G_OBJECT(dialog), "preset-file"));
+    if (file != nullptr && g_str_has_prefix(file, presets_dir(s).c_str()))
+        g_unlink(file);
+    rebuild_preset_rows_later(s);
+}
+
+void on_preset_delete_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const char* file = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "preset-file"));
+    const char* name = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "preset-name"));
+    if (file == nullptr)
+        return;
+    gchar* heading = g_strdup_printf("Delete “%s”?", name != nullptr ? name : "");
+    AdwDialog* dialog = adw_alert_dialog_new(
+        heading, "The saved preset is removed. Your current settings are kept.");
+    g_free(heading);
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "Cancel", "delete",
+                                   "Delete", nullptr);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "delete",
+                                             ADW_RESPONSE_DESTRUCTIVE);
+    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "cancel");
+    g_object_set_data_full(G_OBJECT(dialog), "preset-file", g_strdup(file), g_free);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_preset_delete_response), s);
+    adw_dialog_present(dialog, s->window);
+}
+
+// the "in use" check follows every config save without rebuilding the rows
+void update_preset_marks(Settings* s) {
+    if (s->preset_rows.empty())
+        return;
+    const std::string current = current_config(s).dump();
+    for (auto* row : s->preset_rows) {
+        auto* check = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "preset-check"));
+        const char* config = static_cast<const char*>(g_object_get_data(G_OBJECT(row), "preset-config"));
+        if (check != nullptr && config != nullptr)
+            gtk_widget_set_opacity(check, current == config ? 1.0 : 0.0);
+    }
+}
+
+void rebuild_preset_rows(Settings* s) {
+    if (s->presets_group == nullptr)
+        return;
+    for (auto* row : s->preset_rows)
+        adw_preferences_group_remove(ADW_PREFERENCES_GROUP(s->presets_group), row);
+    s->preset_rows.clear();
+
+    const auto presets = list_presets(s);
+    if (presets.empty()) {
+        GtkWidget* row = adw_action_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), "No saved presets");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row),
+                                    "Save your current settings with the button above.");
+        gtk_widget_set_sensitive(row, FALSE);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->presets_group), row);
+        s->preset_rows.push_back(row);
+        return;
+    }
+    const json current = current_config(s);
+    for (const auto& preset : presets) {
+        GtkWidget* row = adw_action_row_new();
+        adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(row), FALSE);
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), preset.name.c_str());
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), preset_subtitle(preset).c_str());
+        adw_action_row_set_subtitle_lines(ADW_ACTION_ROW(row), 1);
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), TRUE);
+        g_object_set_data_full(G_OBJECT(row), "preset-file", g_strdup(preset.file.c_str()), g_free);
+        g_signal_connect(row, "activated", G_CALLBACK(on_preset_activated), s);
+
+        GtkWidget* check = gtk_image_new_from_icon_name("object-select-symbolic");
+        gtk_widget_set_opacity(check, preset.config == current ? 1.0 : 0.0);
+        gtk_widget_set_tooltip_text(check, "In use");
+        adw_action_row_add_prefix(ADW_ACTION_ROW(row), check);
+        g_object_set_data(G_OBJECT(row), "preset-check", check);
+        g_object_set_data_full(G_OBJECT(row), "preset-config",
+                               g_strdup(preset.config.dump().c_str()), g_free);
+
+        GtkWidget* rename = gtk_button_new_from_icon_name("document-edit-symbolic");
+        GtkWidget* remove = gtk_button_new_from_icon_name("user-trash-symbolic");
+        gtk_widget_set_tooltip_text(rename, "Rename");
+        gtk_widget_set_tooltip_text(remove, "Delete");
+        for (GtkWidget* button : {rename, remove}) {
+            gtk_widget_add_css_class(button, "flat");
+            gtk_widget_set_valign(button, GTK_ALIGN_CENTER);
+            g_object_set_data_full(G_OBJECT(button), "preset-file", g_strdup(preset.file.c_str()),
+                                   g_free);
+            g_object_set_data_full(G_OBJECT(button), "preset-name", g_strdup(preset.name.c_str()),
+                                   g_free);
+            adw_action_row_add_suffix(ADW_ACTION_ROW(row), button);
+        }
+        g_signal_connect(rename, "clicked", G_CALLBACK(on_preset_rename_clicked), s);
+        g_signal_connect(remove, "clicked", G_CALLBACK(on_preset_delete_clicked), s);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->presets_group), row);
+        s->preset_rows.push_back(row);
+    }
+}
+
+// the sidebar page holding the presets group
+GtkWidget* build_presets_page(Settings* s) {
+    GtkWidget* page = adw_preferences_page_new();
+    GtkWidget* group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group), "Presets");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(group),
+        "Snapshots of every setting in hypr-shell — the bar, notifications, on-screen "
+        "display, wallpaper, idle and the rest. Click one to switch to it; saving under an "
+        "existing name updates it.");
+    GtkWidget* save_button = gtk_button_new_with_label("Save Current…");
+    gtk_widget_add_css_class(save_button, "flat");
+    gtk_widget_set_valign(save_button, GTK_ALIGN_CENTER);
+    g_signal_connect(save_button, "clicked", G_CALLBACK(on_preset_save_clicked), s);
+    adw_preferences_group_set_header_suffix(ADW_PREFERENCES_GROUP(group), save_button);
+    s->presets_group = group;
+    rebuild_preset_rows(s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(group));
+
+    GtkWidget* view = adw_toolbar_view_new();
+    GtkWidget* header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(header), adw_window_title_new("Presets", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(view), page);
+    return view;
+}
+
 // the two auto-hide toggles only make sense in auto-hide mode, like Noctalia
 void update_bar_visibility_rows(Settings* s) {
     const bool auto_hide = adw_combo_row_get_selected(s->visibility) == 2;
@@ -4290,6 +4698,7 @@ void build_secondary_pages(Settings* s) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(ui_view), ui_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(ui_view), ui_page);
     gtk_stack_add_named(GTK_STACK(stack), ui_view, "ui_page");
+    gtk_stack_add_named(GTK_STACK(stack), build_presets_page(s), "presets_page");
     g_signal_connect(s->ui_font_button, "notify::font-desc", G_CALLBACK(on_ui_font_changed), s);
     g_signal_connect(s->ui_font_size, "notify::value", G_CALLBACK(on_ui_font_size_changed), s);
     g_signal_connect(s->ui_cursor_theme, "notify::selected", G_CALLBACK(on_ui_cursor_changed), s);
@@ -5622,6 +6031,36 @@ void on_activate(GtkApplication* app, gpointer) {
                 gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list), sidebar_row));
         else
             adw_navigation_view_push_by_tag(ADW_NAVIGATION_VIEW(nav), tag);
+    }
+    // dev hooks: HS_PRESET_SAVE=<name> saves the current settings as that
+    // preset, HS_PRESET_APPLY=<name> switches to it, HS_PRESET_DIALOG=1 opens
+    // the save dialog — each 1.5 s after startup (dialogs / row clicks can't
+    // be scripted). Presets land in ~/.config/hypr-shell/presets.
+    if (g_getenv("HS_PRESET_SAVE") != nullptr || g_getenv("HS_PRESET_APPLY") != nullptr ||
+        g_getenv("HS_PRESET_DIALOG") != nullptr) {
+        g_timeout_add(1500, [](gpointer data) -> gboolean {
+            auto* s = static_cast<Settings*>(data);
+            build_secondary_pages(s);
+            if (const char* name = g_getenv("HS_PRESET_SAVE")) {
+                bool updated = false;
+                for (const auto& preset : list_presets(s))
+                    if (preset.name == name) {
+                        write_preset(s, preset.file, name, current_config(s), now_iso8601());
+                        updated = true;
+                    }
+                if (!updated)
+                    write_preset(s, unused_preset_file(s, name, ""), name, current_config(s),
+                                 now_iso8601());
+                rebuild_preset_rows(s);
+            }
+            if (const char* name = g_getenv("HS_PRESET_APPLY"))
+                for (const auto& preset : list_presets(s))
+                    if (preset.name == name)
+                        apply_preset(s, preset.file);
+            if (g_getenv("HS_PRESET_DIALOG") != nullptr)
+                on_preset_save_clicked(nullptr, s);
+            return G_SOURCE_REMOVE;
+        }, s);
     }
     // dev hook: HS_UI_FONT_SIZE=<points> sets the Font size row 1.5 s after
     // startup, exercising the system-font write path (spin rows can't be clicked

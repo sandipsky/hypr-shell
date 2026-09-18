@@ -14,7 +14,7 @@
 
 - [x] taskbar item hoverable or not toggle (per item not taskbar as whole)
 
-- layout / preset saving in conf folder 
+- [x] layout / preset saving in conf folder 
  allow to rename and switch them 
 
 - bar module settings unifications and easy ux, draggable if possible

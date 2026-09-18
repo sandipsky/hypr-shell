@@ -89,6 +89,7 @@ side.
 |------|---------|
 | `~/.config/hypr-shell/config.json` | All user settings. Absent = defaults. See [config reference](04-config-reference.md). |
 | `~/.config/hypr-shell/style.css` | Optional user CSS override, hot-reloaded. See [styling](09-styling-and-icons.md). |
+| `~/.config/hypr-shell/presets/<name>.json` | Presets from the settings app's Presets page: `{"name", "saved", "config": {…}}`, a snapshot of the whole config.json per file. Switching writes that snapshot back as config.json. |
 | `~/.cache/hypr-shell/notifications.json` + `notifications/` | Notification history (100 entries) and cached notification images. Runtime state, never config. |
 | `~/.cache/hypr-shell/pinned_apps.json` | Apps pinned from the app menu's right-click menu; the taskbar shows them in this order (drag to reorder). |
 | `~/.local/bin/hypr-shell`, `~/.local/bin/hypr-shell-settings` | Installed binaries. |

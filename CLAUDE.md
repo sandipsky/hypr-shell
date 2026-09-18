@@ -224,7 +224,11 @@ startup (navigates, scrolls to and flashes the row) — screenshots need no
 scripted key presses. `HS_SETTINGS_TIMING=1` prints milliseconds since
 main() at each startup phase (build / populate / present / realize / first
 frames) and at every config.json write — a launch must print no write.
-`HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
+`HS_PRESET_SAVE=<name>` saves the current settings as a preset,
+`HS_PRESET_APPLY=<name>` switches to one and `HS_PRESET_DIALOG=1` opens the
+Save Preset dialog, each 1.5 s after startup (test presets live in
+~/.config/hypr-shell/presets — delete them afterwards, and restore
+config.json after an apply). `HS_HOTSPOT_SAVE=1` writes the Hotspot page's shown
 settings to the NM profile 2s after startup (creates "Hotspot" from the
 defaults, never activates it). **Never activate the hotspot from the tool
 shell on the single adapter: it disconnects the user's Wi-Fi.**
@@ -1942,6 +1946,29 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   class, so the indicator's hover mark disappears too (the old indicator-only
   hover look no longer exists as a state). Settings: "Hover highlight" switch
   on the Taskbar subpage.
+- 2026-09-18 — Presets (user request, todo.txt: "layout / preset saving in
+  conf folder, allow to rename and switch them" — a first cut snapshotted
+  only the `bar` object as "layouts" on the Bar page; the user meant the
+  whole shell, notification and OSD positions included, so it became a
+  whole-config snapshot the same day). A preset is the ENTIRE config.json
+  saved as `~/.config/hypr-shell/presets/<slug>.json` = `{"name", "saved",
+  "config"}` — the display name lives inside the file, the slug keeps
+  alphanumerics and folds the rest to `_`. **Settings-app only**: switching
+  replaces config.json with the snapshot and the shell hot-reloads it like
+  any other edit, so no shell code, config key or IPC was added; the settings
+  app re-runs `populate()` for both stages (+ `apply_settings_theme`) so
+  every page shows the new values. "Presets" is the second sidebar page
+  (document-save icon): a "Save Current…" header button (AdwAlertDialog with
+  a name entry, "Preset N" proposed; saving under an existing name updates
+  it), one row per preset (title, "Bottom bar · compact · dark · saved Sep
+  18, 11:31", a check prefix on the preset whose snapshot equals the current
+  config — re-evaluated from `save()` by comparing dumps, no rebuild —,
+  pencil = rename dialog with a numeric suffix on collision, trash =
+  destructive confirm). Row clicks switch; every mutation rebuilds the rows
+  from an idle since the clicked button sits in a row being removed (the
+  pin-menu lesson). Everything is in the snapshot, `wallpaper.current` and
+  `ui.cursor_*` included — switching a preset switches those too. Dev hooks:
+  `HS_PRESET_SAVE` / `HS_PRESET_APPLY` / `HS_PRESET_DIALOG`.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

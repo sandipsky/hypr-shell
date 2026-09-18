@@ -396,6 +396,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"Bar background opacity", "Bar", ""},
         {"Bar modules", "Bar", ""},
         {"Module layout", "Bar", ""},
+        {"Presets", "Presets", "presets_page"},
         {"Workspaces mode", "Bar › Workspaces", "workspaces"},
         {"Fixed workspace count", "Bar › Workspaces", "workspaces"},
         {"Workspace scroll wrap-around", "Bar › Workspaces", "workspaces"},
