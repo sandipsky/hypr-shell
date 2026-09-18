@@ -1,5 +1,6 @@
 #include "bar/bar.hpp"
 #include "bar/idle_fade.hpp"
+#include "bar/keybindings_window.hpp"
 #include "bar/clipboard_window.hpp"
 #include "bar/launcher_window.hpp"
 #include "bar/lock_screen.hpp"
@@ -53,6 +54,15 @@ protected:
             if (clipboard_window_)
                 clipboard_window_->toggle();
         });
+        // `hypr-shell --keybindings` toggles the keyboard shortcuts overlay
+        // (Hyprland's binds), e.g.
+        //   bind = SUPER, slash, exec, hypr-shell --keybindings
+        add_main_option_entry(Gtk::Application::OptionType::BOOL, "keybindings", 'K',
+                              "Toggle the keyboard shortcuts overlay in the running instance");
+        add_action("keybindings", [this] {
+            if (keybindings_window_)
+                keybindings_window_->toggle();
+        });
         // `hypr-shell --app-menu` toggles the bar's app menu popover, e.g.
         //   bindr = SUPER, SUPER_L, exec, hypr-shell --app-menu
         add_main_option_entry(Gtk::Application::OptionType::BOOL, "app-menu", 'm',
@@ -100,9 +110,11 @@ protected:
     int on_handle_local_options(const Glib::RefPtr<Glib::VariantDict>& options) override {
         bool launcher = false, app_menu = false, session = false, lock = false, clipboard = false;
         bool lock_suspend = false, control_center = false, wallpaper_next = false;
+        bool keybindings = false;
         if (options) {
             options->lookup_value("launcher", launcher);
             options->lookup_value("clipboard", clipboard);
+            options->lookup_value("keybindings", keybindings);
             options->lookup_value("app-menu", app_menu);
             options->lookup_value("session", session);
             options->lookup_value("lock", lock);
@@ -111,7 +123,7 @@ protected:
             options->lookup_value("wallpaper-next", wallpaper_next);
         }
         if (launcher || app_menu || session || lock || clipboard || lock_suspend ||
-            control_center || wallpaper_next) {
+            control_center || wallpaper_next || keybindings) {
             try {
                 register_application();
             } catch (const Glib::Error& e) {
@@ -123,6 +135,8 @@ protected:
                     activate_action("launcher");
                 if (clipboard)
                     activate_action("clipboard");
+                if (keybindings)
+                    activate_action("keybindings");
                 if (app_menu)
                     activate_action("app-menu");
                 if (session)
@@ -140,6 +154,7 @@ protected:
             // no running instance: start up normally, then open what was asked
             open_launcher_on_startup_ = launcher;
             open_clipboard_on_startup_ = clipboard;
+            open_keybindings_on_startup_ = keybindings;
             open_app_menu_on_startup_ = app_menu;
             open_session_on_startup_ = session;
             lock_on_startup_ = lock;
@@ -217,6 +232,16 @@ protected:
         if (open_clipboard_on_startup_ || g_getenv("HS_OPEN_CLIPBOARD") != nullptr) {
             const char* hook = g_getenv("HS_OPEN_CLIPBOARD");
             Glib::signal_timeout().connect_once([this] { clipboard_window_->open(); },
+                                                std::max(400, hook ? atoi(hook) : 0));
+        }
+
+        // keyboard shortcuts overlay (Hyprland's binds); hidden until toggled
+        keybindings_window_ = std::make_unique<KeybindingsWindow>();
+        add_window(*keybindings_window_);
+        // dev hook: HS_OPEN_KEYBINDINGS=1 opens it after startup (>1 = delay in ms)
+        if (open_keybindings_on_startup_ || g_getenv("HS_OPEN_KEYBINDINGS") != nullptr) {
+            const char* hook = g_getenv("HS_OPEN_KEYBINDINGS");
+            Glib::signal_timeout().connect_once([this] { keybindings_window_->open(); },
                                                 std::max(400, hook ? atoi(hook) : 0));
         }
 
@@ -353,12 +378,14 @@ private:
     std::unique_ptr<OsdWindow> osd_window_;
     std::unique_ptr<LauncherWindow> launcher_window_;
     std::unique_ptr<ClipboardWindow> clipboard_window_;
+    std::unique_ptr<KeybindingsWindow> keybindings_window_;
     std::unique_ptr<SessionWindow> session_window_;
     std::unique_ptr<IdleFade> idle_fade_;
     std::unique_ptr<LockScreen> lock_screen_;
     bool lock_on_startup_ = false;
     bool open_launcher_on_startup_ = false;
     bool open_clipboard_on_startup_ = false;
+    bool open_keybindings_on_startup_ = false;
     bool open_app_menu_on_startup_ = false;
     bool open_session_on_startup_ = false;
     Glib::RefPtr<Gtk::CssProvider> theme_provider_;

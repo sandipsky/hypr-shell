@@ -1,0 +1,175 @@
+/* desktop context menu — right click on the wallpaper. The app menu's
+ * context-menu look (mSurface card, mOutline border, mHover rows) with
+ * nested submenus (Apps / Settings / Session) opening to the right, and the
+ * keyboard shortcuts overlay in the launcher's design plus keycaps. */
+
+popover.dm-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 12px;
+  border: 1px solid @mOutline; /* mOutline */
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 4px;
+}
+
+button.dm-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  min-height: 22px;
+  min-width: 200px;
+  outline: none;
+}
+
+button.dm-item:hover,
+button.dm-item:focus-visible,
+button.dm-item.open {
+  background: @mHover; /* grey hover / selection shade */
+}
+
+.dm-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 16px;
+  min-width: 18px;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+image.dm-icon {
+  color: @mOnSurface;
+  min-width: 18px;
+}
+
+.dm-label {
+  font-size: 14px;
+  color: @mOnSurface;
+}
+
+.dm-chevron {
+  font-family: "noctalia-tabler-icons";
+  font-size: 14px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+button.dm-item:hover .dm-glyph,
+button.dm-item:hover .dm-label,
+button.dm-item:hover .dm-chevron,
+button.dm-item:hover image.dm-icon,
+button.dm-item:focus-visible .dm-glyph,
+button.dm-item:focus-visible .dm-label,
+button.dm-item.open .dm-glyph,
+button.dm-item.open .dm-label,
+button.dm-item.open .dm-chevron {
+  color: @mOnHover;
+}
+
+/* the session submenu's shutdown entry (Noctalia's isShutdown tint) */
+button.dm-item.destructive .dm-glyph,
+button.dm-item.destructive .dm-label {
+  color: @mError; /* mError */
+}
+
+separator.dm-separator {
+  background: alpha(@mOnSurface, 0.12);
+  min-height: 1px;
+  margin: 3px 8px;
+}
+
+.dm-empty {
+  font-size: 14px;
+  color: @mOnSurfaceVariant;
+  padding: 6px 12px;
+}
+
+/* Apps submenu: a scrolled list, the launcher's thin scrollbar */
+.dm-apps scrollbar {
+  background: transparent;
+  border: none;
+}
+
+.dm-apps scrollbar trough {
+  background: transparent;
+}
+
+.dm-apps scrollbar slider {
+  background: alpha(@mOnSurface, 0.22);
+  border-radius: 999px;
+  min-width: 3px;
+  margin: 1px;
+}
+
+.dm-apps scrollbar slider:hover,
+.dm-apps scrollbar slider:active {
+  background: alpha(@mOnSurface, 0.4);
+}
+
+/* keyboard shortcuts overlay (window `launcher` + `keybindings`) */
+.keybindings-panel entry.launcher-search {
+  font-size: 12pt;
+}
+
+.kb-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: @mOnSurface;
+}
+
+.kb-subtitle {
+  font-size: 14px;
+  color: @mOnSurfaceVariant;
+}
+
+/* section header: the comment above the binds in the user's config */
+.kb-group {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: @mOnSurfaceVariant;
+  margin: 14px 12px 4px;
+}
+
+.kb-row {
+  border-radius: 12px;
+  padding: 7px 12px;
+}
+
+.kb-row:hover {
+  background: alpha(@mOnSurface, 0.06);
+}
+
+/* keycap: mSurfaceVariant chip with an mOutline edge and a darker bottom lip */
+.kb-key {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border: 1px solid @mOutline;
+  border-radius: 7px;
+  padding: 2px 9px;
+  min-width: 12px;
+  min-height: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: @mOnSurface;
+  box-shadow: inset 0 -2px 0 alpha(@mShadow, 0.35);
+}
+
+.kb-plus {
+  font-size: 13px;
+  color: @mOnSurfaceVariant;
+}
+
+.kb-desc {
+  font-size: 15px;
+  color: @mOnSurface;
+}
+
+.kb-tag {
+  font-size: 11px;
+  color: @mOnSurfaceVariant;
+  background: alpha(@mOnSurface, 0.08);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.kb-status {
+  font-size: 15px;
+  color: @mOnSurfaceVariant;
+}

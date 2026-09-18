@@ -117,6 +117,7 @@ void Config::load() {
     clipboard_ = Clipboard{};
     app_menu_ = AppMenu{};
     session_ = Session{};
+    desktop_menu_ = DesktopMenu{};
     idle_ = Idle{};
     lock_screen_ = LockScreen{};
     wallpaper_ = Wallpaper{};
@@ -383,6 +384,19 @@ void Config::load() {
                 for (const auto& v : *order)
                     if (v.is_string())
                         s.order.push_back(v.get<std::string>());
+        }
+        if (auto it = j.find("desktop_menu"); it != j.end() && it->is_object()) {
+            auto& d = desktop_menu_;
+            d.enabled = it->value("enabled", true);
+            d.show_icons = it->value("show_icons", true);
+            if (auto items = it->find("items"); items != it->end() && items->is_object())
+                for (const auto& [key, v] : items->items())
+                    if (v.is_boolean())
+                        d.items[key] = v.get<bool>();
+            if (auto order = it->find("order"); order != it->end() && order->is_array())
+                for (const auto& v : *order)
+                    if (v.is_string())
+                        d.order.push_back(v.get<std::string>());
         }
         if (auto it = j.find("idle"); it != j.end() && it->is_object()) {
             auto& i = idle_;

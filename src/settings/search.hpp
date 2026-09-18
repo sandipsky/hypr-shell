@@ -8,19 +8,15 @@
 // into view and flashes it (`.search-hit`).
 #pragma once
 
+#include "services/settings_pages.hpp"
+
 #include <adwaita.h>
 
 namespace hyprshell::settings {
 
-// One sidebar entry: GtkStack child name, label, icon. `icon` is a symbolic
-// icon-theme name, or "glyph:<codepoint>" for a tabler glyph from the
-// bundled noctalia-tabler-icons font (the launcher's rocket has no Adwaita
-// equivalent) — build it with make_page_icon().
-struct SidebarPage {
-    const char* name;
-    const char* title;
-    const char* icon;
-};
+// One sidebar entry — the shared table lives in services/settings_pages.hpp
+// (the shell's desktop menu lists the same pages).
+using SidebarPage = hyprshell::SettingsPage;
 
 // 16px icon widget for a sidebar row or search result.
 GtkWidget* make_page_icon(const SidebarPage& page);

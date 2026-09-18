@@ -254,6 +254,22 @@ public:
     };
     const Session& session() const { return session_; }
 
+    // desktop_menu.* (top level): the right-click context menu on the
+    // wallpaper — Apps / Settings / Next desktop background / Session /
+    // Keybindings (services/desktop_menu_items.hpp), each toggleable and
+    // reorderable like the session menu's actions.
+    struct DesktopMenu {
+        bool enabled = true;
+        bool show_icons = true;
+        std::map<std::string, bool> items; // desktop_menu.items.<key>; absent = the item's default
+        std::vector<std::string> order;    // desktop_menu.order: item keys, menu order (partial ok)
+        bool item_enabled(const std::string& key, bool default_on) const {
+            auto it = items.find(key);
+            return it == items.end() ? default_on : it->second;
+        }
+    };
+    const DesktopMenu& desktop_menu() const { return desktop_menu_; }
+
     // idle.* (top level): the idle daemon — Noctalia's Settings.data.idle.
     // Timeouts in seconds, 0 disables a stage. `enabled` defaults ON (Noctalia
     // defaults it off, but hypr-shell-settings only exposes the three
@@ -417,6 +433,7 @@ private:
     Clipboard clipboard_;
     AppMenu app_menu_;
     Session session_;
+    DesktopMenu desktop_menu_;
     Idle idle_;
     LockScreen lock_screen_;
     Wallpaper wallpaper_;

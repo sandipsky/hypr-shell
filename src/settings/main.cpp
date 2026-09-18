@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "services/app_menu_icons.hpp"
+#include "services/desktop_menu_items.hpp"
 #include "services/palette.hpp"
 #include "services/session_actions.hpp"
 #include "services/wallpaper_files.hpp"
@@ -158,28 +159,10 @@ constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
 constexpr const char* kAmDisplayKeys[] = {"icon", "icon_text", "text"};
 constexpr const char* kSmModeKeys[] = {"dropdown", "fullscreen"};
-// sidebar rows -> GtkStack page names, labels and symbolic icons (GNOME
-// Settings look; About last, like GNOME)
-constexpr hyprshell::settings::SidebarPage kSidebarPages[] = {
-    {"bar", "Bar", "focus-top-bar-symbolic"},
-    {"presets_page", "Presets", "document-save-symbolic"},
-    {"ui_page", "User interface", "preferences-desktop-appearance-symbolic"},
-    {"wallpaper_page", "Wallpaper", "preferences-desktop-wallpaper-symbolic"},
-    {"night_light_page", "Night light", "night-light-symbolic"},
-    {"hotspot_page", "Hotspot", "glyph:\uED1B"}, // tabler access-point
-    {"vpn_page", "VPN", "glyph:\uED58"},         // tabler shield-lock
-    {"launcher_page", "Launcher", "glyph:\uEC45"}, // tabler rocket, the app menu's default
-    {"clipboard_page", "Clipboard", "edit-paste-symbolic"},
-    {"session_page", "Session menu", "system-shutdown-symbolic"},
-    {"lock_page", "Lock screen", "system-lock-screen-symbolic"},
-    {"users_page", "Users", "system-users-symbolic"},
-    {"login_page", "Login screen", "glyph:\uEBA7"}, // tabler login; row hidden without SDDM+Elegant
-    {"idle_page", "Idle", "alarm-symbolic"},
-    {"osd_page", "On-screen display", "display-brightness-symbolic"},
-    {"notifications_page", "Notifications", "preferences-system-notifications-symbolic"},
-    {"about_page", "About", "help-about-symbolic"},
-};
-constexpr int kSidebarPageCount = G_N_ELEMENTS(kSidebarPages);
+// sidebar rows -> GtkStack page names, labels and symbolic icons: the table
+// shared with the shell (services/settings_pages.hpp)
+constexpr const auto& kSidebarPages = hyprshell::kSettingsPages;
+constexpr int kSidebarPageCount = hyprshell::kSettingsPageCount;
 constexpr const char* kSmLayoutKeys[] = {"single_row", "grid"};
 constexpr const char* kClipboardPositionKeys[] = {"center", "top_left", "top", "top_right",
                                                   "bottom_left", "bottom", "bottom_right"};
@@ -206,6 +189,7 @@ constexpr int kNlTempMin = 1000;
 constexpr int kNlTempMax = 6000;
 constexpr int kNlTimeOptions = 48; // "HH:MM" every 30 minutes
 constexpr gsize kSessionActionCount = G_N_ELEMENTS(hyprshell::kSessionActions);
+constexpr gsize kDesktopMenuItemCount = G_N_ELEMENTS(hyprshell::kDesktopMenuItems);
 // app menu icon dropdown: the shared presets, then Distro logo, then Custom
 constexpr guint kAmPresetCount = G_N_ELEMENTS(hyprshell::kAppMenuIconPresets);
 constexpr guint kAmIconDistroIndex = kAmPresetCount;
@@ -325,6 +309,14 @@ struct Settings {
     AdwSwitchRow* sm_items[kSessionActionCount] = {};
     GtkWidget* sm_items_group = nullptr;        // rows re-added in sm_order
     std::vector<std::string> sm_order;          // every action key, menu order
+
+    // Desktop menu sidebar page (top-level "desktop_menu" object)
+    AdwSwitchRow* dm_enabled = nullptr;
+    AdwSwitchRow* dm_icons = nullptr;
+    AdwSwitchRow* dm_items[kDesktopMenuItemCount] = {};
+    GtkWidget* dm_items_group = nullptr;        // rows re-added in dm_order
+    GtkWidget* dm_options_group = nullptr;      // insensitive while the menu is off
+    std::vector<std::string> dm_order;
 
     // Idle sidebar page (top-level "idle" object): the three stage timeouts
     AdwSpinRow* idle_screen_off = nullptr;
@@ -572,6 +564,8 @@ json& ui_object(Settings* s) {
 enum class PopulateStage { Bar, Secondary };
 
 void select_cursor_theme(Settings* s, const std::string& theme);
+void rebuild_dm_rows(Settings* s);
+void update_dm_rows(Settings* s);
 void select_icon_theme(Settings* s, const std::string& theme);
 
 void populate(Settings* s, PopulateStage stage) {
@@ -798,6 +792,25 @@ void populate(Settings* s, PopulateStage stage) {
     } catch (const json::exception&) {
     }
 
+    // Desktop menu page (top-level "desktop_menu" object)
+    bool dm_enabled = true, dm_icons = true;
+    std::vector<std::string> dm_order;
+    bool dm_items[kDesktopMenuItemCount];
+    for (gsize i = 0; i < kDesktopMenuItemCount; ++i)
+        dm_items[i] = hyprshell::kDesktopMenuItems[i].default_on;
+    try {
+        const json dm = s->root.value("desktop_menu", json::object());
+        dm_enabled = dm.value("enabled", true);
+        dm_icons = dm.value("show_icons", true);
+        const json items = dm.value("items", json::object());
+        for (gsize i = 0; i < kDesktopMenuItemCount; ++i)
+            dm_items[i] = items.value(hyprshell::kDesktopMenuItems[i].key, dm_items[i]);
+        for (const auto& v : dm.value("order", json::array()))
+            if (v.is_string())
+                dm_order.push_back(v.get<std::string>());
+    } catch (const json::exception&) {
+    }
+
     // Lock screen page (top-level "lock_screen" object)
     std::string lock_background;
     double lock_blur = 0.0;
@@ -1011,6 +1024,13 @@ void populate(Settings* s, PopulateStage stage) {
     s->sm_order = sm_order;
     rebuild_sm_rows(s);
     update_sm_rows(s);
+    adw_switch_row_set_active(s->dm_enabled, dm_enabled);
+    adw_switch_row_set_active(s->dm_icons, dm_icons);
+    for (gsize i = 0; i < kDesktopMenuItemCount; ++i)
+        adw_switch_row_set_active(s->dm_items[i], dm_items[i]);
+    s->dm_order = dm_order;
+    rebuild_dm_rows(s);
+    update_dm_rows(s);
     gtk_editable_set_text(GTK_EDITABLE(s->lock_background), lock_background.c_str());
     gtk_adjustment_set_value(s->lock_blur, std::round(lock_blur * 100.0));
     gtk_editable_set_text(GTK_EDITABLE(s->wp_directory), wp_directory.c_str());
@@ -1577,6 +1597,86 @@ void on_sm_item_toggled(GObject* row, GParamSpec*, gpointer data) {
         return;
     const auto* key = static_cast<const char*>(g_object_get_data(row, "sm-key"));
     session_items_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// -- Desktop menu page: the top-level "desktop_menu" config object -------------
+
+json& desktop_menu_object(Settings* s) {
+    if (!s->root.is_object())
+        s->root = json::object();
+    if (!s->root["desktop_menu"].is_object())
+        s->root["desktop_menu"] = json::object();
+    return s->root["desktop_menu"];
+}
+
+// the item rows only matter while the menu is enabled
+void update_dm_rows(Settings* s) {
+    const bool on = adw_switch_row_get_active(s->dm_enabled) != FALSE;
+    gtk_widget_set_sensitive(GTK_WIDGET(s->dm_icons), on);
+    gtk_widget_set_sensitive(s->dm_items_group, on);
+}
+
+// switches with a "dm-key" (enabled / show_icons)
+void on_dm_option_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_dm_rows(s);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "dm-key"));
+    desktop_menu_object(s)[key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// Re-add the item rows in dm_order (the session page's pattern: rows hold a
+// ref while unparented, the up/down buttons follow their row)
+void rebuild_dm_rows(Settings* s) {
+    for (gsize i = 0; i < kDesktopMenuItemCount; ++i)
+        if (gtk_widget_get_parent(GTK_WIDGET(s->dm_items[i])) != nullptr)
+            adw_preferences_group_remove(ADW_PREFERENCES_GROUP(s->dm_items_group),
+                                         GTK_WIDGET(s->dm_items[i]));
+    const auto ordered = hyprshell::desktop_menu_items_in_order(s->dm_order);
+    s->dm_order.clear();
+    for (const auto* item : ordered)
+        s->dm_order.push_back(item->key);
+    for (gsize pos = 0; pos < ordered.size(); ++pos) {
+        const gsize index = static_cast<gsize>(ordered[pos] - hyprshell::kDesktopMenuItems);
+        GtkWidget* row = GTK_WIDGET(s->dm_items[index]);
+        auto* up = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "dm-up"));
+        auto* down = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "dm-down"));
+        gtk_widget_set_sensitive(up, pos > 0);
+        gtk_widget_set_sensitive(down, pos + 1 < ordered.size());
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(s->dm_items_group), row);
+    }
+}
+
+void on_dm_move_clicked(GtkButton* button, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    const auto* key = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "dm-key"));
+    const int dir = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "move-dir"));
+    const auto it = std::find(s->dm_order.begin(), s->dm_order.end(), key);
+    if (it == s->dm_order.end())
+        return;
+    const int index = static_cast<int>(it - s->dm_order.begin());
+    const int target = index + dir;
+    if (target < 0 || target >= static_cast<int>(s->dm_order.size()))
+        return;
+    std::swap(s->dm_order[static_cast<gsize>(index)], s->dm_order[static_cast<gsize>(target)]);
+    desktop_menu_object(s)["order"] = s->dm_order;
+    save(s);
+    // the clicked button sits in a row about to be re-parented — defer
+    g_idle_add_once([](gpointer p) { rebuild_dm_rows(static_cast<Settings*>(p)); }, s);
+}
+
+void on_dm_item_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    json& dm = desktop_menu_object(s);
+    if (!dm["items"].is_object())
+        dm["items"] = json::object();
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "dm-key"));
+    dm["items"][key] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
     save(s);
 }
 
@@ -2512,10 +2612,14 @@ void on_osd_toggled(GObject*, GParamSpec*, gpointer data) {
 
 // photo button on the background row: pick an image into the entry (its
 // changed handler then writes the config)
+// Image picker for an entry row: the button carries "target-entry" (the row
+// the chosen path goes into) and optionally "dialog-title". Used by the lock
+// screen background and the app menu's custom icon rows.
 void on_lock_browse_clicked(GtkButton* button, gpointer) {
     auto* entry = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(button), "target-entry"));
+    const auto* title = static_cast<const char*>(g_object_get_data(G_OBJECT(button), "dialog-title"));
     GtkFileDialog* dialog = gtk_file_dialog_new();
-    gtk_file_dialog_set_title(dialog, "Select lock screen background");
+    gtk_file_dialog_set_title(dialog, title != nullptr ? title : "Select lock screen background");
     GtkFileFilter* images = gtk_file_filter_new();
     gtk_file_filter_set_name(images, "Images");
     gtk_file_filter_add_mime_type(images, "image/*");
@@ -4143,6 +4247,72 @@ void build_secondary_pages(Settings* s) {
     g_signal_connect(sm_mode_row, "notify::selected", G_CALLBACK(on_sm_mode_changed), s);
     g_signal_connect(sm_layout_row, "notify::selected", G_CALLBACK(on_sm_layout_changed), s);
 
+    // -- Desktop menu sidebar page (top-level "desktop_menu" object) ----------
+    GtkWidget* dm_page = adw_preferences_page_new();
+    GtkWidget* dm_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(dm_group), "Desktop menu");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(dm_group),
+        "Right-click the desktop background to open it. Submenus open on hover or "
+        "click; the keyboard shortcuts overlay is also available from a keybind:\n"
+        "bind = SUPER, slash, exec, hypr-shell --keybindings");
+    struct DmOption {
+        const char* key;
+        const char* title;
+        const char* subtitle;
+        AdwSwitchRow** row;
+    } dm_options[] = {
+        {"enabled", "Enable", "Show a context menu on right click on the wallpaper.",
+         &s->dm_enabled},
+        {"show_icons", "Show icons", "An icon in front of every menu entry.", &s->dm_icons},
+    };
+    for (const auto& info : dm_options) {
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), info.title);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), info.subtitle);
+        g_object_set_data(G_OBJECT(row), "dm-key", const_cast<char*>(info.key));
+        *info.row = ADW_SWITCH_ROW(row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(dm_group), row);
+    }
+    s->dm_options_group = dm_group;
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(dm_page), ADW_PREFERENCES_GROUP(dm_group));
+
+    GtkWidget* dm_items_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(dm_items_group), "Menu items");
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(dm_items_group),
+        "Which entries the menu shows, in this order (\"Next desktop background\" also "
+        "needs the wallpaper slideshow to be on).");
+    s->dm_items_group = dm_items_group;
+    for (gsize i = 0; i < kDesktopMenuItemCount; ++i) {
+        const auto& item = hyprshell::kDesktopMenuItems[i];
+        GtkWidget* row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), item.label);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), item.description);
+        g_object_set_data(G_OBJECT(row), "dm-key", const_cast<char*>(item.key));
+        g_object_ref_sink(row);
+        GtkWidget* up = gtk_button_new_from_icon_name("go-up-symbolic");
+        GtkWidget* down = gtk_button_new_from_icon_name("go-down-symbolic");
+        for (GtkWidget* b : {down, up}) { // add_prefix packs from the start: up ends up first
+            gtk_widget_add_css_class(b, "flat");
+            gtk_widget_set_valign(b, GTK_ALIGN_CENTER);
+            g_object_set_data(G_OBJECT(b), "dm-key", const_cast<char*>(item.key));
+            g_signal_connect(b, "clicked", G_CALLBACK(on_dm_move_clicked), s);
+            adw_action_row_add_prefix(ADW_ACTION_ROW(row), b);
+        }
+        g_object_set_data(G_OBJECT(up), "move-dir", GINT_TO_POINTER(-1));
+        g_object_set_data(G_OBJECT(down), "move-dir", GINT_TO_POINTER(+1));
+        g_object_set_data(G_OBJECT(row), "dm-up", up);
+        g_object_set_data(G_OBJECT(row), "dm-down", down);
+        s->dm_items[i] = ADW_SWITCH_ROW(row);
+        g_signal_connect(row, "notify::active", G_CALLBACK(on_dm_item_toggled), s);
+    }
+    rebuild_dm_rows(s);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(dm_page),
+                             ADW_PREFERENCES_GROUP(dm_items_group));
+    g_signal_connect(s->dm_enabled, "notify::active", G_CALLBACK(on_dm_option_toggled), s);
+    g_signal_connect(s->dm_icons, "notify::active", G_CALLBACK(on_dm_option_toggled), s);
+
     // -- Idle sidebar page (top-level "idle" object) --------------------------
     GtkWidget* idle_page = adw_preferences_page_new();
     GtkWidget* idle_group = adw_preferences_group_new();
@@ -5002,6 +5172,13 @@ void build_secondary_pages(Settings* s) {
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sm_view), sm_header);
     adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sm_view), sm_page);
 
+    GtkWidget* dm_view = adw_toolbar_view_new();
+    GtkWidget* dm_header = adw_header_bar_new();
+    adw_header_bar_set_title_widget(ADW_HEADER_BAR(dm_header),
+                                    adw_window_title_new("Desktop menu", nullptr));
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(dm_view), dm_header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(dm_view), dm_page);
+
     GtkWidget* lock_view = adw_toolbar_view_new();
     GtkWidget* lock_header = adw_header_bar_new();
     adw_header_bar_set_title_widget(ADW_HEADER_BAR(lock_header),
@@ -5058,6 +5235,7 @@ void build_secondary_pages(Settings* s) {
     gtk_stack_add_named(GTK_STACK(stack), lp_view, "launcher_page");
     gtk_stack_add_named(GTK_STACK(stack), cb_view, "clipboard_page");
     gtk_stack_add_named(GTK_STACK(stack), sm_view, "session_page");
+    gtk_stack_add_named(GTK_STACK(stack), dm_view, "desktop_menu_page");
     gtk_stack_add_named(GTK_STACK(stack), lock_view, "lock_page");
     gtk_stack_add_named(GTK_STACK(stack), idle_view, "idle_page");
     gtk_stack_add_named(GTK_STACK(stack), osd_view, "osd_page");
@@ -5748,6 +5926,17 @@ void on_activate(GtkApplication* app, gpointer) {
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_custom_row),
                                   "Custom icon (icon theme name or image path)");
     g_object_set_data(G_OBJECT(am_custom_row), "am-key", const_cast<char*>("custom_icon"));
+    // image picker (user request): fills the row with the chosen file's path;
+    // the row's own "changed" handler then saves it
+    GtkWidget* am_custom_browse = gtk_button_new_from_icon_name("image-x-generic-symbolic");
+    gtk_widget_add_css_class(am_custom_browse, "flat");
+    gtk_widget_set_valign(am_custom_browse, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(am_custom_browse, "Select an image");
+    g_object_set_data(G_OBJECT(am_custom_browse), "target-entry", am_custom_row);
+    g_object_set_data(G_OBJECT(am_custom_browse), "dialog-title",
+                      const_cast<char*>("Select the app menu icon"));
+    g_signal_connect(am_custom_browse, "clicked", G_CALLBACK(on_lock_browse_clicked), nullptr);
+    adw_entry_row_add_suffix(ADW_ENTRY_ROW(am_custom_row), am_custom_browse);
     s->am_custom_icon = ADW_ENTRY_ROW(am_custom_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_custom_row);
 

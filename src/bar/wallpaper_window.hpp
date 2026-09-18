@@ -1,5 +1,7 @@
 #pragma once
 
+#include "bar/desktop_menu.hpp"
+
 #include <gtkmm.h>
 
 #include <map>
@@ -97,7 +99,8 @@ private:
     sigc::connection ready_connection_;
 };
 
-// Background layer window covering one monitor.
+// Background layer window covering one monitor. A right click on it opens
+// the desktop context menu (desktop_menu.enabled).
 class WallpaperWindow : public Gtk::Window {
 public:
     explicit WallpaperWindow(const Glib::RefPtr<Gdk::Monitor>& monitor);
@@ -106,11 +109,17 @@ public:
     const Glib::RefPtr<Gdk::Monitor>& monitor() const { return monitor_; }
     WallpaperView& view() { return view_; }
 
+    // the context menu at window coordinates (x, y); also the dev hook's entry
+    void open_menu(double x, double y);
+    DesktopMenu* menu() { return menu_.get(); }
+
 private:
     void apply_geometry();
 
     Glib::RefPtr<Gdk::Monitor> monitor_;
     WallpaperView view_;
+    Gtk::Overlay content_; // the view, and the anchor the menu popovers hang off
+    std::unique_ptr<DesktopMenu> menu_; // created on the first right click
 };
 
 // Owns one WallpaperWindow per connected monitor and feeds them from the

@@ -103,6 +103,14 @@ launcher).
     "slideshow_order": "random"
   },
 
+  "desktop_menu": {
+    "enabled": true,
+    "show_icons": true,
+    "items": { "apps": true, "settings": true, "next_wallpaper": true,
+               "session": true, "keybindings": true },
+    "order": ["apps", "settings", "next_wallpaper", "session", "keybindings"]
+  },
+
   "night_light": {
     "enabled": false,
     "forced": false,
@@ -371,6 +379,23 @@ table (`services/session_actions.hpp`) is shared with the settings app.
 | `fullscreen_layout` | `single_row` / `grid` | `single_row` | Fullscreen arrangement. |
 | `items.<key>` | bool | per action | Show the action: `lock`, `suspend`, `reboot`, `logout`, `shutdown` default on; `hibernate`, `reboot_uefi`, `soft_reboot` default off. |
 | `order` | array of keys | table order | Menu order. Unknown keys are dropped and actions the list omits follow in table order, so a partial list works. Edited with the up/down buttons on the Session menu settings page. |
+
+## `desktop_menu` (top level)
+
+The right-click context menu on the desktop (the shell's wallpaper window).
+The item table (`services/desktop_menu_items.hpp`) is shared with the
+settings app's "Desktop menu" page.
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `enabled` | bool | `true` | Right click on the wallpaper opens the menu. |
+| `show_icons` | bool | `true` | Icons in front of the entries (tabler glyphs; the Settings submenu reuses the settings sidebar's icons). |
+| `items.<key>` | bool | `true` | Show the entry: `apps` (submenu of every application), `settings` (All Settings + one entry per settings page), `next_wallpaper` (shown only while `wallpaper.slideshow` is on), `session` (the enabled session actions), `keybindings` (the keyboard shortcuts overlay). |
+| `order` | array of keys | table order | Menu order, resolved like `session.order`. |
+
+The keyboard shortcuts overlay reads `j/binds` and replays the Lua config
+with `data/keybinds-introspect.lua` (see [Hyprland IPC](10-hyprland-ipc.md));
+it has no keys of its own and also opens with `hypr-shell --keybindings`.
 
 ## `clipboard` (top level)
 

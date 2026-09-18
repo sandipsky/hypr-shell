@@ -15,6 +15,7 @@
 @import url("css/osd.css");
 @import url("css/wallpaper.css");
 @import url("css/control_center.css");
+@import url("css/desktop_menu.css");
 
 /* Palette tokens (a snapshot of the user's Noctalia colors.json). The shell
  * redefines every one of these from config.json's `ui` block (accent colour

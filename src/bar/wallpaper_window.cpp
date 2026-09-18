@@ -545,14 +545,33 @@ WallpaperWindow::WallpaperWindow(const Glib::RefPtr<Gdk::Monitor>& monitor) : mo
     if (monitor_)
         gtk_layer_set_monitor(window, monitor_->gobj());
 
-    set_child(view_);
+    content_.set_child(view_);
+    set_child(content_);
     apply_geometry();
     if (monitor_)
         monitor_->property_geometry().signal_changed().connect(
             sigc::mem_fun(*this, &WallpaperWindow::apply_geometry));
+
+    // right click on the desktop: the context menu. The view itself is not
+    // targetable, so the overlay is what the pointer hits.
+    auto click = Gtk::GestureClick::create();
+    click->set_button(GDK_BUTTON_SECONDARY);
+    click->signal_pressed().connect([this](int, double x, double y) { open_menu(x, y); });
+    content_.add_controller(click);
 }
 
-WallpaperWindow::~WallpaperWindow() = default;
+// the menu unparents its popovers from content_ before content_ goes
+WallpaperWindow::~WallpaperWindow() {
+    menu_.reset();
+}
+
+void WallpaperWindow::open_menu(double x, double y) {
+    if (!Config::get().desktop_menu().enabled)
+        return;
+    if (!menu_)
+        menu_ = std::make_unique<DesktopMenu>(content_);
+    menu_->open(x, y);
+}
 
 void WallpaperWindow::apply_geometry() {
     if (!monitor_)
@@ -585,6 +604,36 @@ WallpaperManager::WallpaperManager(Gtk::Application& app) : app_(app) {
                 show_all(pick_transition(), /*startup=*/true);
         },
         100);
+    // dev hook: HS_OPEN_DESKTOP_MENU=<ms> opens the context menu on the first
+    // monitor that long after startup (a right click cannot be scripted);
+    // HS_DESKTOP_MENU_SUBMENU=<apps|settings|session> also opens that submenu,
+    // HS_DESKTOP_MENU_CLOSE=<ms> closes it again that long after opening (the
+    // popup grab takes keyboard focus — never leave it open on someone's desk)
+    if (const char* hook = g_getenv("HS_OPEN_DESKTOP_MENU")) {
+        const unsigned delay = static_cast<unsigned>(std::max(400, atoi(hook)));
+        Glib::signal_timeout().connect_once(
+            [this] {
+                if (!windows_.empty())
+                    windows_.front()->open_menu(320, 240);
+            },
+            delay);
+        if (const char* submenu = g_getenv("HS_DESKTOP_MENU_SUBMENU")) {
+            const std::string key = submenu;
+            Glib::signal_timeout().connect_once(
+                [this, key] {
+                    if (!windows_.empty() && windows_.front()->menu())
+                        windows_.front()->menu()->open_submenu(key);
+                },
+                delay + 700);
+        }
+        if (const char* close = g_getenv("HS_DESKTOP_MENU_CLOSE"))
+            Glib::signal_timeout().connect_once(
+                [this] {
+                    if (!windows_.empty() && windows_.front()->menu())
+                        windows_.front()->menu()->close();
+                },
+                delay + static_cast<unsigned>(std::max(100, atoi(close))));
+    }
     // dev hook: HS_WALLPAPER_DUMP=<dir> writes frame-25/50/75.png as the
     // first transition passes those progress marks (see the tick callback)
     // and frame-final.png 4s after startup; pair with

@@ -19,6 +19,14 @@ surface then falls back to GtkWindow's 200px default size instead of the
 `rgba(0,0,0,0.01)`: invisible, but a real buffer. `background: transparent`,
 `opacity: 0` and `set_opacity(0)` all break it.
 
+**Popups of a background-layer surface render above everything.** Hyprland
+draws every layer's popups after the overlay layer and routes pointer input
+to layer popups first, so the desktop context menu (a popover on the
+wallpaper window, the bottom of the stack) shows on top of windows. Its
+grab takes keyboard focus like any popup: a dev hook that pops it while
+someone is typing steals their keystrokes (Enter launched the first Apps
+entry once).
+
 **Hiding every window quits the app.** GTK's application exits when the last
 window is unmapped. `App::on_activate()` calls `hold()` so
 `bar.visibility = "hidden"` works.
@@ -222,6 +230,14 @@ frame (GTK init, the theme CSS parse and EGL/Mesa loading), so compare
 against that, not against zero.
 
 ## Hyprland
+
+**`j/binds` cannot describe Lua binds.** Every bind of a Lua config reports
+`dispatcher: "__lua"`; see [Hyprland IPC](10-hyprland-ipc.md) for the config
+replay that recovers the meaning.
+
+**`grim` hangs while DPMS is off.** No frame is rendered, so a screenshot
+waits forever; check `hyprctl -j monitors` → `dpmsStatus` before shooting
+and wrap `grim` in `timeout`.
 
 **Actions are Lua since 0.56.** `dispatch workspace 3` is a syntax error.
 Write `hl.dsp.focus({ workspace = 3 })`. `keyword monitor ...` is likewise

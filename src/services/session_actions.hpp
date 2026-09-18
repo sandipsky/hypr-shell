@@ -1,6 +1,7 @@
 #pragma once
 
-#include <cstring>
+#include "services/item_order.hpp"
+
 #include <string>
 #include <vector>
 
@@ -42,27 +43,11 @@ constexpr SessionAction kSessionActions[] = {
      "\uEB16", "soft reboot userspace restart", "systemctl soft-reboot", false, false},
 };
 
-// The table in the user's order: `order` (session.order in config) first,
-// unknown keys dropped and duplicates ignored, then every action it does not
-// name in table order — so a partial or stale list still shows everything.
-// Shared with the settings app so both sides resolve an order identically.
+// The table in the user's order (session.order in config); see
+// services/item_order.hpp for the rules.
 inline std::vector<const SessionAction*> session_actions_in_order(
     const std::vector<std::string>& order) {
-    std::vector<const SessionAction*> out;
-    auto listed = [&](const SessionAction* action) {
-        for (const auto* a : out)
-            if (a == action)
-                return true;
-        return false;
-    };
-    for (const auto& key : order)
-        for (const auto& action : kSessionActions)
-            if (key == action.key && !listed(&action))
-                out.push_back(&action);
-    for (const auto& action : kSessionActions)
-        if (!listed(&action))
-            out.push_back(&action);
-    return out;
+    return items_in_config_order(kSessionActions, order);
 }
 
 } // namespace hyprshell

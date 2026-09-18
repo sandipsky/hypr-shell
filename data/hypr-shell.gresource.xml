@@ -15,5 +15,7 @@
     <file>css/osd.css</file>
     <file>css/wallpaper.css</file>
     <file>css/control_center.css</file>
+    <file>css/desktop_menu.css</file>
+    <file>keybinds-introspect.lua</file>
   </gresource>
 </gresources>

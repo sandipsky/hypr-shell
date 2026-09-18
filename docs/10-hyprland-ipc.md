@@ -96,6 +96,21 @@ Monitor settings also go through Lua: `Hyprland::set_monitor_mode()` sends
 `eval hl.monitor({ output = "...", mode = "WxH@R", position = "XxY", scale = S })`.
 The old `keyword monitor ...` is rejected on 0.56.
 
+## Binds are opaque (`j/binds`)
+
+`j/binds` lists every keybind (modmask, key, submap, flags), but with a Lua
+config every entry has `dispatcher: "__lua"` and a callback id as `arg` —
+nothing says what the key does unless the bind passed `description` in its
+options. The keyboard shortcuts overlay therefore replays the config in a
+`lua` subprocess (Hyprland depends on the `lua` package) with a recording
+stand-in for `hl` (`data/keybinds-introspect.lua`, fed on stdin): every
+`hl.bind()` call is printed as JSON (key string, dispatcher path + arguments,
+options, submap, the short comment above the call as its section) and
+`services/keybinds` matches those records to `j/binds` by (modmask, key,
+submap). The replay is sandboxed (`os.execute`, `io.popen`, writes and
+`os.exit` are stubbed) and `hl.define_submap` runs its function so submap
+binds are recorded too.
+
 ## Events (`.socket2.sock`)
 
 A persistent connection that streams lines of the form `NAME>>DATA`. The

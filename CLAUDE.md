@@ -107,6 +107,15 @@ src/services/battery_alerts.{hpp,cpp}   low (20%) / critical (5%) battery notifi
 src/bar/osd_window.{hpp,cpp}            on-screen display layer window (volume/mic/brightness/lock keys)
 src/bar/launcher_window.{hpp,cpp}       app launcher overlay (fullscreen layer window)
 src/bar/clipboard_window.{hpp,cpp}      clipboard history overlay (launcher design, cliphist entries)
+src/bar/desktop_menu.{hpp,cpp}          desktop context menu: right click on the wallpaper window
+                                        (Apps ▸ / Settings ▸ / Next background / Session ▸ / Keybindings)
+src/bar/keybindings_window.{hpp,cpp}    keyboard shortcuts overlay (launcher design, keycaps + descriptions)
+src/services/keybinds.{hpp,cpp}         Hyprland binds: j/binds merged with a `lua` replay of the config
+                                        (data/keybinds-introspect.lua, GResource) + humanized descriptions
+src/services/desktop_menu_items.hpp     desktop menu item table (key/label/glyph/default), shared with settings
+src/services/settings_pages.hpp         settings sidebar page table (tag/title/icon), shared: sidebar, search,
+                                        the shell's Settings submenu, keybind descriptions
+src/services/item_order.hpp             items_in_config_order(): the shared "order" list resolution
 src/services/clipboard.{hpp,cpp}        cliphist history: wl-paste watchers, list/decode/copy/paste/delete
 src/bar/app_menu_panel.{hpp,cpp}        app menu popover (search + settings/session buttons + app grid)
 src/services/apps.{hpp,cpp}             desktop-entry index + fuzzy match + pinned apps +
@@ -264,6 +273,15 @@ Clipboard testing: `HS_OPEN_CLIPBOARD=3000` opens the history window after 3s
 after the window opened (pointer clicks cannot be scripted). It needs
 `clipboard.enabled` in config.json; Noctalia's own `wl-paste … cliphist store`
 watchers are detected by pgrep and ours are then not started.
+Desktop menu testing: `HS_OPEN_DESKTOP_MENU=<ms>` opens the context menu on
+the first monitor (a right click cannot be scripted), `HS_DESKTOP_MENU_SUBMENU=
+apps|settings|session` also opens that submenu 700 ms later and
+`HS_DESKTOP_MENU_CLOSE=<ms>` closes it again — **always set it**: the popup
+grab takes keyboard focus, and a menu left open on the user's desk swallowed
+their Enter and launched the first Apps entry. `HS_OPEN_KEYBINDINGS=<ms>` opens
+the shortcuts overlay (`hypr-shell --keybindings` toggles it from a running
+instance, also to close it after a screenshot). `grim` hangs while DPMS is off
+(`hyprctl -j monitors` → dpmsStatus) — wrap it in `timeout`.
 Wallpaper testing: the desktop is usually covered, so `HS_WALLPAPER_DUMP=<dir>`
 renders the first monitor's frames offscreen (frame-25/50/75.png as the first
 transition passes those marks, frame-final.png after 4s) and
@@ -404,7 +422,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       temperature option, per user; 2026-09-05: clipboard history landed —
       Noctalia's cliphist-backed clipboard provider as its own overlay
       window with a "Clipboard" settings page, bar module and
-      `hypr-shell --clipboard`)*
+      `hypr-shell --clipboard`; 2026-09-18: desktop context menu + keyboard
+      shortcuts overlay landed — see the decision log)*
 
 ## Decision log
 
@@ -2348,3 +2367,68 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   skipped so every index-based mapping (`row-selected`, `HS_SETTINGS_PAGE`,
   search) stays valid; `search.cpp` skips hidden rows. Nothing touches
   config.json — the shell has no login-screen state.
+- 2026-09-18 — Desktop context menu + keyboard shortcuts overlay (user request,
+  todo.txt). **Menu**: `bar/desktop_menu` is a Gtk::Popover parented to the
+  wallpaper window's content (a Gtk::Overlay wrapping the view — the view is
+  not targetable, the overlay takes the right click), pointing at the click
+  with position BOTTOM + halign START so its top-left corner sits on the
+  pointer; Hyprland renders every layer's popups after the overlay layer and
+  gives layer popups pointer priority, so the menu shows above windows although
+  the wallpaper is the bottom of the stack (verified live over Chrome).
+  Entries from the shared `services/desktop_menu_items.hpp` table in
+  `desktop_menu.order`, each gated by `desktop_menu.items.<key>` (all default
+  on): Apps ▸ (every app alphabetically, IconCache icons at 20px requested on
+  open, scrolled list capped at 60% of the screen), Settings ▸ ("All Settings"
+  + one row per `services/settings_pages.hpp` page — that table moved out of
+  `settings/search.hpp` so the shell and the settings app share it; About is
+  skipped, Login screen only with sddm + the Elegant theme dir), Next desktop
+  background (`Wallpaper::next()`, row present only while
+  `wallpaper.slideshow` is on — per the todo), Session ▸ (the enabled session
+  actions, shutdown tinted mError), Keybindings (GAction "keybindings").
+  Submenus are nested autohide popovers (position RIGHT, valign START, offset
+  so their first row lines up with the parent row) opened on hover after a
+  160 ms dwell — another row closes the open one after 260 ms so a diagonal
+  move towards it survives — or on click / Right; Left closes. `enabled` and
+  `show_icons` are the two switches; `session.order`'s resolution became the
+  template `items_in_config_order()` (`services/item_order.hpp`) so both
+  tables share it. Settings: "Desktop menu" sidebar page after Wallpaper
+  (open-menu icon) with Enable / Show icons and the up/down-reorderable item
+  switches (the Session menu page's pattern). **Keybindings overlay**
+  (`bar/keybindings_window`, `--keybindings`): launcher-design overlay (42% ×
+  72% of the screen, min 780×600) with a filter entry and the binds grouped
+  under headers, each as keycaps + description + a "mouse" / "works when
+  locked" tag. Data (`services/keybinds`): `j/binds` is authoritative for
+  what is bound, but on Hyprland 0.56 every bind of a Lua config reports
+  `dispatcher: "__lua"` + a callback id — no meaning. So the user's
+  `~/.config/hypr/hyprland.lua` is replayed in a `lua` subprocess (Hyprland
+  depends on the lua package) with `data/keybinds-introspect.lua` on stdin: a
+  metatable proxy stands in for `hl` (any field / call returns a proxy that
+  remembers its path + arguments), `hl.bind()` prints one JSON line (keys,
+  dispatcher path + args, opts, submap, source file:line, and the nearest
+  short comment above the call — "-- Applications" — as the section),
+  `hl.define_submap` runs its function so submap binds record too, and
+  `os.execute` / `io.popen` / writes / `os.exit` are stubbed so the replay has
+  no side effects; `require("conf/x")` works via package.path = the config
+  dir. Records match `j/binds` entries by (modmask, key, submap) in order;
+  descriptions come from `description` in the bind options when set, else a
+  humanizer over the dispatcher (window.close → "Close window",
+  focus({workspace=3}) → "Switch to workspace 3", exec_cmd → hypr-shell flags
+  / wpctl / brightnessctl / grim / hyprpicker patterns, else the desktop
+  entry whose Exec basename matches → "Open Files (admin://)", else "Run …");
+  text-config dispatchers get the same treatment; keys get display names
+  (RETURN → Enter, arrows, mouse:272 → Left click, XF86… → words). Sources
+  run concurrently with a 3 s fallback (a failed IPC request never calls
+  back), either may be missing; refetched on `configreloaded` while open.
+  Verified live: 69 binds, sections Applications / Windows / Workspaces /
+  Actions / Fn / Media keys, virtualbox.lua's bind listed under "Other".
+  Testing lesson: the dev hook's menu grabbed keyboard focus while the user
+  was typing and their Enter launched Calculator — `HS_DESKTOP_MENU_CLOSE`
+  now auto-closes hook menus, and `grim` needs `timeout` (it hangs while
+  DPMS is off).
+- 2026-09-18 — App menu custom icon gets an image picker (user request): the
+  "Custom icon" entry row on the App menu subpage carries a suffix button
+  (image-x-generic-symbolic) that opens the same `GtkFileDialog` as the lock
+  screen's background row (`on_lock_browse_clicked` now takes an optional
+  "dialog-title" on the button) and writes the chosen path into the row, whose
+  own change handler saves `bar.app_menu.custom_icon`. Typing a themed icon
+  name still works.

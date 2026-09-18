@@ -19,7 +19,7 @@
 
 - [x] bar module settings unifications and easy ux, draggable if possible
 
-- desktop context menu (toggle to enable or disable contextmenu, allow to reorder them , enable disable per item and show icon or not )
+- [x] desktop context menu (toggle to enable or disable contextmenu, allow to reorder them , enable disable per item and show icon or not )
  - apps -> (sub menu listing all apps)
  - settings -> (All Settings at top which opens hyprsettings app, below is side section of settings)
  - next desktop background (only show if slideshow is enabled)
