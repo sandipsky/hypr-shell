@@ -1,0 +1,30 @@
+-right click app menu to show session menu (also add toggle for it)
+
+- [x] remove accent color from password input in both sddm theme(edit dotfiles repo) and lock screen
+
+- add bar module for cpu, memory and disk (each own module) with settings 
+- toggle usage show percentage 
+- text left or right dropdown only if shown ( up or down for vertical bar)
+- on hover show tooltip (for cpu all cores percentage, for ram 4GB/ 16GB, for disk 20GB/100GB etc)
+
+- bar density 
+ compact (current one)
+ comfortable
+ spacy 
+
+- taskbar item hoverable or not toggle (per item not taskbar as whole)
+
+- layout / preset saving in conf folder 
+ allow to rename and switch them 
+
+- bar module settings unifications and easy ux, draggable if possible
+
+- desktop context menu (toggle to enable or disable contextmenu, allow to reorder them , enable disable per item and show icon or not )
+ - apps -> (sub menu listing all apps)
+ - settings -> (All Settings at top which opens hyprsettings app, below is side section of settings)
+ - next desktop background (only show if slideshow is enabled)
+ - session 
+ - keybindings(popup like launcher which shows hyprland keybindings in modern aesthetic look following theme)
+
+
+-u are a senior dev with lots of experience review codebase and audit and remove unnecessary comments and do code optimization without sacrificing performance and feature

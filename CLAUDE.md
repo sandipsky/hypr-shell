@@ -1845,6 +1845,16 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   `CornerTarget::secondary_corner / secondary_beside` (default no-op),
   implemented by the modules that have a right-click action: app menu
   (session menu), volume (`toggle_mute`), notifications (`toggle_dnd`).
+- 2026-09-18 — Password field without the accent (user request, todo.txt):
+  the lock screen's typed dots / plain text / caret are `@mOnSurface` and the
+  eye button's hover disc is `@mHover` / `@mOnHover` (were mPrimary /
+  mOnPrimary); the accent stays on the avatar ring, pills and menu hovers.
+  The dotfiles' Elegant SDDM theme (`assets/sddm-themes/Elegant/Main.qml`)
+  got the same change — text, selection and caret in mOnSurface, eye hover
+  in a new `mHover` token (hsl(hue+3, 6 %, 24 %), palette.hpp's dark value)
+  — and needs a re-install (`scripts/sddm.sh install`, or copy Main.qml to
+  /usr/share/sddm/themes/Elegant/ with sudo) since the theme dir is
+  root-owned.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

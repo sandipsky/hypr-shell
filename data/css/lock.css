@@ -77,7 +77,7 @@ window.lock-surface {
 }
 
 .lock-caret {
-  background: @mPrimary;
+  background: @mOnSurface; /* neutral, per user: no accent in the password field */
   min-width: 2px;
   min-height: 20px;
   transition: opacity 530ms linear; /* lockScreenAnimations: smooth blink */
@@ -95,13 +95,13 @@ window.lock-surface {
 
 .lock-dots {
   font-size: 13pt; /* fontSizeL */
-  color: @mPrimary;
+  color: @mOnSurface;
   letter-spacing: 1px; /* marginXXXS */
 }
 
 .lock-plain {
   font-size: 11pt; /* fontSizeM */
-  color: @mPrimary;
+  color: @mOnSurface;
 }
 
 button.lock-eye,
@@ -124,11 +124,11 @@ button.lock-eye .lock-glyph {
 }
 
 button.lock-eye:hover {
-  background: @mPrimary;
+  background: @mHover;
 }
 
 button.lock-eye:hover .lock-glyph {
-  color: @mOnPrimary; /* mOnPrimary */
+  color: @mOnHover;
 }
 
 /* -- pills 200px above the bottom edge ---------------------------------------- */
