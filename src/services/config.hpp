@@ -102,6 +102,22 @@ public:
     // bar.volume.scroll_step — output volume percent per wheel notch over the icon
     int volume_scroll_step() const { return volume_scroll_step_; }
 
+    // bar.cpu / bar.memory / bar.disk — the three system-stat modules (icon +
+    // optional percentage). `text_position` stores "left" / "right" for a
+    // horizontal bar and "above" / "below" for a vertical one; the shell only
+    // cares whether the text comes before or after the icon, so a value from
+    // the other orientation still places it (left ≙ above, right ≙ below).
+    struct StatModule {
+        enum class TextPosition { Before, After };
+        bool show_text = true;
+        TextPosition text_position = TextPosition::After;
+    };
+    const StatModule& cpu_module() const { return cpu_module_; }
+    const StatModule& memory_module() const { return memory_module_; }
+    const StatModule& disk_module() const { return disk_module_; }
+    // bar.disk.path — the filesystem the disk module reports (a mount point)
+    const std::string& disk_path() const { return disk_path_; }
+
     // bar.control_center.* — which cards the control center panel shows
     // (Noctalia's controlCenter.cards, reduced to these four; defaults are
     // Noctalia's: brightness off)
@@ -369,6 +385,8 @@ private:
     bool battery_show_refresh_ = true;
     int battery_scroll_step_ = 5;
     int volume_scroll_step_ = 5;
+    StatModule cpu_module_, memory_module_, disk_module_;
+    std::string disk_path_ = "/";
     int clock_first_day_of_week_ = 0;
     std::string clock_format_horizontal_ = "%H:%M %a, %b %d";
     std::string clock_format_vertical_ = "%H %M";

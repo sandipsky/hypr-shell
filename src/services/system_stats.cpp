@@ -82,28 +82,55 @@ void SystemStats::stop() {
     disk_timer_.disconnect();
 }
 
-// /proc/stat "cpu" line: usage = (Δtotal - Δidle) / Δtotal, idle = idle + iowait
+// /proc/stat "cpu" line: usage = (Δtotal - Δidle) / Δtotal, idle = idle + iowait;
+// the "cpuN" lines that follow give the same figure per core
 void SystemStats::sample_cpu() {
     std::string stat;
     if (read_file("/proc/stat", stat)) {
         std::istringstream in(stat);
-        std::string label;
-        unsigned long long f[10] = {};
-        in >> label;
-        for (auto& v : f)
-            in >> v;
-        const unsigned long long idle = f[3] + f[4];
-        unsigned long long total = 0;
-        for (auto v : f)
-            total += v;
-        if (have_prev_ && total > prev_total_) {
-            const double d_total = static_cast<double>(total - prev_total_);
-            const double d_idle = static_cast<double>(idle - prev_idle_);
-            cpu_usage_ = std::round(((d_total - d_idle) / d_total) * 1000.0) / 10.0;
+        std::string line;
+        std::vector<std::pair<unsigned long long, unsigned long long>> cores;
+        bool aggregate_seen = false;
+        while (std::getline(in, line)) {
+            if (!starts_with(line, "cpu"))
+                break; // the cpu lines come first
+            std::istringstream fields(line);
+            std::string label;
+            unsigned long long f[10] = {};
+            fields >> label;
+            for (auto& v : f)
+                fields >> v;
+            const unsigned long long idle = f[3] + f[4];
+            unsigned long long total = 0;
+            for (auto v : f)
+                total += v;
+            if (label == "cpu") {
+                if (have_prev_ && total > prev_total_) {
+                    const double d_total = static_cast<double>(total - prev_total_);
+                    const double d_idle = static_cast<double>(idle - prev_idle_);
+                    cpu_usage_ = std::round(((d_total - d_idle) / d_total) * 1000.0) / 10.0;
+                }
+                prev_total_ = total;
+                prev_idle_ = idle;
+                aggregate_seen = true;
+            } else {
+                cores.emplace_back(total, idle);
+            }
         }
-        prev_total_ = total;
-        prev_idle_ = idle;
-        have_prev_ = true;
+        core_usage_.assign(cores.size(), -1.0);
+        if (have_prev_ && prev_cores_.size() == cores.size())
+            for (std::size_t i = 0; i < cores.size(); ++i) {
+                const auto [total, idle] = cores[i];
+                const auto [p_total, p_idle] = prev_cores_[i];
+                if (total > p_total) {
+                    const double d_total = static_cast<double>(total - p_total);
+                    const double d_idle = static_cast<double>(idle - p_idle);
+                    core_usage_[i] = std::round(((d_total - d_idle) / d_total) * 1000.0) / 10.0;
+                }
+            }
+        prev_cores_ = std::move(cores);
+        if (aggregate_seen)
+            have_prev_ = true;
     }
     cpu_temp_ = read_temperature();
     changed_.emit();
@@ -131,18 +158,35 @@ void SystemStats::sample_memory() {
     changed_.emit();
 }
 
-// df's pcent: used / (used + available), rounded up
+// df's pcent: used / (used + available), rounded up; an unreadable path
+// (bar.disk.path mid-typing, an unmounted volume) reports -1 / 0 GB
 void SystemStats::sample_disk() {
     struct statvfs vfs{};
-    if (statvfs(disk_path_.c_str(), &vfs) != 0)
+    if (statvfs(disk_path_.c_str(), &vfs) != 0) {
+        disk_percent_ = -1;
+        disk_used_gb_ = disk_total_gb_ = 0;
+        changed_.emit();
         return;
+    }
     const double size = static_cast<double>(vfs.f_blocks) * vfs.f_frsize;
     const double avail = static_cast<double>(vfs.f_bavail) * vfs.f_frsize;
     const double free_root = static_cast<double>(vfs.f_bfree) * vfs.f_frsize;
     const double used = size - free_root;
     const double denom = used + avail;
     disk_percent_ = denom > 0 ? static_cast<int>(std::ceil(used * 100.0 / denom)) : 0;
+    // df -H style decimal gigabytes, one decimal
+    disk_used_gb_ = std::round(used / 1e9 * 10.0) / 10.0;
+    disk_total_gb_ = std::round(size / 1e9 * 10.0) / 10.0;
     changed_.emit();
+}
+
+void SystemStats::set_disk_path(const std::string& path) {
+    const std::string next = path.empty() ? std::string("/") : path;
+    if (next == disk_path_)
+        return;
+    disk_path_ = next;
+    if (consumers_ > 0)
+        sample_disk();
 }
 
 // Noctalia: hwmon coretemp / k10temp / zenpower, else cpu*thermal zones

@@ -68,6 +68,14 @@ window.bar.right .module {
   background: transparent;
 }
 
+/* cpu / memory / disk: glyph + percentage (hover pill like every other
+ * module, so the tooltip target is visible). The glyph keeps the status
+ * icons' 18px, the text matches the clock's 16px; tabular digits so a
+ * changing value does not shift the neighbours */
+.sys-stat .stat-text {
+  font-size: 16px;
+}
+
 .active-window.clickable:hover {
   background: @mHover;
 }

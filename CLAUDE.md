@@ -71,7 +71,8 @@ src/bar/icon_cache.{hpp,cpp}   IconCache: app icons rasterized once (a few per i
 src/bar/modules/*.{hpp,cpp}    one widget per bar module (launcher, app_menu,
                                workspaces, taskbar, active_window, clock, network,
                                volume, battery, bluetooth, control_center,
-                               clipboard, notifications, session)
+                               clipboard, notifications, session; system_stat =
+                               the cpu / memory / disk modules, one class)
 src/services/config.{hpp,cpp}           config.json load + hot reload (Gio::FileMonitor)
 src/services/nepali_date.hpp            Bikram Sambat ↔ Gregorian (month-length table BS 2000–2090,
                                         Julian-day conversion), header-only, used by the calendar
@@ -93,7 +94,8 @@ src/bar/bluetooth_panel.{hpp,cpp}       bluetooth click panel (power/auto-connec
 src/bar/busy_indicator.{hpp,cpp}        BusyIndicator: Noctalia's NBusyIndicator spinner (cairo arc,
                                         tick callback only while mapped; colour from CSS `color`)
 src/services/mpris.{hpp,cpp}            MPRIS players on the session bus (metadata, position, controls)
-src/services/system_stats.{hpp,cpp}     CPU / temperature / memory / disk sampling while a card is open
+src/services/system_stats.{hpp,cpp}     CPU (aggregate + per core) / temperature / memory / disk
+                                        sampling while a consumer (sysmon card, stat module) exists
 src/bar/control_center_panel.{hpp,cpp}  control center cards: audio, brightness, media, system monitor
 src/services/notifications.{hpp,cpp}    org.freedesktop.Notifications daemon + history
 src/bar/notification_panel.{hpp,cpp}    notification history panel (bell click)
@@ -331,7 +333,8 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
       pill + panel (Noctalia's VPN widget over nmcli) landed, then moved to a
       settings page and removed from the bar 2026-09-05; 2026-09-04:
       taskbar (Noctalia's Taskbar widget — running + pinned apps) landed;
-      tray, keyboard layout, stats remain)*
+      2026-09-18: cpu / memory / disk bar modules landed (system_stat);
+      tray and keyboard layout remain)*
 - [x] **Phase 3 — Notifications**: own `org.freedesktop.Notifications` daemon —
       popups, history/notification center, do-not-disturb. Only one daemon can own the
       bus name: mako/dunst/Noctalia's daemon must be disabled when this ships.
@@ -1845,6 +1848,35 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   `CornerTarget::secondary_corner / secondary_beside` (default no-op),
   implemented by the modules that have a right-click action: app menu
   (session menu), volume (`toggle_mute`), notifications (`toggle_dnd`).
+- 2026-09-18 — CPU / Memory / Disk bar modules (user request, todo.txt; the
+  phase-2 "system stats" item). One class, `bar/modules/system_stat`
+  (`SystemStatModule::Kind`), three module keys `cpu` / `memory` / `disk`
+  (default right section, enabled by default like every module — a layout
+  that does not list them appends them after `session`): the control
+  center's gauge glyphs (tabler cpu U+FA77, device-desktop-analytics U+EF8E,
+  database U+EA88, at the status icons' 18px) plus a percentage label at the
+  clock's 16px with tabular digits (a first cut used 16px glyphs / 13px text;
+  the user wanted them sized like the other right-side items). Config `bar.<key>.show_text` (default on) and
+  `text_position` — stored as `left` / `right` on a horizontal bar and
+  `above` / `below` on a vertical one, read by the shell as before / after
+  the icon so either pair works in both orientations; the box itself turns
+  vertical on side bars. `bar.disk.path` (default "/") picks the filesystem;
+  `SystemStats::set_disk_path()` resamples at once and an unreadable path
+  reports -1 (module shows "–", the control-center gauge clamps to 0). Not
+  clickable (no CornerTarget) but with the hover pill (user request, same
+  day; first version opted out); hover tooltips: "CPU:
+  12%  ·  45 °C" + one "Core N: x%" line per core (SystemStats now diffs
+  every `cpuN` line of /proc/stat), "Memory: 4.0 GB / 15.5 GB (26%)",
+  "Disk (/): 20.5 GB / 100.0 GB (21%)" (SI GB like `df -H`). Polling: each
+  module registers as a `SystemStats` consumer on map and unregisters on
+  unmap, so a disabled (unparented) module or a hidden bar polls nothing —
+  a bar rebuild briefly drops the count to 0, which resets the CPU
+  differential and shows "…" for one second. Settings: three module rows
+  with cog subpages (tags `cpu` / `memory` / `disk`): "Show percentage",
+  "Text position" (two combos per module, Left / Right and Above / Below;
+  the one matching the Bar page's Position row is shown, only while the
+  switch is on, and the twin is kept in step), and "Mount point" on Disk.
+  Verified live on the bottom bar (1% / 22% / 21%) and the Disk subpage.
 - 2026-09-18 — Password field without the accent (user request, todo.txt):
   the lock screen's typed dots / plain text / caret are `@mOnSurface` and the
   eye button's hover disc is `@mHover` / `@mOnHover` (were mPrimary /

@@ -111,6 +111,7 @@ sources = files(
   'src/bar/modules/network.cpp',
   'src/bar/modules/notifications.cpp',
   'src/bar/modules/session.cpp',
+  'src/bar/modules/system_stat.cpp',
   'src/bar/modules/taskbar.cpp',
   'src/bar/modules/volume.cpp',
   'src/bar/modules/control_center.cpp',

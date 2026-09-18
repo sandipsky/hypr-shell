@@ -131,8 +131,9 @@ launcher).
 ## `bar.modules.<name>`
 
 Booleans keyed by module name. **Absent means enabled.** Known names:
-`launcher`, `workspaces`, `active_window`, `network`, `bluetooth`, `volume`, `clipboard`,
-`battery`, `notifications`, `clock`. A disabled module is not parented into
+`launcher`, `app_menu`, `workspaces`, `taskbar`, `active_window`, `network`, `bluetooth`,
+`control_center`, `cpu`, `memory`, `disk`, `volume`, `battery`, `clipboard`,
+`notifications`, `clock`, `session`. A disabled module is not parented into
 the bar at all.
 
 ## `bar.layout`
@@ -196,6 +197,20 @@ wheel step over the bar icon.
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `scroll_step` | int 1..25 | `5` | Output volume percent per mouse-wheel notch over the volume icon (up = louder, capped at 100%; mute is left alone). |
+
+## `bar.cpu`, `bar.memory`, `bar.disk`
+
+Three system-stat modules (`src/bar/modules/system_stat.cpp`), each a tabler
+glyph plus an optional percentage. Not clickable, but they show the hover
+pill; hovering shows the detail tooltip — every core's usage and the CPU temperature, "Memory: 4.0 GB /
+15.5 GB (26%)", "Disk (/): 20.5 GB / 100.0 GB (21%)". They poll
+`SystemStats` only while on a mapped bar (CPU 1 s, memory 5 s, disk 30 s).
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `show_text` | bool | `true` | Percentage label next to the icon. |
+| `text_position` | `"left"` \| `"right"` \| `"above"` \| `"below"` | `"right"` | Side of the icon the label sits on. The settings app offers Left / Right on a horizontal bar and Above / Below on a vertical one; the shell only distinguishes before (`left`, `above`) from after (`right`, `below`), so a value from the other orientation still places the text. |
+| `path` (`bar.disk` only) | string | `"/"` | Mount point (any path on the filesystem) the disk module reports. An unreadable path shows "–" and "not available". |
 
 ## `bar.bluetooth`
 

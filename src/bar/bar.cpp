@@ -456,6 +456,12 @@ Gtk::Widget* Bar::module_widget(const std::string& name) {
         return &bluetooth_;
     if (name == "control_center")
         return &control_center_;
+    if (name == "cpu")
+        return &cpu_;
+    if (name == "memory")
+        return &memory_;
+    if (name == "disk")
+        return &disk_;
     if (name == "volume")
         return &volume_;
     if (name == "battery")

@@ -72,6 +72,9 @@ constexpr ModuleInfo kModules[] = {
     {"network",       "Network",       "Wi-Fi / ethernet status icon", 2},
     {"bluetooth",     "Bluetooth",     "Bluetooth status icon",        2},
     {"control_center", "Control center", "Media, audio, brightness and system monitor panel", 2},
+    {"cpu",           "CPU",           "Processor usage",              2},
+    {"memory",        "Memory",        "RAM usage",                    2},
+    {"disk",          "Disk",          "Filesystem usage",             2},
     {"volume",        "Volume",        "Output volume status icon",    2},
     {"battery",       "Battery",       "Battery status icon",          2},
     {"clipboard",     "Clipboard",     "Clipboard history button",     2},
@@ -142,6 +145,7 @@ constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
 constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kTbHideKeys[] = {"visible", "hidden", "transparent"};
+constexpr const char* kStatModules[] = {"cpu", "memory", "disk"};
 constexpr const char* kTbAppsKeys[] = {"both", "pinned", "running"};
 constexpr const char* kAwTextKeys[] = {"title", "appname"};
 constexpr const char* kAwEmptyKeys[] = {"default", "desktop", "none"};
@@ -228,6 +232,7 @@ constexpr const char* kRuleActionLabels[] = {
 struct Settings;
 void update_aw_row_visibility(Settings* s);
 void update_am_rows(Settings* s);
+void update_stat_rows(Settings* s);
 void update_sm_rows(Settings* s);
 void rebuild_sm_rows(Settings* s);
 void update_bar_visibility_rows(Settings* s);
@@ -387,6 +392,17 @@ struct Settings {
     AdwSwitchRow* bat_refresh = nullptr;
     AdwSpinRow* bat_scroll_step = nullptr; // brightness % per wheel notch over the icon
     AdwSpinRow* vol_scroll_step = nullptr; // bar.volume.scroll_step, volume % per notch
+
+    // cpu / memory / disk subpages (bar.cpu, bar.memory, bar.disk): the text
+    // position has one combo per bar orientation — Left / Right on a
+    // horizontal bar, Above / Below on a vertical one — and only the one
+    // matching the Position row is shown
+    struct StatRows {
+        AdwSwitchRow* show_text = nullptr;
+        AdwComboRow* text_pos_h = nullptr; // left / right
+        AdwComboRow* text_pos_v = nullptr; // above / below
+    } stat_rows[3];                        // kStatModules order
+    AdwEntryRow* disk_path = nullptr;       // bar.disk.path
 
     // Launcher sidebar page (top-level "launcher" object in config.json)
     AdwSwitchRow* lp_settings_search = nullptr;
@@ -624,6 +640,21 @@ void populate(Settings* s, PopulateStage stage) {
         am_session_btn = am.value("show_session_button", true);
         am_multiline = am.value("multiline_labels", false);
         am_show_search = am.value("show_search", true);
+    } catch (const json::exception&) {
+    }
+
+    bool stat_show_text[3] = {true, true, true};
+    bool stat_text_first[3] = {false, false, false}; // left / above
+    std::string disk_path = "/";
+    try {
+        const json bar_obj = s->root.value("bar", json::object());
+        for (int i = 0; i < 3; ++i) {
+            const json m = bar_obj.value(kStatModules[i], json::object());
+            stat_show_text[i] = m.value("show_text", true);
+            const std::string pos = m.value("text_position", "right");
+            stat_text_first[i] = pos == "left" || pos == "above";
+        }
+        disk_path = bar_obj.value("disk", json::object()).value("path", "/");
     } catch (const json::exception&) {
     }
 
@@ -874,6 +905,14 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->bat_refresh, bat_refresh);
     adw_spin_row_set_value(s->bat_scroll_step, bat_scroll_step);
     adw_spin_row_set_value(s->vol_scroll_step, vol_scroll_step);
+    for (int i = 0; i < 3; ++i) {
+        adw_switch_row_set_active(s->stat_rows[i].show_text, stat_show_text[i]);
+        adw_combo_row_set_selected(s->stat_rows[i].text_pos_h, stat_text_first[i] ? 0 : 1);
+        adw_combo_row_set_selected(s->stat_rows[i].text_pos_v, stat_text_first[i] ? 0 : 1);
+    }
+    if (g_strcmp0(gtk_editable_get_text(GTK_EDITABLE(s->disk_path)), disk_path.c_str()) != 0)
+        gtk_editable_set_text(GTK_EDITABLE(s->disk_path), disk_path.c_str());
+    update_stat_rows(s);
     adw_switch_row_set_active(s->notif_badge, notif_badge);
     adw_switch_row_set_active(s->notif_hide_zero, notif_hide_zero);
     adw_switch_row_set_active(s->notif_hide_zero_unread, notif_hide_zero_unread);
@@ -1275,6 +1314,67 @@ void on_vol_scroll_step_changed(GObject*, GParamSpec*, gpointer data) {
     if (s->loading)
         return;
     volume_object(s)["scroll_step"] = static_cast<int>(adw_spin_row_get_value(s->vol_scroll_step));
+    save(s);
+}
+
+// -- CPU / Memory / Disk subpages: bar.cpu, bar.memory, bar.disk -------------
+
+json& stat_object(Settings* s, const char* key) {
+    json& bar = bar_object(s);
+    if (!bar[key].is_object())
+        bar[key] = json::object();
+    return bar[key];
+}
+
+// the text-position combo follows the Show percentage switch and the bar
+// orientation: Left / Right on a top or bottom bar, Above / Below on a side bar
+void update_stat_rows(Settings* s) {
+    const bool vertical = adw_combo_row_get_selected(s->position) >= 2; // kPositions: left, right
+    for (auto& rows : s->stat_rows) {
+        const bool text = adw_switch_row_get_active(rows.show_text) != FALSE;
+        gtk_widget_set_visible(GTK_WIDGET(rows.text_pos_h), text && !vertical);
+        gtk_widget_set_visible(GTK_WIDGET(rows.text_pos_v), text && vertical);
+    }
+}
+
+void on_stat_show_text_toggled(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    update_stat_rows(s);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "stat-key"));
+    stat_object(s, key)["show_text"] = adw_switch_row_get_active(ADW_SWITCH_ROW(row)) != FALSE;
+    save(s);
+}
+
+// both combos write the same key: the horizontal one left / right, the
+// vertical one above / below; the shell reads either pair as before / after
+void on_stat_text_pos_changed(GObject* row, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto* key = static_cast<const char*>(g_object_get_data(row, "stat-key"));
+    const bool vertical = g_object_get_data(row, "stat-vertical") != nullptr;
+    const bool first = adw_combo_row_get_selected(ADW_COMBO_ROW(row)) == 0;
+    stat_object(s, key)["text_position"] =
+        vertical ? (first ? "above" : "below") : (first ? "left" : "right");
+    // keep the hidden twin in step so flipping the bar orientation shows the same side
+    for (auto& rows : s->stat_rows)
+        if (GTK_WIDGET(rows.text_pos_h) == GTK_WIDGET(row) || GTK_WIDGET(rows.text_pos_v) == GTK_WIDGET(row)) {
+            s->loading = true;
+            adw_combo_row_set_selected(rows.text_pos_h, first ? 0 : 1);
+            adw_combo_row_set_selected(rows.text_pos_v, first ? 0 : 1);
+            s->loading = false;
+        }
+    save(s);
+}
+
+void on_disk_path_changed(GtkEditable* row, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const char* text = gtk_editable_get_text(row);
+    stat_object(s, "disk")["path"] = (text != nullptr && *text != '\0') ? text : "/";
     save(s);
 }
 
@@ -3056,6 +3156,7 @@ void on_opacity_changed(GtkAdjustment* adjustment, gpointer data) {
 
 void on_position_changed(GObject*, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
+    update_stat_rows(s);
     if (s->loading)
         return;
     const auto selected = adw_combo_row_get_selected(s->position);
@@ -5015,6 +5116,81 @@ void on_activate(GtkApplication* app, gpointer) {
     g_signal_connect(vol_step_row, "notify::value", G_CALLBACK(on_vol_scroll_step_changed), s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(vol_page), ADW_PREFERENCES_GROUP(vol_group));
 
+    // -- CPU / Memory / Disk subpages --------------------------------------------
+    struct StatPageInfo {
+        const char* title;
+        const char* description;
+    } stat_pages[] = {
+        {"CPU", "Processor usage as a percentage; hovering the module lists every core "
+                "and the CPU temperature."},
+        {"Memory", "RAM in use as a percentage of the total; hovering shows used / total."},
+        {"Disk", "Space in use on one filesystem, as a percentage; hovering shows used / total."},
+    };
+    GtkWidget* stat_page_widgets[3];
+    for (int i = 0; i < 3; ++i) {
+        GtkWidget* page = adw_preferences_page_new();
+        GtkWidget* group = adw_preferences_group_new();
+        adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group), "Bar module");
+        adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(group),
+                                              stat_pages[i].description);
+        auto& rows = s->stat_rows[i];
+        const char* key = kStatModules[i];
+
+        GtkWidget* text_row = adw_switch_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(text_row), "Show percentage");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(text_row),
+                                    "Print the usage next to the icon; off leaves the icon alone.");
+        g_object_set_data(G_OBJECT(text_row), "stat-key", const_cast<char*>(key));
+        rows.show_text = ADW_SWITCH_ROW(text_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), text_row);
+        g_signal_connect(text_row, "notify::active", G_CALLBACK(on_stat_show_text_toggled), s);
+
+        GtkWidget* pos_h_row = adw_combo_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(pos_h_row), "Text position");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(pos_h_row), "Which side of the icon the percentage sits on.");
+        const char* pos_h_options[] = {"Left", "Right", nullptr};
+        GtkStringList* pos_h_model = gtk_string_list_new(pos_h_options);
+        adw_combo_row_set_model(ADW_COMBO_ROW(pos_h_row), G_LIST_MODEL(pos_h_model));
+        g_object_unref(pos_h_model);
+        g_object_set_data(G_OBJECT(pos_h_row), "stat-key", const_cast<char*>(key));
+        rows.text_pos_h = ADW_COMBO_ROW(pos_h_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), pos_h_row);
+        g_signal_connect(pos_h_row, "notify::selected", G_CALLBACK(on_stat_text_pos_changed), s);
+
+        GtkWidget* pos_v_row = adw_combo_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(pos_v_row), "Text position");
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(pos_v_row),
+                                    "Above or below the icon on a vertical bar.");
+        const char* pos_v_options[] = {"Above", "Below", nullptr};
+        GtkStringList* pos_v_model = gtk_string_list_new(pos_v_options);
+        adw_combo_row_set_model(ADW_COMBO_ROW(pos_v_row), G_LIST_MODEL(pos_v_model));
+        g_object_unref(pos_v_model);
+        g_object_set_data(G_OBJECT(pos_v_row), "stat-key", const_cast<char*>(key));
+        g_object_set_data(G_OBJECT(pos_v_row), "stat-vertical", const_cast<char*>("1"));
+        rows.text_pos_v = ADW_COMBO_ROW(pos_v_row);
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), pos_v_row);
+        g_signal_connect(pos_v_row, "notify::selected", G_CALLBACK(on_stat_text_pos_changed), s);
+
+        if (i == 2) {
+            GtkWidget* path_row = adw_entry_row_new();
+            adw_preferences_row_set_title(ADW_PREFERENCES_ROW(path_row), "Mount point");
+            gtk_editable_set_text(GTK_EDITABLE(path_row), "/");
+            s->disk_path = ADW_ENTRY_ROW(path_row);
+            adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), path_row);
+            GtkWidget* path_hint = gtk_label_new(
+                "The filesystem to report, e.g. / or /home. An unmounted path shows –.");
+            gtk_widget_add_css_class(path_hint, "dim-label");
+            gtk_widget_add_css_class(path_hint, "caption");
+            gtk_label_set_wrap(GTK_LABEL(path_hint), TRUE);
+            gtk_label_set_xalign(GTK_LABEL(path_hint), 0);
+            gtk_widget_set_margin_top(path_hint, 6);
+            adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), path_hint);
+            g_signal_connect(path_row, "changed", G_CALLBACK(on_disk_path_changed), s);
+        }
+        adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(group));
+        stat_page_widgets[i] = page;
+    }
+
     // -- Notifications subpage ---------------------------------------------------
     GtkWidget* notif_page = adw_preferences_page_new();
     GtkWidget* notif_group = adw_preferences_group_new();
@@ -5252,6 +5428,30 @@ void on_activate(GtkApplication* app, gpointer) {
                      }),
                      nav);
     adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index("volume")]), vol_cog);
+
+    // CPU / Memory / Disk subpages + cogs
+    for (int i = 0; i < 3; ++i) {
+        GtkWidget* view = adw_toolbar_view_new();
+        adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), adw_header_bar_new());
+        adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(view), stat_page_widgets[i]);
+        adw_navigation_view_add(ADW_NAVIGATION_VIEW(nav),
+                                adw_navigation_page_new_with_tag(view, stat_pages[i].title,
+                                                                 kStatModules[i]));
+        GtkWidget* cog = gtk_button_new_from_icon_name("emblem-system-symbolic");
+        gtk_widget_add_css_class(cog, "flat");
+        gtk_widget_set_valign(cog, GTK_ALIGN_CENTER);
+        const std::string tooltip = std::string(stat_pages[i].title) + " settings";
+        gtk_widget_set_tooltip_text(cog, tooltip.c_str());
+        g_object_set_data(G_OBJECT(cog), "nav", nav);
+        g_signal_connect(cog, "clicked",
+                         G_CALLBACK(+[](GtkButton* button, gpointer tag) {
+                             adw_navigation_view_push_by_tag(
+                                 ADW_NAVIGATION_VIEW(g_object_get_data(G_OBJECT(button), "nav")),
+                                 static_cast<const char*>(tag));
+                         }),
+                         const_cast<char*>(kStatModules[i]));
+        adw_action_row_add_suffix(ADW_ACTION_ROW(s->modules[module_index(kStatModules[i])]), cog);
+    }
 
     // cog on the Active window module row
     GtkWidget* aw_cog = gtk_button_new_from_icon_name("emblem-system-symbolic");

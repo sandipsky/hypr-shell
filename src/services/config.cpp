@@ -24,6 +24,9 @@ constexpr std::pair<const char*, Config::BarSection> kKnownModules[] = {
     {"network", Config::BarSection::Right},
     {"bluetooth", Config::BarSection::Right},
     {"control_center", Config::BarSection::Right},
+    {"cpu", Config::BarSection::Right},
+    {"memory", Config::BarSection::Right},
+    {"disk", Config::BarSection::Right},
     {"volume", Config::BarSection::Right},
     {"battery", Config::BarSection::Right},
     {"clipboard", Config::BarSection::Right},
@@ -92,6 +95,10 @@ void Config::load() {
     battery_show_refresh_ = true;
     battery_scroll_step_ = 5;
     volume_scroll_step_ = 5;
+    cpu_module_ = StatModule{};
+    memory_module_ = StatModule{};
+    disk_module_ = StatModule{};
+    disk_path_ = "/";
     clock_first_day_of_week_ = 0;
     clock_format_horizontal_ = "%H:%M %a, %b %d";
     clock_format_vertical_ = "%H %M";
@@ -236,6 +243,23 @@ void Config::load() {
         }
         if (auto it = bar.find("volume"); it != bar.end() && it->is_object()) {
             volume_scroll_step_ = std::clamp(it->value("scroll_step", 5), 1, 25);
+        }
+        const auto read_stat_module = [&bar](const char* key, StatModule& out) {
+            auto it = bar.find(key);
+            if (it == bar.end() || !it->is_object())
+                return;
+            out.show_text = it->value("show_text", true);
+            const std::string pos = it->value("text_position", "right");
+            out.text_position = pos == "left" || pos == "above" ? StatModule::TextPosition::Before
+                                                                : StatModule::TextPosition::After;
+        };
+        read_stat_module("cpu", cpu_module_);
+        read_stat_module("memory", memory_module_);
+        read_stat_module("disk", disk_module_);
+        if (auto it = bar.find("disk"); it != bar.end() && it->is_object()) {
+            disk_path_ = it->value("path", "/");
+            if (disk_path_.empty())
+                disk_path_ = "/";
         }
         if (auto it = bar.find("app_menu"); it != bar.end() && it->is_object()) {
             auto& a = app_menu_;

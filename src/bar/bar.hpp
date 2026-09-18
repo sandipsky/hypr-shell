@@ -12,6 +12,7 @@
 #include "bar/modules/network.hpp"
 #include "bar/modules/notifications.hpp"
 #include "bar/modules/session.hpp"
+#include "bar/modules/system_stat.hpp"
 #include "bar/modules/taskbar.hpp"
 #include "bar/modules/volume.hpp"
 #include "bar/modules/workspaces.hpp"
@@ -56,6 +57,9 @@ private:
     Network network_;
     Bluetooth bluetooth_;
     ControlCenter control_center_;
+    SystemStatModule cpu_{SystemStatModule::Kind::Cpu};
+    SystemStatModule memory_{SystemStatModule::Kind::Memory};
+    SystemStatModule disk_{SystemStatModule::Kind::Disk};
     Volume volume_;
     Battery battery_;
     ClipboardModule clipboard_;

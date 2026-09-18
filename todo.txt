@@ -2,10 +2,10 @@
 
 - [x] remove accent color from password input in both sddm theme(edit dotfiles repo) and lock screen
 
-- add bar module for cpu, memory and disk (each own module) with settings 
-- toggle usage show percentage 
-- text left or right dropdown only if shown ( up or down for vertical bar)
-- on hover show tooltip (for cpu all cores percentage, for ram 4GB/ 16GB, for disk 20GB/100GB etc)
+- [x] add bar module for cpu, memory and disk (each own module) with settings 
+- [x] toggle usage show percentage 
+- [x] text left or right dropdown only if shown ( up or down for vertical bar)
+- [x] on hover show tooltip (for cpu all cores percentage, for ram 4GB/ 16GB, for disk 20GB/100GB etc)
 
 - bar density 
  compact (current one)

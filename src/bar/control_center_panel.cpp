@@ -794,8 +794,9 @@ void ControlCenterPanel::update_sysmon() {
     mem_stat_->set_ratio(s.mem_percent() / 100.0, stat_color(s.mem_percent(), 80, 90));
     mem_stat_->set_tooltip_text(Glib::ustring::sprintf("Memory: %.1f GB / %.1f GB (%d%%)", s.mem_used_gb(),
                                                        s.mem_total_gb(), s.mem_percent()));
-    disk_stat_->set_ratio(s.disk_percent() / 100.0, stat_color(s.disk_percent(), 80, 90));
-    disk_stat_->set_tooltip_text("Disk: " + std::to_string(s.disk_percent()) + "%\n" + s.disk_path());
+    const int disk = std::max(0, s.disk_percent()); // -1 = path unreadable
+    disk_stat_->set_ratio(disk / 100.0, stat_color(disk, 80, 90));
+    disk_stat_->set_tooltip_text("Disk: " + std::to_string(disk) + "%\n" + s.disk_path());
 }
 
 } // namespace hyprshell
