@@ -12,7 +12,7 @@
  comfortable
  spacy 
 
-- taskbar item hoverable or not toggle (per item not taskbar as whole)
+- [x] taskbar item hoverable or not toggle (per item not taskbar as whole)
 
 - layout / preset saving in conf folder 
  allow to rename and switch them 

@@ -63,7 +63,7 @@ private:
     // otherwise (title / focus changes) the existing widgets are refreshed
     void rebuild(const std::vector<Item>& previous);
     void refresh_item(std::size_t index);
-    Gtk::Widget* build_item(std::size_t index, int item_size, int title_width);
+    Gtk::Widget* build_item(std::size_t index, int item_size, int title_width, int pad);
     void apply_hide_mode();
     void animate_opacity(double target);
     void set_hovered(const std::string& id, bool hovered);

@@ -227,6 +227,7 @@ void Config::load() {
                             : apps == "running" ? Taskbar::Apps::Running
                                                 : Taskbar::Apps::Both;
             taskbar_.running_indicator = it->value("running_indicator", false);
+            taskbar_.item_hover = it->value("item_hover", true);
             taskbar_.show_title = it->value("show_title", false);
             taskbar_.title_width = std::clamp(it->value("title_width", 120), 20, 600);
             taskbar_.smart_width = it->value("smart_width", true);

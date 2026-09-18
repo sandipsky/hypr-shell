@@ -236,6 +236,7 @@ directly on the bar without Noctalia's capsule background.
 | `only_active_workspaces` | bool | `true` | Only windows on a monitor's active (or active special) workspace. |
 | `apps` | `both` / `pinned` / `running` | `both` | Which apps appear: pinned + opened, only pinned (their windows included, other windows hidden), or only opened windows. The older `show_pinned_apps: false` is read as `running` when `apps` is absent. |
 | `running_indicator` | bool | `false` | Grey dot under opened apps that are not focused; the focused one keeps the accent dot. |
+| `item_hover` | bool | `true` | The hovered item shows the bar's `@mHover` colour on a squircle button (per item: icon + 6px each side along the bar, the module's full height across it; `item_gap` separates the buttons); off = items give no hover feedback at all and the items shrink back to the bare icons. |
 | `show_title` | bool | `false` | Icon + window title per running app (horizontal bars only). Config-only. |
 | `title_width` | int px | `120` | Title label width. Config-only. |
 | `smart_width` | bool | `true` | Shrink titles so the widget fits `max_width_percent` of the screen (min 20px). Config-only. |
@@ -243,7 +244,7 @@ directly on the bar without Noctalia's capsule background.
 | `icon_scale` | 0.5..1 | `0.8` | Icon size as a share of the 25px capsule (odd pixel sizes, like Noctalia). Config-only. |
 | `item_gap` | int px 0..24 | `6` | Space between items (Noctalia's default is 2). Config-only. |
 
-The settings subpage exposes the first four rows only (per user).
+The settings subpage exposes the first six rows (per user).
 
 ## `bar.app_menu`
 

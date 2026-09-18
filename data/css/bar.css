@@ -280,6 +280,19 @@ window.bar.right .taskbar-capsule {
   background: @mPrimary; /* mPrimary */
 }
 
+/* bar.taskbar.item_hover: the hovered item gets the bar's hover colour on a
+ * squircle button the size of the module's content (the item root is grown
+ * in C++: 6px margins along the bar, FILL across it); off = no hover
+ * feedback at all */
+.taskbar-item.hover-pill {
+  border-radius: 8px;
+  transition: background 150ms ease-in-out;
+}
+
+.taskbar-item.hover-pill.hovered {
+  background: @mHover;
+}
+
 /* bar.taskbar.show_title: icon + ellipsized title on a pill that lights up
  * in mHover while hovered or focused */
 .taskbar-item.with-title {

@@ -21,6 +21,7 @@ constexpr int kCapsuleHeight = 25;
 constexpr int kMarginS = 6;   // Style.marginS — icon/title spacing
 constexpr int kMarginM = 9;   // Style.marginM — capsule/title side padding
 constexpr int kIndicatorHeight = 4;
+constexpr int kHoverPad = 6;  // item_hover: pill padding along the bar (= --module-pad)
 constexpr unsigned kRefreshCoalesceMs = 30;
 constexpr unsigned kWheelCooldownMs = 150; // wheelDebounce
 constexpr double kFadeMs = 300.0;          // Style.animationNormal
@@ -378,7 +379,8 @@ void Taskbar::rebuild(const std::vector<Item>& previous) {
         title_width = 0;
 
     const std::string layout_key = std::to_string(vertical) + ':' + std::to_string(cfg.item_gap) +
-                                   ':' + std::to_string(item_size) + ':' + std::to_string(title_width);
+                                   ':' + std::to_string(item_size) + ':' + std::to_string(title_width) +
+                                   ':' + std::to_string(cfg.item_hover);
     bool same = layout_key == layout_key_ && previous.size() == items_.size();
     for (std::size_t i = 0; same && i < items_.size(); ++i)
         same = previous[i].root != nullptr && previous[i].id == items_[i].id &&
@@ -400,6 +402,19 @@ void Taskbar::rebuild(const std::vector<Item>& previous) {
         items_box_.remove(*child);
     items_box_.set_orientation(vertical ? Gtk::Orientation::VERTICAL
                                         : Gtk::Orientation::HORIZONTAL);
+    // bar.taskbar.item_hover: the hover pill is the item root's background,
+    // so the root is grown into a Windows-style button — kHoverPad margins on
+    // the inner row along the bar, and the capsule / items box FILL the
+    // module across it (the module's content height on a horizontal bar, the
+    // bar's content width on a vertical one). item_gap then separates pills.
+    const int pad = cfg.item_hover
+                        ? static_cast<int>(std::lround(kHoverPad * Config::get().bar_density_scale()))
+                        : 0;
+    const auto across = cfg.item_hover ? Gtk::Align::FILL : Gtk::Align::CENTER;
+    capsule_.set_valign(vertical ? Gtk::Align::CENTER : across);
+    items_box_.set_valign(vertical ? Gtk::Align::CENTER : across);
+    capsule_.set_halign(vertical ? across : Gtk::Align::CENTER);
+    items_box_.set_halign(vertical ? across : Gtk::Align::FILL);
     items_box_.set_spacing(cfg.item_gap);
     for (const char* name : {"vertical", "with-titles"})
         capsule_.remove_css_class(name);
@@ -409,7 +424,7 @@ void Taskbar::rebuild(const std::vector<Item>& previous) {
         capsule_.add_css_class("with-titles");
 
     for (std::size_t i = 0; i < items_.size(); ++i) {
-        items_[i].root = build_item(i, item_size, title_width);
+        items_[i].root = build_item(i, item_size, title_width, pad);
         items_box_.append(*items_[i].root);
     }
     apply_hide_mode();
@@ -435,7 +450,7 @@ void Taskbar::refresh_item(std::size_t index) {
         item.title_label->set_text(item.title);
 }
 
-Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_width) {
+Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_width, int pad) {
     auto& item = items_[index];
     const bool running = item.window >= 0;
     const bool focused = running && windows_[static_cast<std::size_t>(item.window)].focused;
@@ -449,14 +464,23 @@ Gtk::Widget* Taskbar::build_item(std::size_t index, int item_size, int title_wid
         root->add_css_class("focused");
     if (running && !focused && Config::get().taskbar().running_indicator)
         root->add_css_class("running"); // grey dot: opened, not focused
-    if (item.id == hovered_id_)
+    if (item.id == hovered_id_ && Config::get().taskbar().item_hover)
         root->add_css_class("hovered");
     if (show_title)
         root->add_css_class("with-title");
+    if (Config::get().taskbar().item_hover)
+        root->add_css_class("hover-pill");
     root->set_tooltip_text(item.title.empty() ? item.app_id : item.title);
 
     auto* row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, kMarginS);
     row->set_valign(Gtk::Align::CENTER);
+    if (Config::get().bar_vertical()) {
+        row->set_margin_top(pad);
+        row->set_margin_bottom(pad);
+    } else {
+        row->set_margin_start(pad);
+        row->set_margin_end(pad);
+    }
 
     auto* icon_box = Gtk::make_managed<Gtk::Overlay>();
     icon_box->set_size_request(item_size, item_size + 2);
@@ -549,9 +573,11 @@ void Taskbar::set_hovered(const std::string& id, bool hovered) {
         hovered_id_ = id;
     else if (hovered_id_ == id)
         hovered_id_.clear();
+    // bar.taskbar.item_hover off: the item is not hoverable — no feedback at all
+    const bool show = hovered && Config::get().taskbar().item_hover;
     for (const auto& item : items_)
         if (item.root) {
-            if (item.id == id && hovered)
+            if (item.id == id && show)
                 item.root->add_css_class("hovered");
             else
                 item.root->remove_css_class("hovered");

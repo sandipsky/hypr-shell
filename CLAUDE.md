@@ -1926,6 +1926,22 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   0 — a real change each time, the span axis left at 0. Verified with
   `hyprctl -j layers` on the bottom bar (1920×35 → 43 → 35) and a left bar
   (36×1080 → 43 → 36).
+- 2026-09-18 — Taskbar item hover pill (user request, todo.txt: "taskbar item
+  hoverable or not toggle (per item not taskbar as whole)"):
+  `bar.taskbar.item_hover` (default on) gives the hovered item the bar's
+  `@mHover` colour on a Windows-style squircle button (8px radius — a first
+  cut used a 999px pill hugging the icon, 27×23, which the user found far too
+  small) — a `hover-pill` class on each item root, so the highlight is per item
+  and the `.taskbar:hover` opt-out for the module as a whole stays. The root
+  is grown to button size in C++: the inner row carries 6px (× density)
+  margins along the bar and the capsule / items box FILL the module across it
+  (33×28 on the compact horizontal bar, the bar's content width on a vertical
+  one), `item_gap` separates the buttons; `item_hover` is part of the layout
+  key so a change rebuilds the items, and off restores the bare icons
+  `item_gap` apart. Off = the item is not hoverable at all: no `hovered`
+  class, so the indicator's hover mark disappears too (the old indicator-only
+  hover look no longer exists as a state). Settings: "Hover highlight" switch
+  on the Taskbar subpage.
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

@@ -93,6 +93,7 @@ public:
         enum class Apps { Both, Pinned, Running };
         Apps apps = Apps::Both;            // which apps appear (user's dropdown)
         bool running_indicator = false;    // grey dot under running, unfocused apps
+        bool item_hover = true;            // mHover pill around the hovered item
         bool show_title = false;           // horizontal bars only
         int title_width = 120;             // px
         bool smart_width = true;           // cap the whole widget to max_width_percent

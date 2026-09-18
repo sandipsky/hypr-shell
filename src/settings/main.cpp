@@ -293,6 +293,7 @@ struct Settings {
     AdwSwitchRow* tb_active_workspaces = nullptr;
     AdwComboRow* tb_apps = nullptr;       // both / pinned / running
     AdwSwitchRow* tb_running_dot = nullptr;
+    AdwSwitchRow* tb_item_hover = nullptr;
 
     AdwComboRow* am_display = nullptr; // app menu: Icon / Icon and text / Text
     AdwEntryRow* am_text = nullptr;
@@ -618,6 +619,7 @@ void populate(Settings* s, PopulateStage stage) {
             if (tb_apps == kTbAppsKeys[i])
                 adw_combo_row_set_selected(s->tb_apps, i);
         adw_switch_row_set_active(s->tb_running_dot, tb.value("running_indicator", false));
+        adw_switch_row_set_active(s->tb_item_hover, tb.value("item_hover", true));
     } catch (const json::exception&) {
     }
     }
@@ -4929,6 +4931,8 @@ void on_activate(GtkApplication* app, gpointer) {
         {"running_indicator", "Running indicator",
          "Grey dot under opened apps that are not focused (the focused one keeps the accent dot).",
          &s->tb_running_dot},
+        {"item_hover", "Hover highlight",
+         "Highlight the item under the pointer with the bar's hover pill.", &s->tb_item_hover},
     };
     GtkWidget* tb_apps_row = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(tb_apps_row), "Apps to show");
