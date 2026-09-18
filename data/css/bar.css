@@ -9,7 +9,7 @@
 window.bar {
   background: transparent;
   --bar-pad: 3px;             /* .bar-inner padding across the bar */
-  --bar-pad-along: 10px;      /* .bar-inner padding along the bar */
+  --bar-pad-along: 7px;       /* .bar-inner padding along the bar (the bar's two ends) */
   --module-pad: 6px;          /* each module's padding along the bar */
   --module-pad-across: 8px;   /* vertical bars: module padding along the bar */
   --module-font: 13px;        /* module default text */
@@ -26,7 +26,7 @@ window.bar {
 
 window.bar.density-comfortable {
   --bar-pad: 5px;
-  --bar-pad-along: 12px;
+  --bar-pad-along: 9px;
   --module-pad: 8px;
   --module-pad-across: 10px;
   --module-font: 14px;
@@ -81,9 +81,25 @@ window.bar.right .module {
   padding: var(--module-pad-across) 0;
 }
 
-/* every module gets the same padding each side (6px compact), so any two
- * neighbours sit 12px apart (workspaces: 2px less + the buttons' 2px margin;
- * taskbar: the same) */
+/* The three sections carry .bar-start / .bar-center / .bar-end so the theme
+ * (and a user's style.css) can address one of them. The start section — left
+ * on a horizontal bar, top on a vertical one — packs its modules tighter than
+ * the rest (user request): redefining the padding variables here is enough,
+ * because GTK custom properties inherit into the section's subtree, so the
+ * workspaces and taskbar rules below follow along. */
+.bar-start {
+  --module-pad: 4px;
+  --module-pad-across: 6px;
+}
+
+window.bar.density-comfortable .bar-start {
+  --module-pad: 6px;
+  --module-pad-across: 8px;
+}
+
+/* every module gets the same padding each side (6px compact, 4px in the start
+ * section), so any two neighbours sit 12px (8px) apart (workspaces: 2px less +
+ * the buttons' 2px margin; taskbar: the same) */
 .module {
   padding: 0 var(--module-pad);
   font-size: var(--module-font);
@@ -230,6 +246,9 @@ window.bar.right .battery .icon {
 .clock {
   font-weight: 700;
   font-size: var(--text-size);
+  /* tabular digits: every minute is the same width, so a vertical bar's
+     stacked lines (and a horizontal label) never shift */
+  font-variant-numeric: tabular-nums;
 }
 
 /* notifications: unread badge dot over the bell icon (Noctalia's badge,

@@ -2435,6 +2435,27 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   the floor since anything tighter would have to shrink the pill. The key was
   config-only, so it also got an "Item spacing" spin row (0–24) on the Taskbar
   subpage.
+- 2026-09-18 — Bar spacing pass + vertical clock lines (user request). (1)
+  `--bar-pad-along` 10 → 7px (comfortable 12 → 9): the padding at the bar's two
+  ends, left/right on a horizontal bar, top/bottom on a vertical one. (2) The
+  three section boxes carry `.bar-start` / `.bar-center` / `.bar-end`, and the
+  start section (left / top) redefines `--module-pad` 6 → 4 and
+  `--module-pad-across` 8 → 6 (comfortable 8 → 6 / 10 → 8) so its modules sit
+  8px apart instead of 12 — **GTK custom properties inherit**, so redefining
+  them on the section retunes the workspaces `calc()` and the taskbar rules
+  with it, verified live on the left bar. No config key: the density combo is
+  the user-facing control for bar metrics and these stay theme constants a
+  `style.css` can retune. (3) A stacked vertical clock mixed 2-digit lines with
+  "PM", which is far wider at the same size and made the column look ragged:
+  `Clock::stacked_attributes()` measures each line with the widget's Pango
+  layout and scales any line wider than the widest digits-only line down to
+  match (floor 0.6) through a `Pango::AttrList` scale attribute — no markup, so
+  an arbitrary strftime format needs no escaping. Measuring needs the resolved
+  CSS font, so `update()` also runs from `signal_map()` (before the style pass
+  the layout would use the theme font; the minute tick corrects any later
+  drift). `.clock` also got `font-variant-numeric: tabular-nums` so every
+  minute is the same width. Verified from screenshots: the "PM" line went from
+  20px to 17px wide, the digit lines are 16–17px.
 - 2026-09-18 — App menu custom icon gets an image picker (user request): the
   "Custom icon" entry row on the App menu subpage carries a suffix button
   (image-x-generic-symbolic) that opens the same `GtkFileDialog` as the lock

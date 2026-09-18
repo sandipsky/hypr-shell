@@ -40,7 +40,9 @@ with `add_css_class()`. Useful differences from the web:
   size as `--name: 18px` on `window.bar`, redefines them under
   `window.bar.density-comfortable` (`bar.density`),
   and the module rules read them with `var(--name)` (and `calc()`). Add a
-  new bar size there rather than as a literal in a module rule.
+  new bar size there rather than as a literal in a module rule. They inherit,
+  so a rule on one section (`.bar-start { --module-pad: 4px; }` — how the
+  start section packs its modules tighter) retunes everything below it.
 
 ## Class map
 
@@ -51,7 +53,8 @@ Window and layout:
 | `window.bar` | The bar window. Must stay `background: transparent`. |
 | `window.bar.bottom`, `.left`, `.right` | Added by `Bar::apply_config()` for non-top positions; the theme moves the hairline border and rotates paddings. |
 | `window.bar-trigger` | The 1px auto-hide hover strip. Painted `rgba(0,0,0,0.01)` on purpose; see [gotchas](12-gotchas.md). |
-| `.bar-inner` | The `Gtk::CenterBox` that has the visible background, border and padding. |
+| `.bar-inner` | The `Gtk::CenterBox` that has the visible background, border and padding (`--bar-pad` across the bar, `--bar-pad-along` at its two ends). |
+| `.bar-start`, `.bar-center`, `.bar-end` | The three section boxes — start is left on a horizontal bar, top on a vertical one. `.bar-start` redefines `--module-pad` / `--module-pad-across` so its modules sit closer. |
 | `.module` | Every module. Padding and base font. |
 
 Modules:

@@ -17,6 +17,8 @@ public:
 
 private:
     void update();
+    // per-line scale so a stacked vertical clock's lines end up the same width
+    Pango::AttrList stacked_attributes(const Glib::ustring& stacked);
     void schedule_next_minute();
     bool on_minute_timer(Glib::IOCondition);
 

@@ -98,6 +98,11 @@ Bar::Bar() {
     trigger_.add_controller(trigger_motion);
 
     layout_.add_css_class("bar-inner");
+    // the theme addresses one section through these (bar.css packs the start
+    // section's modules tighter; a user's style.css can do the same)
+    start_box_.add_css_class("bar-start");
+    center_box_.add_css_class("bar-center");
+    end_box_.add_css_class("bar-end");
     layout_.set_start_widget(start_box_);
     layout_.set_center_widget(center_box_);
     layout_.set_end_widget(end_box_);

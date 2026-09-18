@@ -5,6 +5,7 @@
 #include "services/config.hpp"
 
 #include <string>
+#include <vector>
 
 #include <algorithm>
 #include <cerrno>
@@ -34,6 +35,10 @@ Clock::Clock() {
     auto click = Gtk::GestureClick::create();
     click->signal_released().connect([this](int, double, double) { open(); });
     add_controller(click);
+
+    // the vertical line scaling measures text in the widget's font, which the
+    // style pass only resolves once the label is in a window
+    signal_map().connect(sigc::mem_fun(*this, &Clock::update));
 
     // dev hook: HS_OPEN_CALENDAR=1 pops the calendar shortly after startup
     if (const char* hook = g_getenv("HS_OPEN_CALENDAR")) {
@@ -67,6 +72,59 @@ Clock::~Clock() {
     popover_.unparent();
 }
 
+// A stacked vertical clock mixes two-digit lines with word lines ("PM",
+// "Mon"), and a word is far wider at the same size — the column looked ragged
+// (user report). Each line that is wider than the widest digits-only line is
+// scaled down to match it with a Pango scale attribute, so every line ends up
+// about the same width and the centred column reads as one block. Measuring
+// needs the widget's resolved font, hence the re-run on map (see the
+// constructor) — before that the layout falls back to the theme font and the
+// next minute tick corrects it.
+Pango::AttrList Clock::stacked_attributes(const Glib::ustring& stacked) {
+    std::vector<std::string> lines;
+    std::string current;
+    for (const char c : stacked.raw()) {
+        if (c == '\n') {
+            lines.push_back(current);
+            current.clear();
+        } else {
+            current.push_back(c);
+        }
+    }
+    lines.push_back(current);
+
+    std::vector<int> widths(lines.size(), 0);
+    int target = 0;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        if (lines[i].empty())
+            continue;
+        int height = 0;
+        create_pango_layout(lines[i])->get_pixel_size(widths[i], height);
+        bool has_letter = false;
+        for (const auto ch : Glib::ustring(lines[i]))
+            has_letter = has_letter || g_unichar_isalpha(ch);
+        if (!has_letter)
+            target = std::max(target, widths[i]);
+    }
+
+    Pango::AttrList attrs;
+    if (target > 0) {
+        guint offset = 0;
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            if (widths[i] > target) {
+                // a floor keeps a long word readable instead of microscopic
+                auto scale = Pango::Attribute::create_attr_scale(
+                    std::max(0.6, static_cast<double>(target) / widths[i]));
+                scale.set_start_index(offset);
+                scale.set_end_index(offset + lines[i].size());
+                attrs.insert(scale);
+            }
+            offset += lines[i].size() + 1; // the newline
+        }
+    }
+    return attrs;
+}
+
 void Clock::update() {
     auto& cfg = Config::get();
     const bool vertical = cfg.bar_vertical();
@@ -88,6 +146,8 @@ void Clock::update() {
         text = stacked;
     }
     set_label(text);
+    Pango::AttrList attrs = vertical ? stacked_attributes(text) : Pango::AttrList();
+    set_attributes(attrs);
 
     // tooltip: the full date by default (`bar.clock.tooltip_format`, strftime;
     // empty disables it); an invalid format shows nothing rather than garbage
