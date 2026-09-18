@@ -48,10 +48,7 @@ Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     // right click toggles do-not-disturb (Noctalia has it in a context menu)
     auto right_click = Gtk::GestureClick::create();
     right_click->set_button(GDK_BUTTON_SECONDARY);
-    right_click->signal_released().connect([](int, double, double) {
-        auto& service = NotificationService::get();
-        service.set_do_not_disturb(!service.do_not_disturb());
-    });
+    right_click->signal_released().connect([this](int, double, double) { toggle_dnd(); });
     add_controller(right_click);
 
     // dev hook: HS_OPEN_NOTIFICATIONS=1 pops the panel shortly after startup
@@ -70,6 +67,11 @@ Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
         sigc::mem_fun(*this, &Notifications::update));
     Config::get().signal_changed().connect(sigc::mem_fun(*this, &Notifications::update));
     update();
+}
+
+void Notifications::toggle_dnd() {
+    auto& service = NotificationService::get();
+    service.set_do_not_disturb(!service.do_not_disturb());
 }
 
 void Notifications::open() {

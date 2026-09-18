@@ -205,6 +205,7 @@ public:
         bool show_description = true;     // list view: description under the name
         bool group_by_letter = false;     // letter headers while browsing (Windows 11 style)
         bool tile_background = true;      // grid tiles on mSurfaceVariant cards
+        bool right_click_session = true;  // right click on the bar button opens the session menu
     };
     const AppMenu& app_menu() const { return app_menu_; }
 

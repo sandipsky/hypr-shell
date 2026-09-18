@@ -15,6 +15,8 @@ class Volume : public Gtk::Box, public CornerTarget {
 public:
     void open();
     void activate_corner(bool) override { open(); }
+    void secondary_corner(bool) override { toggle_mute(); }
+    void toggle_mute();
     Volume();
     ~Volume() override;
 

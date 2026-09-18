@@ -15,6 +15,8 @@ class Notifications : public Gtk::Box, public CornerTarget {
 public:
     void open();
     void activate_corner(bool) override { open(); }
+    void secondary_corner(bool) override { toggle_dnd(); }
+    void toggle_dnd();
     Notifications();
     ~Notifications() override;
 

@@ -414,6 +414,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
         {"System monitor", "Bar › Control center", "control_center"},
         {"App menu icon", "Bar › App menu", "app_menu"},
         {"App menu label", "Bar › App menu", "app_menu"},
+        {"App menu right click", "Bar › App menu", "app_menu"},
         {"App menu buttons", "Bar › App menu", "app_menu"},
         {"App menu grid columns", "Bar › App menu", "app_menu"},
         {"App menu two-line names", "Bar › App menu", "app_menu"},

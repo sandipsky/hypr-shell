@@ -113,13 +113,18 @@ Bar::Bar() {
     // orientation — and the screen corner counts as a click on it, so the
     // pointer can be thrown into either corner without aiming. Modules opt
     // in through CornerTarget; the bubble phase leaves their own gestures
-    // first.
+    // first. A right click reaches the module's secondary action the same way.
     auto corner_click = Gtk::GestureClick::create();
-    corner_click->set_button(GDK_BUTTON_PRIMARY);
+    corner_click->set_button(0);
     corner_click->set_propagation_phase(Gtk::PropagationPhase::BUBBLE);
-    corner_click->signal_pressed().connect([this](int, double x, double y) {
+    auto* corner_gesture = corner_click.get(); // raw: a captured RefPtr would cycle
+    corner_click->signal_pressed().connect([this, corner_gesture](int, double x, double y) {
         if (hidden_)
             return;
+        const guint button = corner_gesture->get_current_button();
+        if (button != GDK_BUTTON_PRIMARY && button != GDK_BUTTON_SECONDARY)
+            return;
+        const bool secondary = button == GDK_BUTTON_SECONDARY;
         const bool vertical = Config::get().bar_vertical();
         struct Hit {
             CornerTarget* target;
@@ -150,7 +155,10 @@ Bar::Bar() {
                 const bool along = vertical ? (y >= hit->y1 && y <= hit->y2)
                                             : (x >= hit->x1 && x <= hit->x2);
                 if (along) {
-                    hit->target->activate_beside(x - hit->x1, y - hit->y1);
+                    if (secondary)
+                        hit->target->secondary_beside(x - hit->x1, y - hit->y1);
+                    else
+                        hit->target->activate_beside(x - hit->x1, y - hit->y1);
                     return;
                 }
             }
@@ -177,7 +185,10 @@ Bar::Bar() {
             const bool in_corner = vertical ? (start ? y <= hit->y2 : y >= hit->y1)
                                             : (start ? x <= hit->x2 : x >= hit->x1);
             if (in_corner) {
-                hit->target->activate_corner(start);
+                if (secondary)
+                    hit->target->secondary_corner(start);
+                else
+                    hit->target->activate_corner(start);
                 return;
             }
         }

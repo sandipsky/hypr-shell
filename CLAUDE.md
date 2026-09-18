@@ -1830,6 +1830,21 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   "Appearance" group with both switches on the Workspaces subpage. Tested
   live: Chrome on workspace 2 receiving `xdg-open` while workspace 1 was
   focused flashed 2, focusing 2 cleared it.
+- 2026-09-18 — Right click on the app menu bar button opens the session menu
+  (user request, todo.txt): `bar.app_menu.right_click_session` (default on)
+  — a second GestureClick (GDK_BUTTON_SECONDARY) on the module pops a
+  `SessionMenuList` popover of its own, parented to the same Overlay anchor
+  as the app panel and placed with `place_bar_popover()`, or activates the
+  app's "session" action when `session.mode` is fullscreen — the same branch
+  as the panel's power button and the session module. Opening either popover
+  closes the other. Settings: "Right click opens the session menu" switch in
+  the App menu subpage's Bar button group. Dev hook: `HS_OPEN_APP_MENU=4`.
+  Same day (user request): the bar's padding / corner rule applies to right
+  clicks too — the bar's bubble gesture listens to every button and
+  dispatches PRIMARY to `activate_*` and SECONDARY to the new
+  `CornerTarget::secondary_corner / secondary_beside` (default no-op),
+  implemented by the modules that have a right-click action: app menu
+  (session menu), volume (`toggle_mute`), notifications (`toggle_dnd`).
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

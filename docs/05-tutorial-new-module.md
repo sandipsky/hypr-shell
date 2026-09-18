@@ -379,6 +379,8 @@ meson compile -C build && pkill -x hypr-shell; ./build/hypr-shell
   click between it and the screen corner (Windows' taskbar rule). Modules
   with several items also override `activate_beside(x, y)` to pick the item
   under the point (`pick_child_along`).
+  If the module has a right-click action, mirror it in `secondary_corner` /
+  `secondary_beside` so a right click in the same padding does the same.
 - **Vertical bars**: if your module lays children out horizontally, flip
   the orientation in `update()` using `Config::get().bar_vertical()`, like
   `Workspaces::rebuild()` does.

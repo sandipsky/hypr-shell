@@ -255,6 +255,7 @@ void Config::load() {
             a.show_description = it->value("show_description", true);
             a.group_by_letter = it->value("group_by_letter", false);
             a.tile_background = it->value("tile_background", true);
+            a.right_click_session = it->value("right_click_session", true);
         }
         if (auto it = bar.find("clock"); it != bar.end() && it->is_object()) {
             clock_first_day_of_week_ = std::clamp(it->value("first_day_of_week", 0), 0, 1);

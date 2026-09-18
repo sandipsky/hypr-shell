@@ -4,6 +4,7 @@
 
 #include "services/app_menu_icons.hpp"
 #include "services/config.hpp"
+#include "services/session.hpp"
 
 #include <giomm.h>
 
@@ -87,14 +88,37 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     popover_.signal_closed().connect([this] { panel_->set_open(false); });
     panel_->signal_request_close().connect([this] { popover_.popdown(); });
 
+    // right click: the shared session menu, like the panel's power button
+    session_list_ = Gtk::make_managed<SessionMenuList>();
+    session_popover_.set_child(*session_list_);
+    session_popover_.set_parent(anchor_);
+    session_popover_.set_has_arrow(false);
+    session_popover_.add_css_class("session-popover");
+    session_list_->signal_activate().connect([this](const SessionAction& action) {
+        // close first so the action's own UI (lock screen etc.) can take over
+        session_popover_.popdown();
+        const SessionAction* act = &action; // static table, see session_actions.hpp
+        Glib::signal_idle().connect_once([act] { run_session_action(*act); });
+    });
+    auto right_click = Gtk::GestureClick::create();
+    right_click->set_button(GDK_BUTTON_SECONDARY);
+    right_click->signal_released().connect([this](int, double, double) { open_session_menu(); });
+    add_controller(right_click);
+
     // dev hook: HS_OPEN_APP_MENU=1 pops the panel shortly after startup;
-    // =2 also opens its session dropdown, =3 the pin menu on the first tile
+    // =2 also opens its session dropdown, =3 the pin menu on the first tile,
+    // =4 the right-click session menu instead of the panel
     if (const char* hook = g_getenv("HS_OPEN_APP_MENU")) {
         const bool session = g_strcmp0(hook, "2") == 0;
         const bool pin = g_strcmp0(hook, "3") == 0;
-        const int delay = std::max(800, std::atoi(hook)); // >3 = delay in ms
+        const bool right_click = g_strcmp0(hook, "4") == 0;
+        const int delay = std::max(800, std::atoi(hook)); // >4 = delay in ms
         Glib::signal_timeout().connect_once(
-            [this, session, pin] {
+            [this, session, pin, right_click] {
+                if (right_click) {
+                    open_session_menu();
+                    return;
+                }
                 open();
                 if (session)
                     Glib::signal_timeout().connect_once(
@@ -115,6 +139,7 @@ AppMenu::AppMenu() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
 AppMenu::~AppMenu() {
     popover_.unparent();
+    session_popover_.unparent();
 }
 
 void AppMenu::toggle() {
@@ -130,10 +155,24 @@ void AppMenu::toggle() {
 }
 
 void AppMenu::open() {
+    session_popover_.popdown();
     // keep the panel on the free side of the bar
     place_bar_popover(popover_);
     panel_->set_open(true);
     popover_.popup();
+}
+
+void AppMenu::open_session_menu() {
+    if (!Config::get().app_menu().right_click_session)
+        return;
+    popover_.popdown();
+    if (Config::get().session().mode == Config::Session::Mode::Fullscreen) {
+        if (auto app = Gio::Application::get_default())
+            app->activate_action("session"); // the App owns the fullscreen window
+        return;
+    }
+    place_bar_popover(session_popover_);
+    session_popover_.popup();
 }
 
 void AppMenu::apply_config() {

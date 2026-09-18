@@ -46,8 +46,7 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     // right click toggles output mute
     auto right_click = Gtk::GestureClick::create();
     right_click->set_button(GDK_BUTTON_SECONDARY);
-    right_click->signal_released().connect(
-        [](int, double, double) { Pulse::get().set_muted(!Pulse::get().muted()); });
+    right_click->signal_released().connect([this](int, double, double) { toggle_mute(); });
     add_controller(right_click);
 
     // wheel steps the output volume (Noctalia's Volume widget)
@@ -70,6 +69,10 @@ Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
 
     Pulse::get().signal_changed().connect(sigc::mem_fun(*this, &Volume::update));
     update();
+}
+
+void Volume::toggle_mute() {
+    Pulse::get().set_muted(!Pulse::get().muted());
 }
 
 void Volume::open() {

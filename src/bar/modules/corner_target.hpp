@@ -7,8 +7,8 @@
 
 namespace hyprshell {
 
-// Modules whose primary click the bar can trigger from its padding, where
-// nothing else listens. Two rules (Windows' taskbar behaviour):
+// Modules whose click the bar can trigger from its padding, where nothing
+// else listens. Two rules (Windows' taskbar behaviour):
 //  - beside: a click across the bar's thickness within the module's span along
 //    the bar (the strip above / below a horizontal bar's module) counts as a
 //    click on that module — `activate_beside(x, y)`, coordinates relative to
@@ -24,6 +24,11 @@ public:
     virtual ~CornerTarget() = default;
     virtual void activate_corner(bool start) = 0;
     virtual void activate_beside(double /*x*/, double /*y*/) { activate_corner(true); }
+    // The same two places for a right click: a module with a secondary action
+    // (app menu → session menu, volume → mute, bell → do-not-disturb) mirrors
+    // it here; the default does nothing.
+    virtual void secondary_corner(bool /*start*/) {}
+    virtual void secondary_beside(double /*x*/, double /*y*/) { secondary_corner(true); }
 };
 
 // Index of the child whose extent along the bar contains the point (relative

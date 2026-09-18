@@ -300,6 +300,7 @@ struct Settings {
     AdwSwitchRow* am_show_desc = nullptr;    // list view only
     AdwSwitchRow* am_group = nullptr;        // letter headers
     AdwSwitchRow* am_tile_bg = nullptr;      // grid tile cards
+    AdwSwitchRow* am_right_click = nullptr;  // bar button right click → session menu
 
     // Session menu sidebar page (top-level "session" object in config.json)
     AdwComboRow* sm_mode = nullptr;   // Dropdown / Fullscreen
@@ -606,12 +607,14 @@ void populate(Settings* s, PopulateStage stage) {
     bool am_settings_btn = true, am_session_btn = true, am_multiline = false;
     bool am_show_search = true;
     bool am_list = false, am_show_desc = true, am_group = false, am_tile_bg = true;
+    bool am_right_click = true;
     try {
         const json am = s->root.value("bar", json::object()).value("app_menu", json::object());
         am_list = am.value("view", "grid") == std::string("list");
         am_show_desc = am.value("show_description", true);
         am_group = am.value("group_by_letter", false);
         am_tile_bg = am.value("tile_background", true);
+        am_right_click = am.value("right_click_session", true);
         am_display = am.value("display", am_display);
         am_icon = am.value("icon", am_icon);
         am_custom = am.value("custom_icon", "");
@@ -864,6 +867,7 @@ void populate(Settings* s, PopulateStage stage) {
     adw_switch_row_set_active(s->am_show_desc, am_show_desc);
     adw_switch_row_set_active(s->am_group, am_group);
     adw_switch_row_set_active(s->am_tile_bg, am_tile_bg);
+    adw_switch_row_set_active(s->am_right_click, am_right_click);
     update_am_rows(s);
     adw_switch_row_set_active(s->bat_profiles, bat_profiles);
     adw_switch_row_set_active(s->bat_brightness, bat_brightness);
@@ -4867,6 +4871,18 @@ void on_activate(GtkApplication* app, gpointer) {
     g_object_set_data(G_OBJECT(am_custom_row), "am-key", const_cast<char*>("custom_icon"));
     s->am_custom_icon = ADW_ENTRY_ROW(am_custom_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_custom_row);
+
+    GtkWidget* am_right_click_row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(am_right_click_row),
+                                  "Right click opens the session menu");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(am_right_click_row),
+                                "Right-clicking the bar button shows the session menu, as a "
+                                "dropdown or fullscreen per the Session menu page.");
+    g_object_set_data(G_OBJECT(am_right_click_row), "am-key",
+                      const_cast<char*>("right_click_session"));
+    s->am_right_click = ADW_SWITCH_ROW(am_right_click_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(am_button_group), am_right_click_row);
+    g_signal_connect(am_right_click_row, "notify::active", G_CALLBACK(on_am_toggled), s);
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(am_page),
                              ADW_PREFERENCES_GROUP(am_button_group));
 

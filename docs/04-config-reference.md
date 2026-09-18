@@ -239,6 +239,7 @@ launcher's grid view). `hypr-shell --app-menu` toggles it for keybinds.
 | `icon` | preset key / `distro` / `custom` | `rocket` | Bar button glyph (`services/app_menu_icons.hpp`). |
 | `custom_icon` | string | `""` | Icon theme name or image path for `custom`. |
 | `text` | string | `"Apps"` | Bar button label. |
+| `right_click_session` | bool | `true` | Right click on the bar button opens the session menu (dropdown, or the fullscreen window per `session.mode`). |
 | `show_search` | bool | `true` | Search box at the top of the panel. |
 | `show_settings_button` | bool | `true` | Settings button beside the search box. |
 | `show_session_button` | bool | `true` | Power button opening the session menu. |
@@ -249,7 +250,7 @@ launcher's grid view). `hypr-shell --app-menu` toggles it for keybinds.
 | `show_description` | bool | `true` | List view: description line under each name. |
 | `group_by_letter` | bool | `false` | Letter headers ("#", "A", "B", …) above the apps while browsing with an empty search, Windows 11 style; search results stay score-sorted without headers. |
 
-Dev hook: `HS_OPEN_APP_MENU=1` (`=2` also opens the session dropdown, `=3` the pin context menu).
+Dev hook: `HS_OPEN_APP_MENU=1` (`=2` also opens the session dropdown, `=3` the pin context menu, `=4` the right-click session menu).
 
 ## `bar.control_center`
 
