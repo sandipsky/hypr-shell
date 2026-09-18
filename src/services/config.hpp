@@ -15,6 +15,11 @@ namespace hyprshell {
 class Config {
 public:
     enum class BarPosition { Top, Bottom, Left, Right };
+    // bar.density: how much room the bar and its modules take. Compact is
+    // the original look; comfortable scales paddings, fonts and icon sizes
+    // (CSS via a `density-comfortable` class on the bar window, C++ pixel
+    // sizes via bar_density_scale()).
+    enum class BarDensity { Compact, Comfortable };
     enum class BarSection { Left, Center, Right };
     enum class BarVisibility { Visible, Hidden, AutoHide };
     enum class WorkspacesMode { Dynamic, Fixed };
@@ -27,6 +32,12 @@ public:
     BarPosition bar_position() const { return bar_position_; }
     bool bar_vertical() const {
         return bar_position_ == BarPosition::Left || bar_position_ == BarPosition::Right;
+    }
+    BarDensity bar_density() const { return bar_density_; }
+    // multiplier for pixel sizes chosen in C++ (taskbar icons, app menu
+    // image, window icon); the CSS side uses the same steps
+    double bar_density_scale() const {
+        return bar_density_ == BarDensity::Comfortable ? 1.15 : 1.0;
     }
     // bar.visibility (Noctalia's displayMode): always show, always hide, or
     // auto-hide (bar overlays windows and slides away; a 1px strip on the
@@ -363,6 +374,7 @@ private:
     std::string path_;
     Glib::RefPtr<Gio::FileMonitor> monitor_;
     BarPosition bar_position_ = BarPosition::Top;
+    BarDensity bar_density_ = BarDensity::Compact;
     BarVisibility bar_visibility_ = BarVisibility::Visible;
     bool bar_show_on_ws_switch_ = true;
     bool bar_show_when_ws_empty_ = false;

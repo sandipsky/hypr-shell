@@ -242,6 +242,40 @@ void Bar::toggle_control_center() {
     control_center_.toggle();
 }
 
+// gtk4-layer-shell fakes the compositor's configure to GTK with the
+// FULLSCREEN state, so GDK pins the surface to that size: content that grows
+// pushes it larger through the min-size constraint, content that shrinks
+// (a smaller bar.density) leaves the bar at the old thickness with the
+// workspace pills stretched. The library re-evaluates the size when the
+// window's default size changes (notify::default-*), taking a 0 axis as the
+// natural size — and any other value literally, so -1 ("unset") produced an
+// invalid configure that dropped the compositor's span (the bar shrank to
+// its natural length). Hence: after the style pass has run (an idle below
+// GTK's layout priority, since it measures synchronously), set the
+// thickness to the measured natural value and back to 0 — a real change
+// each time, and the span axis stays 0 (compositor-configured).
+void Bar::refresh_thickness() {
+    Glib::signal_idle().connect_once(
+        [this] {
+            if (!get_mapped())
+                return;
+            const bool vertical = Config::get().bar_vertical();
+            int minimum = 0, natural = 0, baseline_min = 0, baseline_nat = 0;
+            measure(vertical ? Gtk::Orientation::HORIZONTAL : Gtk::Orientation::VERTICAL, -1,
+                    minimum, natural, baseline_min, baseline_nat);
+            if (natural <= 0)
+                return;
+            if (vertical) {
+                set_default_size(natural, 0);
+                set_default_size(0, 0);
+            } else {
+                set_default_size(0, natural);
+                set_default_size(0, 0);
+            }
+        },
+        Glib::PRIORITY_DEFAULT_IDLE);
+}
+
 void Bar::apply_config() {
     auto& cfg = Config::get();
     auto* window = GTK_WINDOW(gobj());
@@ -254,8 +288,11 @@ void Bar::apply_config() {
     anchor_to_bar_edge(window, position, vertical);
     anchor_to_bar_edge(GTK_WINDOW(trigger_.gobj()), position, vertical);
 
-    for (const char* name : {"bottom", "left", "right"})
+    for (const char* name : {"bottom", "left", "right", "density-comfortable"})
         remove_css_class(name);
+    // bar.density: bar.css redefines its size variables under this class
+    if (cfg.bar_density() == Config::BarDensity::Comfortable)
+        add_css_class("density-comfortable");
     switch (position) {
     case Config::BarPosition::Bottom:
         add_css_class("bottom");
@@ -269,6 +306,12 @@ void Bar::apply_config() {
     case Config::BarPosition::Top:
         break;
     }
+
+    // A thinner density must shrink the surface, which GTK never does on its
+    // own (see refresh_thickness()). An orientation change re-anchors instead.
+    if (get_mapped() && vertical == last_vertical_)
+        refresh_thickness();
+    last_vertical_ = vertical;
 
     const auto orientation =
         vertical ? Gtk::Orientation::VERTICAL : Gtk::Orientation::HORIZONTAL;

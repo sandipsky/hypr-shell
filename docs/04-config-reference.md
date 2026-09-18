@@ -24,6 +24,7 @@ launcher).
 {
   "bar": {
     "position": "top",
+    "density": "compact",
     "visibility": "visible",
     "show_on_workspace_switch": true,
     "show_when_workspace_empty": false,
@@ -123,6 +124,7 @@ launcher).
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `position` | `"top"` \| `"bottom"` \| `"left"` \| `"right"` | `"top"` | Screen edge. `left`/`right` make a vertical bar. |
+| `density` | `"compact"` \| `"comfortable"` | `"compact"` | Bar padding, module spacing, icon and text sizes (CSS variables in `bar.css` plus `Config::bar_density_scale()` for C++ pixel sizes). |
 | `visibility` | `"visible"` \| `"hidden"` \| `"auto_hide"` | `"visible"` | Always show / never map / overlay and slide away when not hovered. |
 | `show_on_workspace_switch` | bool | `true` | Auto-hide only: peek on workspace change. |
 | `show_when_workspace_empty` | bool | `false` | Auto-hide only: stay visible while the active workspace is empty. |

@@ -40,6 +40,19 @@ wrapping label's natural width is the *whole* text on one line. Notification
 popup labels use `set_max_width_chars(1)` + `set_hexpand(true)` so the
 stack's requested width wins.
 
+**A layer surface never shrinks on its own.** gtk4-layer-shell forwards the
+compositor's configure to GTK as a fake xdg_toplevel configure carrying the
+FULLSCREEN state, so GDK pins the surface to that size: content that grows
+pushes it larger through the min-size constraint, content that shrinks (a
+thinner `bar.density`) leaves the old thickness and stretches the children.
+The library re-measures only on `notify::default-width/height`, reading a 0
+axis as "natural" and any other value literally — `set_default_size(-1, -1)`
+therefore sends an invalid configure and the bar collapses to its natural
+length, as does `set_resizable(false)` (GDK's min = max hints). The fix is
+`Bar::refresh_thickness()`: from an idle after the style pass, set the
+thickness axis to the measured natural size, then back to 0, leaving the
+span axis at 0.
+
 **A fullscreen layer surface's first allocation is the screen size.** The
 launcher derives its panel geometry from that instead of querying monitors.
 

@@ -359,7 +359,9 @@ std::vector<Taskbar::Item> Taskbar::sort_items(std::vector<Item> items) const {
 void Taskbar::rebuild(const std::vector<Item>& previous) {
     const auto& cfg = Config::get().taskbar();
     const bool vertical = Config::get().bar_vertical();
-    const int item_size = to_odd(kCapsuleHeight * std::max(0.1, cfg.icon_scale));
+    // bar.density scales the capsule like the CSS side does (--taskbar-height)
+    const int item_size = to_odd(kCapsuleHeight * Config::get().bar_density_scale() *
+                                 std::max(0.1, cfg.icon_scale));
     const bool show_title = cfg.show_title && !vertical;
     int title_width = cfg.title_width;
     if (show_title && cfg.smart_width && !items_.empty()) {

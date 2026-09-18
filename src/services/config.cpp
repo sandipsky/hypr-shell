@@ -72,6 +72,7 @@ Config::Config() {
 
 void Config::load() {
     bar_position_ = BarPosition::Top;
+    bar_density_ = BarDensity::Compact;
     bar_visibility_ = BarVisibility::Visible;
     bar_show_on_ws_switch_ = true;
     bar_show_when_ws_empty_ = false;
@@ -159,6 +160,9 @@ void Config::load() {
             bar_position_ = BarPosition::Left;
         else if (position == "right")
             bar_position_ = BarPosition::Right;
+        const std::string density = bar.value("density", "compact");
+        if (density == "comfortable")
+            bar_density_ = BarDensity::Comfortable;
         const std::string visibility = bar.value("visibility", "visible");
         if (visibility == "hidden")
             bar_visibility_ = BarVisibility::Hidden;

@@ -1887,6 +1887,45 @@ Sockets in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`:
   — and needs a re-install (`scripts/sddm.sh install`, or copy Main.qml to
   /usr/share/sddm/themes/Elegant/ with sudo) since the theme dir is
   root-owned.
+- 2026-09-18 — Bar density (user request, todo.txt): `bar.density` =
+  compact (default, the original look) / comfortable. A third step,
+  spacious (icon 22, text 18, pills 32, padding 7/14, scale 1.3), shipped
+  for one build and was removed the same day per user — on a vertical bar
+  it overflowed the 1080px screen (surface 1122px tall). The CSS
+  side uses **GTK custom properties** (GTK ≥ 4.16, we have 4.22): every
+  shared size in `data/css/bar.css` — bar padding across / along, module
+  padding (+ the vertical-bar variant), module font, the 16px text size
+  (clock, window title, stat percentages), the 18px status glyph, the
+  battery glyph (+ vertical), workspace pill diameter + font, taskbar
+  capsule height + title font, the unread badge — is a `--name` on
+  `window.bar`, redefined under `window.bar.density-comfortable` (class set
+  in `Bar::apply_config`), and the module
+  rules read `var(--name)` (the workspaces padding is `calc(var(--module-pad)
+  - 2px)`). Step: comfortable ≈ +2px per size (icon 20, text 17, pills 28,
+  bar padding 5/12). Pixel sizes chosen in C++ scale by
+  `Config::bar_density_scale()` (1.0 / 1.15): the taskbar's 25px capsule (`to_odd(25 × scale ×
+  icon_scale)`, part of its layout key so items rebuild), the app menu's
+  18px image, the window icon's 16px. Settings: a "Density" combo right
+  under Position on the Bar page. The per-module `.module` padding stays
+  uniform, so the 12px neighbour gap grows to 16.
+  **Layer-surface shrink gotcha** (user report: switching to a thinner
+  density left oval workspace pills): the bar surface stayed at the taller size.
+  gtk4-layer-shell 1.3 fakes the compositor's configure to GTK as an
+  xdg_toplevel configure with the FULLSCREEN state, so GDK pins the surface to
+  that size — growing content still pushes it larger via the min-size
+  constraint, shrinking content never shrinks it, and GTK never remembers a
+  default size of its own (`should_remember_size` is false while fullscreen).
+  The library re-evaluates on `notify::default-width/height`, reading the
+  default size with 0 = natural and any other value literally — so
+  `set_default_size(-1, -1)` ("unset") produced an invalid configure that made
+  GDK fall back to GTK's natural size and the bar lost its span (1138px wide),
+  and `set_resizable(false)` did the same through GDK's min=max geometry hints.
+  `Bar::refresh_thickness()` therefore, from an idle after the style pass
+  (the library measures synchronously, and a CSS class change is validated
+  lazily), sets the thickness axis to the measured natural size and back to
+  0 — a real change each time, the span axis left at 0. Verified with
+  `hyprctl -j layers` on the bottom bar (1920×35 → 43 → 35) and a left bar
+  (36×1080 → 43 → 36).
 - 2026-08-31 — Config's initial load is a synchronous read (tiny local file, needed
   before the first frame so the bar doesn't flash defaults) — accepted deviation from
   the async-I/O rule; reloads go through Gio::FileMonitor. Invalid JSON warns and falls

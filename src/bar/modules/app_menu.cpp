@@ -11,6 +11,7 @@
 #include <string>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 namespace hyprshell {
@@ -210,6 +211,9 @@ void AppMenu::apply_config() {
         glyph = preset;
     }
 
+    // bar.density: the image follows the glyph's scaled font size (--icon-size)
+    image_.set_pixel_size(
+        static_cast<int>(std::lround(kImageSize * Config::get().bar_density_scale())));
     glyph_.set_text(glyph);
     glyph_.set_visible(want_icon && !use_image);
     image_.set_visible(want_icon && use_image);

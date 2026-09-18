@@ -36,6 +36,11 @@ with `add_css_class()`. Useful differences from the web:
   (`GTK_DEBUG=interactive`) shows the exact tree.
 - Rounded `scale`/`progressbar` parts need an explicit `min-width` and
   `min-height` on the inner nodes or GTK warns about negative sizes.
+- Custom properties work (GTK >= 4.16): `bar.css` declares every shared
+  size as `--name: 18px` on `window.bar`, redefines them under
+  `window.bar.density-comfortable` (`bar.density`),
+  and the module rules read them with `var(--name)` (and `calc()`). Add a
+  new bar size there rather than as a literal in a module rule.
 
 ## Class map
 

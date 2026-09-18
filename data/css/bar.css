@@ -1,8 +1,44 @@
 /* bar window + modules (workspaces, active window, status icons,
  * battery glyphs, clock, notification bell badge) */
 
+/* bar.density = compact (default): every size the modules share. The
+ * comfortable class below only redefines these variables, so a size tweak
+ * belongs here, not in the per-module rules. C++ pixel sizes (taskbar
+ * icons, app menu image, window icon) scale with Config::bar_density_scale()
+ * by the same step (1.15). */
 window.bar {
   background: transparent;
+  --bar-pad: 3px;             /* .bar-inner padding across the bar */
+  --bar-pad-along: 10px;      /* .bar-inner padding along the bar */
+  --module-pad: 6px;          /* each module's padding along the bar */
+  --module-pad-across: 8px;   /* vertical bars: module padding along the bar */
+  --module-font: 13px;        /* module default text */
+  --text-size: 16px;          /* clock, window title, stat percentages */
+  --icon-size: 18px;          /* status glyphs */
+  --battery-size: 26px;       /* the win11 battery glyph */
+  --battery-size-vertical: 23px;
+  --ws-size: 24px;            /* workspace pill diameter */
+  --ws-font: 12px;
+  --taskbar-height: 25px;     /* Noctalia's default-density capsule */
+  --taskbar-font: 12px;
+  --badge-size: 7px;          /* notification unread dot */
+}
+
+window.bar.density-comfortable {
+  --bar-pad: 5px;
+  --bar-pad-along: 12px;
+  --module-pad: 8px;
+  --module-pad-across: 10px;
+  --module-font: 14px;
+  --text-size: 17px;
+  --icon-size: 20px;
+  --battery-size: 29px;
+  --battery-size-vertical: 26px;
+  --ws-size: 28px;
+  --ws-font: 13px;
+  --taskbar-height: 29px;
+  --taskbar-font: 13px;
+  --badge-size: 8px;
 }
 
 /* invisible 1px strip that reveals an auto-hidden bar on hover.
@@ -18,7 +54,7 @@ window.bar-trigger {
    * overrides it via a generated provider (user style.css still wins) */
   background: alpha(@mSurface, 0.88);
   border-bottom: 1px solid alpha(@mOnSurface, 0.07);
-  padding: 3px 10px;
+  padding: var(--bar-pad) var(--bar-pad-along);
 }
 
 /* bar.position = "bottom" in config.json: hairline sits on the top edge */
@@ -31,25 +67,26 @@ window.bar.bottom .bar-inner {
 window.bar.left .bar-inner {
   border-bottom: none;
   border-right: 1px solid alpha(@mOnSurface, 0.07);
-  padding: 10px 3px;
+  padding: var(--bar-pad-along) var(--bar-pad);
 }
 
 window.bar.right .bar-inner {
   border-bottom: none;
   border-left: 1px solid alpha(@mOnSurface, 0.07);
-  padding: 10px 3px;
+  padding: var(--bar-pad-along) var(--bar-pad);
 }
 
 window.bar.left .module,
 window.bar.right .module {
-  padding: 8px 0;
+  padding: var(--module-pad-across) 0;
 }
 
-/* every module gets the same 6px each side, so any two neighbours sit 12px
- * apart (workspaces: 4px + the buttons' 2px margin; taskbar: 6px) */
+/* every module gets the same padding each side (6px compact), so any two
+ * neighbours sit 12px apart (workspaces: 2px less + the buttons' 2px margin;
+ * taskbar: the same) */
 .module {
-  padding: 0 6px;
-  font-size: 13px;
+  padding: 0 var(--module-pad);
+  font-size: var(--module-font);
   color: @mOnSurface;
   border-radius: 999px;
   transition: background 150ms ease;
@@ -73,7 +110,7 @@ window.bar.right .module {
  * icons' 18px, the text matches the clock's 16px; tabular digits so a
  * changing value does not shift the neighbours */
 .sys-stat .stat-text {
-  font-size: 16px;
+  font-size: var(--text-size);
 }
 
 .active-window.clickable:hover {
@@ -82,13 +119,13 @@ window.bar.right .module {
 
 /* workspaces */
 .workspaces {
-  padding: 0 4px;
+  padding: 0 calc(var(--module-pad) - 2px);
 }
 
 /* circular buttons: keep min-width == min-height and padding 0 */
 .workspaces button {
-  min-width: 24px;
-  min-height: 24px;
+  min-width: var(--ws-size);
+  min-height: var(--ws-size);
   margin: 2px;
   padding: 0;
   border-radius: 999px;
@@ -96,7 +133,7 @@ window.bar.right .module {
   box-shadow: none;
   background: alpha(@mOnSurface, 0.08);
   color: @mOnSurfaceVariant;
-  font-size: 12px;
+  font-size: var(--ws-font);
   font-weight: 600;
   transition: background 150ms ease;
 }
@@ -159,26 +196,26 @@ window.bar.right .module {
 /* focused window title */
 .active-window {
   color: @mOnSurfaceVariant;
-  font-size: 16px;
+  font-size: var(--text-size);
 }
 
 /* status icons (right of bar, before clock) */
 .icon {
   font-family: "noctalia-tabler-icons";
-  font-size: 18px;
+  font-size: var(--icon-size);
   color: @mOnSurface;
 }
 
 /* battery: win11-style Segoe Fluent glyph + percent text */
 .battery .icon {
   font-family: "Segoe Fluent Icons";
-  font-size: 26px;
+  font-size: var(--battery-size);
 }
 
 /* the battery glyph is the widest thing on a vertical bar — shrink it there */
 window.bar.left .battery .icon,
 window.bar.right .battery .icon {
-  font-size: 23px;
+  font-size: var(--battery-size-vertical);
 }
 
 .battery.charging .icon-fill {
@@ -192,15 +229,15 @@ window.bar.right .battery .icon {
 /* clock */
 .clock {
   font-weight: 700;
-  font-size: 16px;
+  font-size: var(--text-size);
 }
 
 /* notifications: unread badge dot over the bell icon (Noctalia's badge,
  * default color primary; the border matches the bar background) */
 .notifications .notif-badge {
-  min-width: 7px;
-  min-height: 7px;
-  border-radius: 4px;
+  min-width: var(--badge-size);
+  min-height: var(--badge-size);
+  border-radius: 999px;
   background: @mPrimary; /* mPrimary */
   border: 1px solid @mSurface;
 }
@@ -209,17 +246,17 @@ window.bar.right .battery .icon {
  * under each: mPrimary when focused, mHover while hovered. No capsule
  * background (per user). */
 .taskbar {
-  padding: 0 6px;
+  padding: 0 var(--module-pad);
 }
 
 .taskbar-capsule {
   background: transparent;
-  min-height: 25px; /* Noctalia's default-density capsule */
+  min-height: var(--taskbar-height);
 }
 
 window.bar.left .taskbar-capsule,
 window.bar.right .taskbar-capsule {
-  padding: 6px 0;
+  padding: var(--module-pad) 0;
   min-height: 0;
 }
 
@@ -246,9 +283,9 @@ window.bar.right .taskbar-capsule {
 /* bar.taskbar.show_title: icon + ellipsized title on a pill that lights up
  * in mHover while hovered or focused */
 .taskbar-item.with-title {
-  border-radius: 16px;
+  border-radius: 999px;
   padding: 0 9px;
-  min-height: 25px;
+  min-height: var(--taskbar-height);
   transition: background 150ms ease-in-out;
 }
 
@@ -258,7 +295,7 @@ window.bar.right .taskbar-capsule {
 }
 
 .taskbar-title {
-  font-size: 12px;
+  font-size: var(--taskbar-font);
   color: @mOnSurface; /* mOnSurface */
 }
 

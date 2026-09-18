@@ -391,6 +391,7 @@ void LauncherWindow::add_settings_results(const std::string& query) {
     };
     static constexpr Entry kIndex[] = {
         {"Bar position", "Bar", ""},
+        {"Bar density", "Bar", ""},
         {"Bar visibility", "Bar", ""},
         {"Bar background opacity", "Bar", ""},
         {"Bar modules", "Bar", ""},

@@ -8,10 +8,13 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace hyprshell {
 
 namespace {
+
+constexpr int kIconSize = 16; // compact density; scaled with bar.density
 
 // Desktop entry for a Hyprland window class: "<class>.desktop" (also
 // lowercased), else the app index's StartupWMClass / fuzzy lookup — the one
@@ -47,7 +50,7 @@ ActiveWindow::ActiveWindow() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 6) {
     add_css_class("module");
     add_css_class("active-window");
 
-    icon_.set_pixel_size(16);
+    icon_.set_pixel_size(kIconSize);
     label_.set_ellipsize(Pango::EllipsizeMode::END);
     label_.set_max_width_chars(70);
     vertical_label_.set_draw_func(sigc::mem_fun(*this, &ActiveWindow::on_vertical_draw));
@@ -106,6 +109,8 @@ void ActiveWindow::update() {
         add_css_class("clickable");
     else
         remove_css_class("clickable");
+    // bar.density scales the icon with the title's font size (--text-size)
+    icon_.set_pixel_size(static_cast<int>(std::lround(kIconSize * cfg.bar_density_scale())));
 
     // text: window title, application name, or the no-window placeholder
     Glib::ustring text;

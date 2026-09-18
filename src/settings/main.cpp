@@ -142,6 +142,7 @@ const char* format_token_css_class(const char* category) {
 constexpr const char* kSectionKeys[] = {"left", "center", "right"};
 constexpr const char* kSectionTitles[] = {"Left section", "Center section", "Right section"};
 constexpr const char* kPositions[] = {"top", "bottom", "left", "right"};
+constexpr const char* kDensities[] = {"compact", "comfortable"};
 constexpr const char* kVisibilityKeys[] = {"visible", "hidden", "auto_hide"};
 constexpr const char* kAwHideKeys[] = {"visible", "hidden", "transparent"};
 constexpr const char* kTbHideKeys[] = {"visible", "hidden", "transparent"};
@@ -253,6 +254,7 @@ struct Settings {
     bool loading = false;       // widgets being populated — suppress writes
 
     AdwComboRow* position = nullptr;
+    AdwComboRow* density = nullptr; // Compact / Comfortable
     AdwComboRow* visibility = nullptr; // Always show / Always hide / Auto hide
     AdwSwitchRow* show_ws_switch = nullptr; // auto-hide: peek on workspace switch
     AdwSwitchRow* show_ws_empty = nullptr;  // auto-hide: stay while workspace empty
@@ -544,6 +546,7 @@ void populate(Settings* s, PopulateStage stage) {
     // made the shell reload it, on every launch).
     s->loading = true;
     std::string position = "top";
+    std::string density = "compact";
     std::string visibility = "visible";
     bool ws_switch = true, ws_empty = false;
     double opacity = 0.88;
@@ -554,6 +557,7 @@ void populate(Settings* s, PopulateStage stage) {
     try {
         const json bar = s->root.value("bar", json::object());
         position = bar.value("position", position);
+        density = bar.value("density", density);
         visibility = bar.value("visibility", visibility);
         ws_switch = bar.value("show_on_workspace_switch", ws_switch);
         ws_empty = bar.value("show_when_workspace_empty", ws_empty);
@@ -857,6 +861,9 @@ void populate(Settings* s, PopulateStage stage) {
             position_index = i;
     if (bar) {
     adw_combo_row_set_selected(s->position, position_index);
+    for (guint i = 0; i < 2; ++i)
+        if (density == kDensities[i])
+            adw_combo_row_set_selected(s->density, i);
     for (guint i = 0; i < 3; ++i)
         if (visibility == kVisibilityKeys[i])
             adw_combo_row_set_selected(s->visibility, i);
@@ -3164,6 +3171,15 @@ void on_position_changed(GObject*, GParamSpec*, gpointer data) {
     save(s);
 }
 
+void on_density_changed(GObject*, GParamSpec*, gpointer data) {
+    auto* s = static_cast<Settings*>(data);
+    if (s->loading)
+        return;
+    const auto selected = adw_combo_row_get_selected(s->density);
+    bar_object(s)["density"] = kDensities[selected < 2 ? selected : 0];
+    save(s);
+}
+
 void on_module_toggled(GObject* row, GParamSpec*, gpointer data) {
     auto* s = static_cast<Settings*>(data);
     if (s->loading)
@@ -4458,6 +4474,18 @@ void on_activate(GtkApplication* app, gpointer) {
     s->position = ADW_COMBO_ROW(pos_row);
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(bar_group), pos_row);
 
+    GtkWidget* density_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(density_row), "Density");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(density_row),
+                                "How much room the bar takes: module spacing, "
+                                "icon and text sizes grow together.");
+    const char* densities[] = {"Compact", "Comfortable", nullptr};
+    GtkStringList* density_model = gtk_string_list_new(densities);
+    adw_combo_row_set_model(ADW_COMBO_ROW(density_row), G_LIST_MODEL(density_model));
+    g_object_unref(density_model);
+    s->density = ADW_COMBO_ROW(density_row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(bar_group), density_row);
+
     GtkWidget* vis_row = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(vis_row), "Visibility");
     adw_action_row_set_subtitle(ADW_ACTION_ROW(vis_row),
@@ -5229,6 +5257,7 @@ void on_activate(GtkApplication* app, gpointer) {
 
     populate(s, PopulateStage::Bar);
     g_signal_connect(pos_row, "notify::selected", G_CALLBACK(on_position_changed), s);
+    g_signal_connect(density_row, "notify::selected", G_CALLBACK(on_density_changed), s);
     g_signal_connect(vis_row, "notify::selected", G_CALLBACK(on_visibility_changed), s);
     g_signal_connect(ws_switch_row, "notify::active",
                      G_CALLBACK(on_show_ws_switch_toggled), s);

@@ -7,7 +7,7 @@
 - [x] text left or right dropdown only if shown ( up or down for vertical bar)
 - [x] on hover show tooltip (for cpu all cores percentage, for ram 4GB/ 16GB, for disk 20GB/100GB etc)
 
-- bar density 
+- [x] bar density 
  compact (current one)
  comfortable
  spacy 

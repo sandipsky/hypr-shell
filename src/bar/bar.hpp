@@ -32,6 +32,7 @@ public:
 
 private:
     void apply_config();
+    void refresh_thickness(); // shrink the surface after a thinner density
     Gtk::Widget* module_widget(const std::string& name);
 
     // auto-hide (Noctalia's displayMode = auto_hide semantics)
@@ -71,6 +72,7 @@ private:
     Gtk::Box trigger_fill_;
     bool hovered_ = false;
     bool hidden_ = false;
+    bool last_vertical_ = false; // orientation at the previous apply_config()
     bool workspace_empty_ = false;
     unsigned ws_serial_ = 0;
     double hide_progress_ = 0.0; // 0 = shown … 1 = slid off-screen
