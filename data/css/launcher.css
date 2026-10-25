@@ -1,0 +1,155 @@
+/* app launcher — Noctalia's overlay launcher (list view) in the shared
+ * theme: fullscreen dimmed backdrop, centered panel with search input,
+ * result list and count footer */
+
+/* dimmer backdrop (Noctalia: mSurface at dimmerOpacity 0.2) */
+window.launcher {
+  background: alpha(@mSurface, 0.2);
+}
+
+/* panel: mSurface at panelBackgroundOpacity, radius L, popover shadow */
+.launcher-panel {
+  background: alpha(@mSurface, 0.93);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 13px;
+}
+
+/* search input, Noctalia's NTextInput: mSurface field, mOutline border
+ * (mSecondary while focused), radius iRadiusM */
+/* Noctalia's NTextInput: 36px tall (baseWidgetSize 33 x 1.1), iRadiusM 16,
+ * fontSizeM 11pt — GTK puts the 1px border outside min-height + padding */
+entry.launcher-search {
+  background: @mSurface;
+  color: @mOnSurface; /* mOnSurface */
+  border: 1px solid @mOutline; /* mOutline */
+  border-radius: 16px;
+  min-height: 22px;
+  padding: 6px 12px;
+  font-size: 14pt;
+  caret-color: @mPrimary; /* mPrimary */
+  box-shadow: none;
+}
+
+entry.launcher-search:focus-within {
+  border-color: @mSecondary; /* mSecondary — not GTK's blue focus ring */
+  outline: none;
+}
+
+entry.launcher-search selection {
+  background: @mPrimary;
+  color: @mOnPrimary;
+}
+
+/* result rows: mSurfaceVariant cards, mHover when selected (60px entries,
+ * Noctalia's default density) */
+.launcher-row {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 3px 12px;
+  min-height: 54px;
+}
+
+.launcher-row.selected {
+  background: @mHover; /* grey hover / selection shade */
+}
+
+.launcher-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+.launcher-desc {
+  font-size: 14px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+
+/* tabler glyph in place of an app icon (calculator/settings/session/web) */
+.launcher-glyph {
+  font-family: "noctalia-tabler-icons";
+  font-size: 26px;
+  color: @mOnSurface;
+}
+
+/* list scrollbar: thin themed thumb */
+.launcher-panel scrollbar {
+  background: transparent;
+  border: none;
+}
+
+.launcher-panel scrollbar trough {
+  background: transparent;
+}
+
+.launcher-panel scrollbar slider {
+  background: alpha(@mOnSurface, 0.22); /* mOnSurface */
+  border-radius: 999px;
+  min-width: 3px;
+  margin: 1px;
+}
+
+.launcher-panel scrollbar slider:hover,
+.launcher-panel scrollbar slider:active {
+  background: alpha(@mOnSurface, 0.4);
+}
+
+/* footer: divider + result count */
+separator.launcher-divider {
+  background: alpha(@mOnSurface, 0.12);
+  min-height: 1px;
+}
+
+.launcher-count {
+  font-size: 14px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+/* clipboard history window — the launcher's design (same classes on the
+ * backdrop, panel, search, rows) plus its own bits */
+/* smaller search text than the launcher's 14pt (user request; the launcher
+ * input is untouched — this only matches inside the clipboard panel) */
+.clipboard-panel entry.launcher-search {
+  font-size: 12pt;
+}
+
+picture.clipboard-thumb {
+  border-radius: 8px;
+}
+
+button.clipboard-delete {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 999px;
+  color: @mOnSurfaceVariant;
+}
+
+button.clipboard-delete .launcher-glyph {
+  font-size: 17px;
+  color: inherit;
+}
+
+button.clipboard-delete:hover {
+  background: alpha(@mOnSurface, 0.1);
+  color: @mError; /* mError */
+}
+
+button.clipboard-clear {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: @mOnSurfaceVariant;
+}
+
+button.clipboard-clear:hover {
+  background: alpha(@mOnSurface, 0.1);
+  color: @mError;
+}

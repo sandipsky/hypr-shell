@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- default profile picture when ~/.face is missing: a generic silhouette on
+     the theme's surface-variant colour (mSurfaceVariant / mOnSurfaceVariant) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <circle cx="128" cy="128" r="128" fill="#201f23"/>
+  <circle cx="128" cy="100" r="44" fill="#c7c5d0"/>
+  <path d="M40 232c8-52 46-80 88-80s80 28 88 80a128 128 0 0 1-176 0z" fill="#c7c5d0"/>
+</svg>

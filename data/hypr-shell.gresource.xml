@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/dev/hyprshell/Shell">
+    <file>style.css</file>
+    <file>avatar-fallback.svg</file>
+    <file>css/bar.css</file>
+    <file>css/calendar.css</file>
+    <file>css/panels.css</file>
+    <file>css/notifications.css</file>
+    <file>css/launcher.css</file>
+    <file>css/app_menu.css</file>
+    <file>css/session.css</file>
+    <file>css/idle.css</file>
+    <file>css/lock.css</file>
+    <file>css/osd.css</file>
+    <file>css/wallpaper.css</file>
+    <file>css/control_center.css</file>
+    <file>css/desktop_menu.css</file>
+    <file>keybinds-introspect.lua</file>
+  </gresource>
+</gresources>

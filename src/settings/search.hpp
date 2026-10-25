@@ -1,0 +1,41 @@
+// GNOME-Settings-style search for hypr-shell-settings: a search toggle at the
+// start of the sidebar header, a GtkSearchBar under it, and a results list
+// that replaces the page list while a query is typed. The index is not a
+// hand-written table — every AdwPreferencesRow reachable from the content
+// stack is found by walking the widget tree at query time, so new rows are
+// searchable the moment they exist. Activating a result selects the sidebar
+// page, pushes the module subpage when the row lives in one, scrolls the row
+// into view and flashes it (`.search-hit`).
+#pragma once
+
+#include "services/settings_pages.hpp"
+
+#include <adwaita.h>
+
+namespace hyprshell::settings {
+
+// One sidebar entry — the shared table lives in services/settings_pages.hpp
+// (the shell's desktop menu lists the same pages).
+using SidebarPage = hyprshell::SettingsPage;
+
+// 16px icon widget for a sidebar row or search result.
+GtkWidget* make_page_icon(const SidebarPage& page);
+
+struct SearchTargets {
+    GtkWindow* window;        // key capture + Ctrl+F action
+    GtkWidget* sidebar_header; // AdwHeaderBar the toggle goes into
+    GtkWidget* sidebar_view;   // AdwToolbarView whose content becomes pages/results
+    GtkWidget* sidebar_list;   // GtkListBox of the pages (already built)
+    GtkWidget* stack;          // content GtkStack
+    GtkWidget* nav;            // the Bar page's AdwNavigationView (stack child "bar")
+    const SidebarPage* pages;
+    int page_count;
+    // Called before a query walks the stack and before a hit is activated:
+    // the pages are built lazily, so this makes sure they all exist.
+    void (*prepare)(gpointer data) = nullptr;
+    gpointer prepare_data = nullptr;
+};
+
+void install_search(const SearchTargets& targets);
+
+} // namespace hyprshell::settings

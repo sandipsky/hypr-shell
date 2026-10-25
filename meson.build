@@ -1,0 +1,223 @@
+project(
+  'hypr-shell',
+  ['c', 'cpp'],
+  version: '0.1.0',
+  meson_version: '>= 0.62.0',
+  default_options: [
+    'warning_level=2',
+    'cpp_std=c++20',
+    'buildtype=debugoptimized',
+    'b_lto=true',
+    'b_ndebug=if-release',
+    'strip=true',
+  ],
+)
+
+gnome = import('gnome')
+
+# C is only used for the generated GResource file; keep its warnings quiet
+add_project_arguments('-w', language: 'c')
+
+dependencies = [
+  dependency('gtkmm-4.0'),
+  dependency('gtk4-layer-shell-0'),
+  dependency('nlohmann_json'),
+  dependency('libpulse'),
+  dependency('libpulse-mainloop-glib'),
+  dependency('wayland-client'),
+  dependency('pam'), # lock screen authentication (Linux-PAM)
+]
+
+# ext-idle-notify-v1 client glue for the idle service, generated at build time
+# from the wayland-protocols XML (same approach as gtk4-layer-shell / Waybar).
+wayland_protocols = dependency('wayland-protocols')
+wayland_scanner = find_program('wayland-scanner')
+idle_notify_xml = (wayland_protocols.get_variable('pkgdatadir') / 'staging' / 'ext-idle-notify'
+                   / 'ext-idle-notify-v1.xml')
+idle_notify_glue = [
+  custom_target(
+    'ext-idle-notify-v1-protocol.c',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'ext-idle-notify-v1-client-protocol.h',
+    input: idle_notify_xml,
+    output: 'ext-idle-notify-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
+]
+
+# idle-inhibit-unstable-v1: the idle service holds an inhibitor while a game
+# controller is in use (input the compositor does not see).
+idle_inhibit_xml = (wayland_protocols.get_variable('pkgdatadir') / 'unstable' / 'idle-inhibit'
+                    / 'idle-inhibit-unstable-v1.xml')
+idle_inhibit_glue = [
+  custom_target(
+    'idle-inhibit-unstable-v1-protocol.c',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'idle-inhibit-unstable-v1-client-protocol.h',
+    input: idle_inhibit_xml,
+    output: 'idle-inhibit-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
+]
+
+sources = files(
+  'src/main.cpp',
+  'src/bar/bar.cpp',
+  'src/bar/app_menu_panel.cpp',
+  'src/bar/avatar.cpp',
+  'src/bar/audio_panel.cpp',
+  'src/bar/battery_panel.cpp',
+  'src/bar/bluetooth_panel.cpp',
+  'src/bar/busy_indicator.cpp',
+  'src/bar/network_panel.cpp',
+  'src/bar/notification_panel.cpp',
+  'src/bar/notification_popup.cpp',
+  'src/bar/notification_ui.cpp',
+  'src/bar/osd_window.cpp',
+  'src/bar/session_menu.cpp',
+  'src/bar/session_window.cpp',
+  'src/bar/control_center_panel.cpp',
+  'src/bar/wallpaper_window.cpp',
+  'src/bar/calendar.cpp',
+  'src/bar/idle_fade.cpp',
+  'src/bar/icon_cache.cpp',
+  'src/bar/launcher_window.cpp',
+  'src/bar/clipboard_window.cpp',
+  'src/bar/desktop_menu.cpp',
+  'src/bar/keybindings_window.cpp',
+  'src/bar/lock_background.cpp',
+  'src/bar/lock_screen.cpp',
+  'src/bar/lock_surface.cpp',
+  'src/services/apps.cpp',
+  'src/services/battery_alerts.cpp',
+  'src/services/bluez.cpp',
+  'src/services/brightness.cpp',
+  'src/services/clipboard.cpp',
+  'src/services/config.cpp',
+  'src/services/theme.cpp',
+  'src/bar/modules/active_window.cpp',
+  'src/bar/modules/app_menu.cpp',
+  'src/bar/modules/battery.cpp',
+  'src/bar/modules/bluetooth.cpp',
+  'src/bar/modules/clipboard.cpp',
+  'src/bar/modules/clock.cpp',
+  'src/bar/modules/launcher.cpp',
+  'src/bar/modules/network.cpp',
+  'src/bar/modules/notifications.cpp',
+  'src/bar/modules/session.cpp',
+  'src/bar/modules/system_stat.cpp',
+  'src/bar/modules/taskbar.cpp',
+  'src/bar/modules/volume.cpp',
+  'src/bar/modules/control_center.cpp',
+  'src/bar/modules/workspaces.cpp',
+  'src/services/hyprland.cpp',
+  'src/services/gamepad.cpp',
+  'src/services/idle.cpp',
+  'src/services/keybinds.cpp',
+  'src/services/lock_keys.cpp',
+  'src/services/math_eval.cpp',
+  'src/services/mpris.cpp',
+  'src/services/system_stats.cpp',
+  'src/services/network_manager.cpp',
+  'src/services/night_light.cpp',
+  'src/services/notifications.cpp',
+  'src/services/osd.cpp',
+  'src/services/pam_auth.cpp',
+  'src/services/power_profiles.cpp',
+  'src/services/pulse.cpp',
+  'src/services/session.cpp',
+  'src/services/upower.cpp',
+  'src/services/wallpaper.cpp',
+)
+
+# Icon fonts. Tabler (wifi/volume glyphs) is MIT; SegoeIcons.ttf (battery
+# glyphs) is Microsoft-proprietary — personal use only, see SegoeIcons-NOTICE.txt.
+# Default notification sound (from Noctalia, MIT).
+install_data(
+  'data/sounds/notification-generic.wav',
+  install_dir: get_option('datadir') / 'hypr-shell' / 'sounds',
+)
+
+# Settings app icon: GNOME Settings' icon, renamed (GPL-2.0-or-later, see
+# data/icons/NOTICE.txt). GTK finds files under ~/.local/share/icons/hicolor
+# without an icon cache.
+install_data(
+  'data/icons/dev.hyprshell.Settings.svg',
+  install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
+)
+install_data(
+  'data/icons/dev.hyprshell.Settings-symbolic.svg',
+  install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'symbolic' / 'apps',
+)
+install_data(
+  'data/fonts/noctalia-tabler-icons.ttf',
+  'data/fonts/tabler-icons-license.txt',
+  'data/fonts/SegoeIcons.ttf',
+  'data/fonts/SegoeIcons-NOTICE.txt',
+  install_dir: get_option('datadir') / 'fonts' / 'hypr-shell',
+)
+
+resources = gnome.compile_resources(
+  'hypr-shell-resources',
+  'data/hypr-shell.gresource.xml',
+  source_dir: 'data',
+)
+
+executable(
+  'hypr-shell',
+  sources,
+  resources,
+  idle_notify_glue,
+  idle_inhibit_glue,
+  dependencies: dependencies,
+  include_directories: include_directories('src'),
+  install: true,
+)
+
+# Settings app: plain C++ over the libadwaita C API (no gtkmm — see CLAUDE.md).
+# Talks to the shell only through config.json, which the shell hot-reloads.
+executable(
+  'hypr-shell-settings',
+  files(
+    'src/settings/main.cpp',
+    'src/settings/about_page.cpp',
+    'src/settings/hotspot_page.cpp',
+    'src/settings/login_page.cpp',
+    'src/settings/users_page.cpp',
+    'src/settings/vpn_page.cpp',
+    'src/settings/command.cpp',
+    'src/settings/search.cpp',
+    'src/settings/system_font.cpp',
+    'src/settings/system_cursor.cpp',
+    'src/settings/system_icons.cpp',
+  ),
+  cpp_args: ['-DHS_VERSION="' + meson.project_version() + '"'],
+  dependencies: [
+    dependency('libadwaita-1', version: '>= 1.6'), # AdwButtonRow / AdwSpinner (Users page)
+    dependency('nlohmann_json'),
+    dependency('libxcrypt'), # crypt_r for AccountsService's SetPassword (Users page)
+  ],
+  include_directories: include_directories('src'),
+  install: true,
+)
+
+# Launchers resolve Exec against the session PATH, which does not include
+# ~/.local/bin — bake the absolute bindir into the desktop entry.
+desktop_conf = configuration_data()
+desktop_conf.set('bindir', get_option('prefix') / get_option('bindir'))
+install_data(
+  configure_file(
+    input: 'data/hypr-shell-settings.desktop.in',
+    output: 'hypr-shell-settings.desktop',
+    configuration: desktop_conf,
+  ),
+  install_dir: get_option('datadir') / 'applications',
+)

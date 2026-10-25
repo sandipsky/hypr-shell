@@ -1,0 +1,41 @@
+#include "bar/modules/clipboard.hpp"
+
+#include "services/clipboard.hpp"
+#include "services/config.hpp"
+
+#include <giomm.h>
+
+namespace hyprshell {
+
+namespace {
+
+constexpr const char* kClipboard = "\uEA6F"; // tabler clipboard glyph
+
+} // namespace
+
+ClipboardModule::ClipboardModule() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
+    add_css_class("module");
+    add_css_class("clipboard");
+    icon_.set_text(kClipboard);
+    icon_.add_css_class("icon");
+    append(icon_);
+    set_tooltip_text("Clipboard history");
+
+    auto click = Gtk::GestureClick::create();
+    click->signal_released().connect([this](int, double, double) { open(); });
+    add_controller(click);
+
+    Config::get().signal_changed().connect(sigc::mem_fun(*this, &ClipboardModule::update));
+    update();
+}
+
+void ClipboardModule::open() {
+    if (auto app = Gio::Application::get_default())
+        app->activate_action("clipboard");
+}
+
+void ClipboardModule::update() {
+    set_visible(Clipboard::get().enabled());
+}
+
+} // namespace hyprshell

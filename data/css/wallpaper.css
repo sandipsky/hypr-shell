@@ -1,0 +1,5 @@
+/* desktop wallpaper: one background-layer window per monitor; the image is
+ * drawn by WallpaperView, black shows behind fit/center letterboxing */
+window.wallpaper {
+    background-color: black;
+}

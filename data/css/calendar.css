@@ -1,0 +1,127 @@
+/* calendar popover — 1:1 port of the Noctalia calendar panel; colors are the
+ * user's noctalia colors.json (mPrimary @mPrimary, mOnPrimary @mOnPrimary, ...) */
+popover.calendar-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 9px;
+}
+
+.cal-header {
+  background: @mPrimary; /* mPrimary */
+  border-radius: 20px;
+  padding: 9px 18px;
+  min-height: 60px;
+}
+
+.cal-day-big {
+  font-size: 42px;
+  font-weight: 700;
+  color: @mOnPrimary; /* mOnPrimary */
+}
+
+.cal-month {
+  font-size: 22px;
+  font-weight: 700;
+  color: @mOnPrimary;
+}
+
+.cal-year {
+  font-size: 16px;
+  font-weight: 700;
+  color: alpha(@mOnPrimary, 0.7);
+}
+
+.cal-time {
+  font-size: 14px;
+  font-weight: 700;
+  color: @mOnPrimary;
+}
+
+.cal-body {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 9px;
+}
+
+.cal-nav-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+separator.cal-divider {
+  background: @mOutline; /* mOutline */
+  min-height: 1px;
+}
+
+button.cal-icon-btn {
+  font-family: "noctalia-tabler-icons";
+  font-size: 16px;
+  color: @mOnSurface;
+  background: alpha(@mOnSurface, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.cal-icon-btn:hover {
+  background: alpha(@mOnSurface, 0.16);
+}
+
+/* AD / BS switch in the nav row: two grouped toggles drawn as one pill */
+.cal-system {
+  background: alpha(@mOnSurface, 0.08);
+  border-radius: 999px;
+  padding: 3px;
+  margin-right: 4px;
+}
+
+button.cal-system-btn {
+  font-size: 12px;
+  font-weight: 700;
+  color: alpha(@mOnSurface, 0.7);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 26px;
+  min-height: 24px;
+  padding: 0 4px;
+}
+
+button.cal-system-btn:hover {
+  color: @mOnSurface;
+}
+
+button.cal-system-btn:checked {
+  background: @mPrimary;
+  color: @mOnPrimary;
+}
+
+.cal-weekday {
+  font-size: 14px;
+  font-weight: 700;
+  color: @mPrimary; /* mPrimary */
+}
+
+.cal-day {
+  font-size: 16px;
+  font-weight: 500;
+  color: @mOnSurface; /* mOnSurface */
+  border-radius: 16px;
+}
+
+.cal-day.dim {
+  color: alpha(@mOnSurfaceVariant, 0.4); /* mOnSurfaceVariant, faded like Noctalia */
+}
+
+.cal-day.today {
+  background: @mPrimary; /* accent, with its contrast text (user request) */
+  color: @mOnPrimary;
+  font-weight: 700;
+}

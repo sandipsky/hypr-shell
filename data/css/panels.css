@@ -1,0 +1,365 @@
+/* click panels (battery bp-*, audio ap-*, network np-*, bluetooth bt-*):
+ * shared design language — bp-* and np-* primitives are reused across
+ * panels, plus the NToggle switch port and pill buttons */
+/* Type scale shared by the click panels, the notification panel and the
+ * session dropdown (user request, 2026-09-05: slightly larger + cohesive):
+ * panel title 18px bold · section / card heading 16px bold · body 16px ·
+ * secondary 15px · caption 14px · pill buttons 15px bold · row icons 18px
+ * (raised one more px the same day at the user's request) */
+
+/* battery panel — power profile / brightness / refresh rate cards, same
+ * design language (and Noctalia color snapshot) as the calendar popover */
+popover.battery-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 9px;
+}
+
+.bp-card {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.bp-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+.bp-value {
+  font-size: 15px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+.bp-percent {
+  font-size: 15px;
+  font-weight: 700;
+  color: @mOnSurface;
+}
+
+.bp-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 18px;
+  color: @mOnSurface;
+}
+
+.bp-profile-icon {
+  font-size: 16px;
+  color: @mOnSurfaceVariant;
+}
+
+.bp-profile-icon.active {
+  color: @mPrimary; /* mPrimary */
+}
+
+/* sliders: rounded mPrimary track like Noctalia's NSlider */
+scale.bp-slider {
+  padding: 6px 0;
+}
+
+scale.bp-slider trough {
+  background: @mSurface; /* mSurface */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px;
+}
+
+scale.bp-slider highlight {
+  background: @mPrimary; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 10px; /* GTK warns about -2 min sizes without these */
+  min-width: 10px;
+}
+
+scale.bp-slider slider {
+  background: @mOnSurface;
+  border: none;
+  box-shadow: 0 1px 3px alpha(@mShadow, 0.4);
+  border-radius: 999px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: -4px;
+}
+
+/* battery charge level */
+progressbar.bp-level trough {
+  background: @mSurface;
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+}
+
+progressbar.bp-level progress {
+  background: @mPrimary; /* mPrimary */
+  border: none;
+  border-radius: 999px;
+  min-height: 8px;
+  min-width: 8px; /* GTK warns about a -2 min width without this */
+}
+
+/* audio panel — output/input cards, shares the bp-* styles above */
+popover.audio-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 9px;
+}
+
+.ap-kind {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnSurface; /* neutral, not the accent (user request; Noctalia uses mPrimary) */
+}
+
+button.ap-mute-btn {
+  background: alpha(@mOnSurface, 0.08);
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+button.ap-mute-btn:hover {
+  background: alpha(@mOnSurface, 0.16);
+}
+
+/* network panel — Wi-Fi selector, Noctalia layout in the shared theme */
+popover.network-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 12px;
+}
+
+.np-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+.np-section {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnSurface;
+  margin-top: 3px;
+}
+
+.np-connected {
+  background: @mPrimary; /* mPrimary */
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.np-connected-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 19px;
+  color: @mOnPrimary; /* mOnPrimary */
+}
+
+.np-connected-ssid {
+  font-size: 16px;
+  font-weight: 700;
+  color: @mOnPrimary;
+}
+
+.np-connected-sub {
+  font-size: 14px;
+  color: alpha(@mOnPrimary, 0.7);
+}
+
+button.np-disconnect {
+  font-size: 15px;
+  font-weight: 700;
+  color: @mOnSurface;
+  background: @mSurface; /* mSurface: dark pill on the primary card */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.np-disconnect:hover {
+  background: @mSurfaceVariant;
+}
+
+.np-net-row {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 8px 12px;
+}
+
+.np-ssid {
+  font-size: 16px;
+  color: @mOnSurface;
+}
+
+.np-security {
+  font-size: 14px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant; leading lock is a tabler glyph */
+  font-family: "noctalia-tabler-icons", "Fira Sans";
+}
+
+button.np-connect {
+  font-size: 15px;
+  font-weight: 700;
+  color: @mOnPrimary; /* mOnPrimary */
+  background: @mPrimary; /* mPrimary */
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 14px;
+}
+
+button.np-connect:hover {
+  background: @mPrimaryHover;
+}
+
+/* header refresh button (wifi + bluetooth): transparent round button whose
+ * tabler glyph swaps for the spinner (BusyIndicator, drawn in `color`) while
+ * a scan / discovery runs */
+button.np-refresh {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 999px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  color: @mOnSurface;
+}
+
+button.np-refresh:hover {
+  background: alpha(@mOnSurface, 0.08);
+}
+
+button.np-refresh:disabled {
+  color: @mOnSurfaceVariant;
+}
+
+.np-refresh-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 17px;
+}
+
+.np-spinner {
+  color: @mOnSurface;
+}
+
+.np-spinner-on-primary {
+  color: @mOnPrimary; /* spinner on the mPrimary connected card */
+  margin: 0 14px; /* roughly the Disconnect pill's footprint */
+}
+
+/* radio off: centered wifi-off glyph + explanation, like Noctalia */
+.np-disabled {
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 16px;
+  padding: 24px 12px;
+}
+
+.np-disabled-icon {
+  font-family: "noctalia-tabler-icons";
+  font-size: 42px;
+  color: @mOnSurface;
+}
+
+.np-disabled-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: @mOnSurface;
+}
+
+/* bluetooth panel — Noctalia's bluetooth panel in the shared theme; the
+ * lists reuse the np-* row/card styles above */
+popover.bluetooth-popover > contents {
+  background: @mSurface; /* mSurface */
+  border-radius: 20px;
+  border: none;
+  box-shadow: 0 4px 16px alpha(@mShadow, 0.45);
+  padding: 12px;
+}
+
+.bt-sub {
+  font-size: 14px;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+/* radio toggles: 1:1 Noctalia NToggle (bluetooth-panel size, base 33*0.65):
+ * 36x22 outlined pill, primary track when on, solid 14px knob 3px in from
+ * the track (primary knob while off, on-primary knob while on) */
+.bluetooth-panel switch,
+.network-panel switch {
+  background: @mSurface; /* mSurface while off */
+  border: 1px solid @mOutline; /* mOutline */
+  box-shadow: none;
+  min-width: 34px; /* + border = 36x22, Noctalia's rounded sizes */
+  min-height: 20px;
+  border-radius: 999px;
+}
+
+.bluetooth-panel switch:checked,
+.network-panel switch:checked {
+  background: @mPrimary; /* mPrimary */
+}
+
+.bluetooth-panel switch slider,
+.network-panel switch slider {
+  background: @mPrimary; /* mPrimary while off */
+  border: none;
+  /* Solid 14px knob with a 3px gap to the track (Noctalia's 20-in-26
+   * proportion). NToggle draws a 2px mSurface ring around an 18px knob
+   * instead; the user wants the ring in the knob's own colour (2026-09-05),
+   * which is the same picture as no ring plus a wider margin. */
+  box-shadow: none;
+  min-width: 14px;
+  min-height: 14px;
+  margin: 3px;
+  border-radius: 999px;
+}
+
+.bluetooth-panel switch:checked slider,
+.network-panel switch:checked slider {
+  background: @mOnPrimary; /* mOnPrimary */
+}
+
+.network-panel entry {
+  background: @mSurface;
+  color: @mOnSurface;
+  border: 1px solid @mOutline; /* mOutline */
+  border-radius: 12px;
+  padding: 6px 9px;
+  caret-color: @mPrimary;
+}
+
+/* refresh-rate buttons: filled when active, outlined otherwise */
+button.bp-rate-btn {
+  font-size: 15px;
+  font-weight: 700;
+  color: @mOnSurface;
+  background: transparent;
+  border: 1px solid @mOutline; /* mOutline */
+  box-shadow: none;
+  border-radius: 999px;
+  min-height: 28px;
+  padding: 0 12px;
+}
+
+button.bp-rate-btn:hover {
+  background: alpha(@mOnSurface, 0.08);
+}
+
+button.bp-rate-btn.active {
+  background: @mPrimary; /* mPrimary */
+  border-color: @mPrimary;
+  color: @mOnPrimary; /* mOnPrimary */
+}

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Settings
+Comment=Configure the hypr-shell desktop shell
+Exec=@bindir@/hypr-shell-settings
+# GNOME Settings' icon, bundled as data/icons/dev.hyprshell.Settings.svg and
+# installed into <datadir>/icons/hicolor (see data/icons/NOTICE.txt)
+Icon=dev.hyprshell.Settings
+Terminal=false
+Categories=Settings;DesktopSettings;
+StartupWMClass=dev.hyprshell.Settings

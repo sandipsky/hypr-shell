@@ -1,0 +1,288 @@
+/* lock screen — Noctalia's LockScreen (LockScreenBackground + LockScreenPanel)
+ * on ext-session-lock. Colors are the user's noctalia colors.json snapshot
+ * (mPrimary @mPrimary, mOnPrimary @mOnPrimary, mTertiary @mTertiary, mOnTertiary
+ * @mOnTertiary, mError @mError, mOnError @mOnError, mSurface @mSurface, mOnSurface
+ * @mOnSurface, mOnSurfaceVariant @mOnSurfaceVariant, mOutline @mOutline, mShadow @mShadow);
+ * Qt pointSize values are written in pt. */
+
+window.lock-surface {
+  background: @mShadow;
+}
+
+/* Noctalia's four-stop shadow gradient over the wallpaper */
+.lock-gradient {
+  background: linear-gradient(to bottom,
+    alpha(@mShadow, 0.4) 0%,
+    alpha(@mShadow, 0.2) 30%,
+    alpha(@mShadow, 0.25) 70%,
+    alpha(@mShadow, 0.5) 100%);
+}
+
+.lock-hidden-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  caret-color: transparent;
+  color: transparent;
+  min-height: 1px;
+  min-width: 1px;
+  padding: 0;
+}
+
+.lock-glyph {
+  font-family: "noctalia-tabler-icons";
+}
+
+/* -- cover stage: big clock + date ------------------------------------------ */
+.lock-time {
+  font-size: 72pt;
+  font-weight: 700;
+  color: @mOnSurface; /* mOnSurface */
+}
+
+.lock-date {
+  font-size: 18pt; /* fontSizeXXL */
+  font-weight: 500;
+  color: @mOnSurface;
+}
+
+/* -- login stage: avatar, name, password ------------------------------------- */
+.lock-avatar-ring {
+  border-radius: 65px;
+  border: 1px solid alpha(@mOnSurface, 0.25);
+}
+
+.lock-avatar {
+  border-radius: 62px;
+}
+
+.lock-avatar-fallback {
+  font-size: 56pt;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+  background: @mSurfaceVariant; /* mSurfaceVariant */
+  border-radius: 62px;
+}
+
+.lock-name {
+  font-size: 24pt; /* fontSizeXXXL */
+  font-weight: 600;
+  color: @mOnSurface;
+}
+
+.lock-password {
+  background: @mSurface; /* mSurface */
+  border-radius: 15px; /* min(iRadiusL, height/2) */
+  border: 1px solid alpha(@mOutline, 0.3); /* mOutline; no focus highlight, per user */
+}
+
+.lock-caret {
+  background: @mOnSurface; /* neutral, per user: no accent in the password field */
+  min-width: 2px;
+  min-height: 20px;
+  transition: opacity 530ms linear; /* lockScreenAnimations: smooth blink */
+}
+
+.lock-caret.off {
+  opacity: 0;
+}
+
+.lock-visual-host,
+.lock-visual-host > viewport {
+  background: transparent;
+  border: none;
+}
+
+.lock-dots {
+  font-size: 13pt; /* fontSizeL */
+  color: @mOnSurface;
+  letter-spacing: 1px; /* marginXXXS */
+}
+
+.lock-plain {
+  font-size: 11pt; /* fontSizeM */
+  color: @mOnSurface;
+}
+
+button.lock-eye,
+button.lock-power,
+button.lock-cancel {
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  box-shadow: none;
+  outline: none;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  transition: background 150ms ease-out;
+}
+
+button.lock-eye .lock-glyph {
+  font-size: 14pt;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+
+button.lock-eye:hover {
+  background: @mHover;
+}
+
+button.lock-eye:hover .lock-glyph {
+  color: @mOnHover;
+}
+
+/* -- pills 200px above the bottom edge ---------------------------------------- */
+.lock-pill {
+  border-radius: 20px; /* radiusL */
+  padding: 0 14px; /* marginXL * 1.5 total */
+  min-height: 50px;
+}
+
+.lock-pill .lock-pill-icon {
+  font-size: 16pt; /* fontSizeXL */
+}
+
+.lock-pill .lock-pill-text {
+  font-size: 13pt; /* fontSizeL */
+}
+
+.lock-pill .lock-pill-text.bold {
+  font-weight: 700;
+}
+
+.lock-pill.info {
+  background: @mTertiary; /* mTertiary */
+}
+
+.lock-pill.info .lock-glyph,
+.lock-pill.info .lock-pill-text {
+  color: @mOnTertiary; /* mOnTertiary */
+}
+
+.lock-pill.error {
+  background: @mError; /* mError */
+}
+
+.lock-pill.error .lock-glyph,
+.lock-pill.error .lock-pill-text {
+  color: @mOnError; /* mOnError */
+}
+
+.lock-pill.countdown {
+  background: @mSurface; /* mSurface */
+  padding: 0 9px; /* marginM */
+}
+
+.lock-pill.countdown .lock-pill-icon {
+  color: @mPrimary; /* mPrimary */
+}
+
+.lock-pill.countdown .lock-pill-text {
+  color: @mOnSurface;
+}
+
+button.lock-cancel {
+  background: alpha(@mPrimary, 0.1);
+}
+
+button.lock-cancel .lock-glyph {
+  font-size: 13pt;
+  color: @mPrimary;
+}
+
+button.lock-cancel:hover {
+  background: @mPrimary;
+}
+
+button.lock-cancel:hover .lock-glyph {
+  color: @mOnPrimary;
+}
+
+/* -- bottom right: battery + power button ------------------------------------- */
+.lock-battery .icon {
+  font-family: "Segoe Fluent Icons";
+  font-size: 16pt; /* fontSizeXL */
+  color: @mOnSurface; /* frameColor mOnSurface */
+}
+
+.lock-battery.charging .icon-fill {
+  color: #9fd89f;
+}
+
+.lock-battery.saver .icon-fill {
+  color: #eaa300;
+}
+
+.lock-battery-text {
+  font-size: 11pt;
+  font-weight: 500;
+  color: @mOnSurface;
+}
+
+button.lock-power {
+  background: alpha(@mSurface, 0.65);
+}
+
+button.lock-power .lock-glyph {
+  font-size: 14pt;
+  color: @mOnSurface;
+}
+
+button.lock-power:hover {
+  background: @mPrimary;
+}
+
+button.lock-power:hover .lock-glyph {
+  color: @mOnPrimary;
+}
+
+/* -- session menu above the power button -------------------------------------- */
+.lock-session-menu {
+  background: @mSurface; /* mSurface */
+  border-radius: 16px; /* radiusM */
+  border: 1px solid alpha(@mOutline, 0.3);
+  padding: 9px;
+}
+
+button.lock-session-item {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  border-radius: 12px; /* radiusS */
+  padding: 0 9px;
+  min-height: 36px;
+  transition: background 150ms ease-out;
+}
+
+.lock-session-glyph {
+  font-size: 13pt; /* fontSizeL */
+  color: @mOnSurface;
+}
+
+.lock-session-label {
+  font-size: 11pt; /* fontSizeM */
+  color: @mOnSurface;
+}
+
+button.lock-session-item:hover {
+  background: @mPrimary;
+}
+
+button.lock-session-item:hover .lock-session-glyph,
+button.lock-session-item:hover .lock-session-label {
+  color: @mOnPrimary;
+}
+
+button.lock-session-item.destructive .lock-session-glyph {
+  color: @mError; /* mError */
+}
+
+button.lock-session-item.destructive:hover {
+  background: @mError;
+}
+
+button.lock-session-item.destructive:hover .lock-session-glyph,
+button.lock-session-item.destructive:hover .lock-session-label {
+  color: @mOnError; /* mOnError */
+}

@@ -1,0 +1,12 @@
+dev.hyprshell.Settings.svg and dev.hyprshell.Settings-symbolic.svg are the
+GNOME Settings (gnome-control-center) application icons, renamed so the
+hypr-shell-settings desktop entry can use them:
+
+  /usr/share/icons/hicolor/scalable/apps/org.gnome.Settings.svg
+  /usr/share/icons/hicolor/symbolic/apps/org.gnome.Settings-symbolic.svg
+  (gnome-control-center 50.4, Arch Linux package)
+
+They are the work of the GNOME design team and are distributed under the
+GNU General Public License, version 2 or later, like gnome-control-center
+itself (https://gitlab.gnome.org/GNOME/gnome-control-center). They are
+bundled here for the user's own installation; keep this notice with them.

@@ -1,0 +1,4 @@
+SegoeIcons.ttf (Segoe Fluent Icons) is Microsoft-proprietary and carries no
+redistribution license. It is bundled here for personal use on this machine
+only (it already ships in the user's dotfiles). Strip it before publishing
+this repository or any built artifact.

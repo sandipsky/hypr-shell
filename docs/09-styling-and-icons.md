@@ -1,0 +1,182 @@
+# 09 — Styling and icons
+
+## The three CSS layers
+
+Styles come from three providers stacked by priority (higher wins):
+
+| Priority | Source | When it loads |
+|----------|--------|---------------|
+| `APPLICATION` | `data/style.css`, compiled into the binary as a GResource. It only `@import`s `data/css/bar.css`, `calendar.css`, `panels.css`, `notifications.css`, `launcher.css` (also bundled; list new files in `hypr-shell.gresource.xml`) | at startup |
+| `APPLICATION + 1` | One generated rule: `.bar-inner { background-color: alpha(#11111b, X); }` from `bar.background_opacity` | every config reload |
+| `USER` | `~/.config/hypr-shell/style.css` | at startup and on every save (FileMonitor) |
+
+Practical consequences:
+
+- To change the default look, edit the relevant file in `data/css/` and
+  rebuild (the files are embedded, so a rebuild is required). A new area
+  gets its own file: add it to `data/css/`, to the `@import` list in
+  `style.css`, and to `data/hypr-shell.gresource.xml`.
+- To experiment without rebuilding, put rules in
+  `~/.config/hypr-shell/style.css`. They apply within a second of saving,
+  and they beat everything else at equal specificity.
+- A bad user stylesheet logs `user css reload failed:` and is skipped; the
+  previous state stays.
+
+## GTK CSS in one minute
+
+GTK4 CSS looks like web CSS but the selectors are widget *node names*
+(`label`, `button`, `popover`, `scale`, `trough`) plus the classes you add
+with `add_css_class()`. Useful differences from the web:
+
+- `alpha(#rrggbb, 0.5)` makes a colour translucent. `rgba()` also works.
+- Sizes: use `min-width` / `min-height`, not `width`/`height`.
+- No `display`, no flexbox, no `position`. Layout is done by widgets.
+- Compound widgets have sub-nodes, e.g. `scale trough highlight slider`,
+  `progressbar trough progress`, `popover > contents`. The inspector
+  (`GTK_DEBUG=interactive`) shows the exact tree.
+- Rounded `scale`/`progressbar` parts need an explicit `min-width` and
+  `min-height` on the inner nodes or GTK warns about negative sizes.
+- Custom properties work (GTK >= 4.16): `bar.css` declares every shared
+  size as `--name: 18px` on `window.bar`, redefines them under
+  `window.bar.density-comfortable` (`bar.density`),
+  and the module rules read them with `var(--name)` (and `calc()`). Add a
+  new bar size there rather than as a literal in a module rule. They inherit,
+  so a rule on one section (`.bar-start { --module-pad: 4px; }` — how the
+  start section packs its modules tighter) retunes everything below it.
+
+## Class map
+
+Window and layout:
+
+| Selector | Meaning |
+|----------|---------|
+| `window.bar` | The bar window. Must stay `background: transparent`. |
+| `window.bar.bottom`, `.left`, `.right` | Added by `Bar::apply_config()` for non-top positions; the theme moves the hairline border and rotates paddings. |
+| `window.bar-trigger` | The 1px auto-hide hover strip. Painted `rgba(0,0,0,0.01)` on purpose; see [gotchas](12-gotchas.md). |
+| `.bar-inner` | The `Gtk::CenterBox` that has the visible background, border and padding (`--bar-pad` across the bar, `--bar-pad-along` at its two ends). |
+| `.bar-start`, `.bar-center`, `.bar-end` | The three section boxes — start is left on a horizontal bar, top on a vertical one. `.bar-start` redefines `--module-pad` / `--module-pad-across` so its modules sit closer. |
+| `.module` | Every module. Padding and base font. |
+
+Modules:
+
+| Selector | Notes |
+|----------|-------|
+| `.workspaces`, `.workspaces button`, `button.active`, `button.occupied` | Round pills. |
+| `.active-window` | Title text. |
+| `.icon` | Any icon label: sets the Tabler font. |
+| `.launcher`, `.network`, `.bluetooth`, `.volume`, `.battery` | Status/action icons. |
+| `.battery .icon`, `.battery.charging .icon-fill`, `.battery.saver .icon-fill` | Segoe font + green/amber fill tints. |
+| `.notifications .notif-badge` | Unread dot on the bell. |
+| `.clock` | Bold time. |
+
+Popovers (each has `popover.<name>-popover > contents` for the frame):
+
+| Prefix | Panel |
+|--------|-------|
+| `cal-*` | Calendar (`cal-header`, `cal-day-big`, `cal-month`, `cal-year`, `cal-time`, `cal-body`, `cal-weekday`, `cal-day`, `cal-day.today`, `cal-day.dim`, `button.cal-icon-btn`) |
+| *(panels)* | Shared type scale for the click panels, notification panel and session dropdown: title 18px bold, heading 16px bold, body 16px, secondary 15px, caption 14px, pill buttons 15px bold, row icons 18px (documented at the top of `panels.css`) |
+| `bp-*` | Battery panel, also the shared "card" look (`bp-card`, `bp-title`, `bp-value`, `bp-percent`, `bp-icon`, `scale.bp-slider`, `progressbar.bp-level`, `button.bp-rate-btn`) |
+| `ap-*` | Audio panel (`ap-kind`, `button.ap-mute-btn`) |
+| `np-*` | Network panel, shared with bluetooth (`np-title`, `np-section`, `np-connected*`, `np-net-row`, `np-ssid`, `np-security`, `button.np-connect`, `button.np-disconnect`, `button.np-refresh` + `np-refresh-icon`, `np-spinner` / `np-spinner-on-primary` (the `BusyIndicator` reads its `color`), `np-disabled*`, `.network-panel switch`, `.network-panel entry`) |
+| `bt-*` | Bluetooth panel (`popover.bluetooth-popover`, `bt-sub`; reuses the `np-*` list rows and the `.network-panel switch` pill toggle) |
+| `notif-*` | Notification history panel and toasts (`popover.notification-popover`, `notif-header`, `button.notif-clear`, `notif-card`, `notif-icon`, `notif-dot.{low,normal,critical}`, `notif-app`, `notif-time`, `notif-summary`, `notif-body`, `button.notif-action`, `window.notification-popups`, `notif-popup*`) — `data/css/notifications.css` |
+| `launcher-*` | Launcher window (`window.launcher`, `launcher-panel`, `entry.launcher-search`, `launcher-row(.selected)`, `launcher-name`, `launcher-desc`, `launcher-glyph`, `button.launcher-pin`, `launcher-count`, `separator.launcher-divider`, slim `scrollbar` styling; the clipboard history window reuses them and adds `picture.clipboard-thumb`, `button.clipboard-delete`, `button.clipboard-clear`) — `data/css/launcher.css` |
+
+When you write a new module or panel, follow the pattern: one class for the
+module named after it, a `<prefix>-` family for a panel, and reuse `bp-card`
+for card backgrounds so panels look alike. The pill toggle used by the
+Wi-Fi and Bluetooth panels (`.network-panel switch`) is a 1:1 port of
+Noctalia's NToggle; reuse it for any on/off switch in a panel.
+
+GTK box-model note: borders sit **outside** `min-width`/`min-height`, so a
+34×20 track with a 1px border renders 36×22. Size accordingly.
+
+## Colours
+
+Never write a hex colour in `data/css/*.css` or in C++ (the two status
+colours — battery green `#9fd89f` and amber `#eaa300` — are the exception).
+Use the palette tokens, Noctalia's names:
+
+| Token | Role | Dark default |
+|-------|------|--------------|
+| `@mPrimary` / `@mOnPrimary` / `@mPrimaryHover` | accent, text on it, hover shade | `#bfc2ff` / `#202578` / `#d3d5ff` |
+| `@mSecondary` / `@mOnSecondary` | muted accent | `#c5c4dd` / `#2e2f42` |
+| `@mTertiary` / `@mOnTertiary` | warning / info tint | `#e8b9d5` / `#46263b` |
+| `@mHover` / `@mOnHover` | hover and selection shade (grey), text on it | `#393a3f` / `#e5e1e6` |
+| `@mError` / `@mOnError` | destructive, critical | `#ffb4ab` / `#690005` |
+| `@mSurface` / `@mOnSurface` | panel background, text | `#131316` / `#e5e1e6` |
+| `@mSurfaceVariant` / `@mOnSurfaceVariant` | cards, tracks / dim text | `#201f23` / `#c7c5d0` |
+| `@mOutline` | borders | `#46464f` |
+| `@mShadow` | shadows (`alpha(@mShadow, 0.45)`) | `#000000` |
+
+The defaults are `@define-color`d at the end of `data/style.css`. At runtime
+the shell's theme provider (`App::apply_theme()`, priority APPLICATION+1)
+redefines every token from config.json's `ui` block: `derive_palette()` in
+`services/palette.hpp` turns the accent colour and the dark/light flag into
+the full set (in dark mode the accent is `mPrimary` verbatim, in light mode
+it is darkened for white text; the neutrals take the accent's hue). A
+`@define-color` in a higher-priority provider overrides a lower one's, so
+this works without touching the base sheet — and a user's
+`~/.config/hypr-shell/style.css` (USER priority) can override any single
+token the same way.
+
+Drawing code (cairo, GSK) asks `Theme::get().rgba("mPrimary")` at draw time
+instead of keeping colour constants; the calendar ring, the OSD bar, the
+control-center gauges and the notification countdown do this.
+
+## Fonts
+
+Text: `ui.font` (default `"Fira Sans"`, Noctalia's default). One inherited
+rule in `data/style.css` — `window, popover { font-family: … }` — sets it
+for everything; the theme provider re-emits the same rule with the
+configured family, so **never put a text `font-family` on a widget class**
+(icon-font classes are the exception, see below). Sizes stay in the
+per-area files. If the font is not installed, GTK falls back to the system
+sans; the bar still works.
+
+The settings page's Font row also sets the **system font** (GSettings
+`org.gnome.desktop.interface font-name` and the GTK `settings.ini` files) to
+the same family, and its Font size row changes that system font's size only —
+the shell never reads a size from anywhere but its CSS. Qt apps read none of
+those, so the same write also drops a fontconfig snippet
+(`~/.config/fontconfig/conf.d/50-hypr-shell-sans-serif.conf`) that makes the
+generic sans-serif family prefer the chosen one — Qt without a platform theme
+asks for "Sans Serif" and so follows the family, at its own size. See
+`src/settings/system_font.cpp`.
+
+Icons come from two icon fonts installed to
+`~/.local/share/fonts/hypr-shell/` by `meson install`:
+
+| Font | CSS `font-family` | Used for |
+|------|-------------------|----------|
+| `noctalia-tabler-icons.ttf` (MIT) | `"noctalia-tabler-icons"` | wifi, ethernet, volume, mic, calendar arrows, panel icons |
+| `SegoeIcons.ttf` (Microsoft, proprietary) | `"Segoe Fluent Icons"` | battery glyphs (Windows 11 look) |
+
+An icon is just a `Gtk::Label` whose text is a single Private Use Area
+character and whose CSS class selects the font:
+
+```cpp
+constexpr const char* kIconMic = "\uEAF0";   // tabler "microphone"
+icon_.add_css_class("icon");
+icon_.set_text(kIconMic);
+```
+
+**Always write glyphs as `\uXXXX` escapes** in C++ source. Literal PUA
+characters look like blank squares in most editors and get mangled by some
+tools. Some older files still have literals; convert them if you touch them.
+
+Finding a codepoint: open the Tabler icon set (tabler.io/icons), pick an
+icon, and look up its codepoint in the font (a font viewer, or
+`fc-query --format='%{charset}\n' noctalia-tabler-icons.ttf`). The Noctalia
+QML sources are also a handy index since the fork used the same font.
+
+After adding a font file, list it in `meson.build` under `install_data`, and
+run `fc-cache -f ~/.local/share/fonts/hypr-shell` (install.sh does this).
+
+## Checking a style change
+
+1. Edit the file in `data/css/`, run `meson compile -C build` (the GResource
+   step re-runs automatically), restart the bar.
+2. Or paste the rule into `~/.config/hypr-shell/style.css` first to see it
+   live, then move it into the right `data/css/` file once it's right.
+3. Watch the terminal: GTK prints CSS parse errors with line numbers.

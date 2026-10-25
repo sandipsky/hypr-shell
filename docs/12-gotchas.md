@@ -1,0 +1,447 @@
+# 12 — Gotchas
+
+Each of these cost real time once. The decision log in `CLAUDE.md` records
+when; this page records what to do.
+
+## Layer shell and Wayland
+
+**Call `gtk_layer_init_for_window()` before the window is realized or
+presented.** Afterwards it is silently ignored and you get a normal floating
+window. Also `set_decorated(false)`, or GTK draws a client-side title bar.
+
+**Keep `window.bar { background: transparent; }`** in CSS and put the visible
+background on `.bar-inner`. Otherwise the window's own background paints
+over rounded corners and margins.
+
+**A fully transparent GTK4 window never commits a real buffer.** The layer
+surface then falls back to GtkWindow's 200px default size instead of the
+1px you asked for. The auto-hide trigger strip is therefore painted
+`rgba(0,0,0,0.01)`: invisible, but a real buffer. `background: transparent`,
+`opacity: 0` and `set_opacity(0)` all break it.
+
+**Popups of a background-layer surface render above everything.** Hyprland
+draws every layer's popups after the overlay layer and routes pointer input
+to layer popups first, so the desktop context menu (a popover on the
+wallpaper window, the bottom of the stack) shows on top of windows. Its
+grab takes keyboard focus like any popup: a dev hook that pops it while
+someone is typing steals their keystrokes (Enter launched the first Apps
+entry once).
+
+**Hiding every window quits the app.** GTK's application exits when the last
+window is unmapped. `App::on_activate()` calls `hold()` so
+`bar.visibility = "hidden"` works.
+
+**A mapped popover never resizes on Hyprland.** Panels whose content changes
+while open need a fixed size. See [panels](08-panels-and-popovers.md). Growing
+is worse than clipping: when the calendar stepped from a 5-row to a 6-row
+month the popover was dismissed outright, which is why the month grid always
+lays out six week rows.
+
+**Popup grabs from the 1px trigger window are denied**, so a popover opened
+from the trigger dismisses instantly. Users click the bar, not the strip.
+
+**Off-screen surfaces receive no input**, which is what makes the negative
+margin auto-hide trick safe: the hidden bar can't be clicked by accident.
+
+**A layer window with no anchored width grows to its natural width**, and a
+wrapping label's natural width is the *whole* text on one line. Notification
+popup labels use `set_max_width_chars(1)` + `set_hexpand(true)` so the
+stack's requested width wins.
+
+**A layer surface never shrinks on its own.** gtk4-layer-shell forwards the
+compositor's configure to GTK as a fake xdg_toplevel configure carrying the
+FULLSCREEN state, so GDK pins the surface to that size: content that grows
+pushes it larger through the min-size constraint, content that shrinks (a
+thinner `bar.density`) leaves the old thickness and stretches the children.
+The library re-measures only on `notify::default-width/height`, reading a 0
+axis as "natural" and any other value literally — `set_default_size(-1, -1)`
+therefore sends an invalid configure and the bar collapses to its natural
+length, as does `set_resizable(false)` (GDK's min = max hints). The fix is
+`Bar::refresh_thickness()`: from an idle after the style pass, set the
+thickness axis to the measured natural size, then back to 0, leaving the
+span axis at 0.
+
+**A fullscreen layer surface's first allocation is the screen size.** The
+launcher derives its panel geometry from that instead of querying monitors.
+
+**Session lock windows belong to gtk4-session-lock.** Create each surface
+unrealized, `assign_window_to_monitor`, then present; the library destroys
+them on unlock, so use `Gtk::make_managed` and drop your pointers from
+`signal_destroy()`. Never hide a lock surface (protocol error).
+
+**`GetSessionByPID` fails for a shell started from a terminal** (the process
+is in a different logind scope). Fall back to `$XDG_SESSION_ID` →
+`Manager.GetSession`, or `loginctl lock-session` will never reach you.
+
+## GTK
+
+**Never parent a dialog to a layer-shell window.** `gtk_file_dialog_open()`
+(or any transient window) with the bar as parent makes GTK call
+`xdg_toplevel.set_parent` on a surface that is not an xdg_toplevel — a
+Wayland protocol error, and the compositor drops the connection ("Lost
+connection to Wayland compositor": the whole shell exits). Pass a null
+parent; the dialog then opens through the desktop portal on its own. Pop the
+originating popover down first so its grab does not fight the dialog. The
+VPN panel's import button shipped with this crash for one build (that panel
+is gone — VPN lives in the settings app now, whose window is a normal
+toplevel and may parent dialogs).
+
+**A `Gtk::Picture` grows to the image's natural size** — `set_size_request`
+is a minimum. For a fixed avatar, pre-scale and crop the pixbuf to the target
+size and hand the texture to `set_paintable()`. Expand flags on a child also
+leak into the parent, so a centred 130px ring stretches if its picture
+`hexpand`s.
+
+**Anchor popovers to a label or overlay, never to the module's `Gtk::Box`.**
+A box parent allocates the open popover inline and the module balloons in
+width. Anchoring to a label that sits under another overlay child unmaps the
+popover immediately after `popup()`.
+
+**A widget that appears under a resting pointer gets no click.** GTK sends a
+button press to the widget its *pointer focus* last saw under the pointer,
+and that focus only moves on motion / crossing events (`handle_pointing_event`
+in gtkmain.c). A button revealed by hover (the clipboard rows' trash icon,
+shown when the row is selected) is therefore invisible to a tap that follows
+without further motion — the press goes to whatever was there before, and an
+ancestor's `GestureClick` sees the click instead. Either avoid hover-revealed
+buttons or, like `ClipboardWindow`, let the ancestor's release handler honour
+a release over the visible button. When the button does get the press it
+claims the sequence on release (GtkButton's gesture runs in the CAPTURE
+phase), so the ancestor's handler does not run twice.
+
+**Icons are rasterized during the first paint.** A `Gtk::Image` showing a
+GIcon renders its SVG (librsvg, ~5 ms each) while the surface paints its
+first frame; GTK's icon-theme cache makes later frames cheap. A popover full
+of app icons therefore lags on its first open (the app menu: ~100 ms for 20
+apps). Pre-looking the icons up does not help — the cache key includes the
+lookup flags, which differ between an outside lookup and GtkIconHelper's,
+and file icons are never cached. `bar/icon_cache` is the cure:
+`Gtk::IconTheme::lookup_icon` + `Gdk::Paintable::snapshot` into a
+`Gtk::Snapshot`, `to_paintable()`, cached per icon and size, rendered a few
+per idle; panels show the render when `find()` has it, else the GIcon, and
+swap on `signal_rendered`. Request the icons at startup (the app menu's
+`prewarm()`, the launcher's `prewarm_icons()`). `HS_FRAME_DEBUG=1` logs the
+milliseconds to a window's first painted frame; ~20 ms is the floor.
+
+**A service must not keep a reference into a listener's state across its own
+`changed` emission.** `Clipboard::remove(const std::string& id)` was handed a
+reference into the clipboard window's row list; the optimistic
+`changed_.emit()` inside rebuilt that list before the id was used, so the
+delete ran with an empty id (or, with more rows, whichever id took the slot).
+Take such arguments by value, or copy before emitting.
+
+**`set_min_content_height` / `set_max_content_height` assert min ≤ max on
+every call.** Driving both to the same value each animation frame must set
+the max first when growing and the min first when shrinking
+(`LauncherWindow::set_list_height`), or GTK logs two criticals per frame.
+
+**Programmatic widget changes fire the same signals as user input.** Guard
+with an `updating_` flag (shell panels) or the `loading` flag (settings app)
+or you'll write the value straight back to the backend/file.
+
+**Don't destroy a widget from inside its own signal handler.** Defer with
+`g_idle_add_once` / `Glib::signal_idle().connect_once` (settings layout
+editor).
+
+**Rounded `scale` / `progressbar` need explicit `min-width` and
+`min-height`** on `highlight` / `progress` / `slider` nodes, or GTK warns
+about -2 sizes and draws nothing.
+
+**GTK4 labels cannot rotate.** Use a `Gtk::DrawingArea` with PangoCairo
+(`ActiveWindow::on_vertical_draw`).
+
+**Lambdas capturing `this` are not auto-disconnected.** Disconnect timers in
+destructors; `unparent()` popovers in destructors.
+
+**`Gtk::Box` in a vertical bar**: modules that lay children out horizontally
+must flip orientation themselves (`set_orientation`) when
+`Config::get().bar_vertical()`.
+
+**A `Gtk::Entry` draws its own blue focus ring** on top of your themed
+border. Add `outline: none` to the entry's CSS (launcher search box).
+
+**Borders are outside `min-width`/`min-height`** in GTK's box model. A pill
+toggle that should be 36×22 is written as 34×20 + 1px border.
+
+**Pango layouts are only valid after allocation.** Measuring whether a label
+is ellipsized (to decide whether to show an expand chevron) must happen in a
+tick callback, not in the constructor.
+
+**Transitions without shaders: mask nodes.** `GtkGLShader` is gone since
+GTK 4.16, so the wallpaper transitions are built from
+`gtk_snapshot_push_mask(ALPHA)`: record the mask (linear / radial gradients
+for soft edges), `pop()` once to switch to the source, draw the new image,
+`pop()` again. Gradients clamp their end colours beyond the endpoints, which
+is exactly the "everything past the edge is revealed" behaviour a wipe needs.
+`push_cross_fade(progress)` does the fade. Keep the widget's own `snapshot_vfunc`
+callable from outside (`Gtk::Snapshot::create()` + `gtk_snapshot_to_node` +
+`gsk_renderer_render_texture`) — that is how frames get verified when the
+desktop is covered by windows.
+
+**A view that should animate its first image in must start empty.** The
+wallpaper windows are created before the startup transition fires; handing
+them the image immediately made the later animated `show_image()` a no-op
+(same path, nothing to do), so the first image simply appeared.
+
+**A scrolled window nested in a scrolling page collapses.** A viewport
+allocates its child at the child's *minimum* height (GTK's default
+`GTK_SCROLL_MINIMUM` policy), and a `GtkScrolledWindow`'s minimum is a
+sliver, so the moment the page overflowed, the settings app's wallpaper grid
+shrank to one label row. `propagate_natural_height` only raises the natural
+size. Fix: measure the content (`gtk_widget_measure`, exact before mapping
+when the columns are fixed) and pin `min_content_height` to
+`min(natural, cap)`.
+
+**The default overlay scrollbar only appears while scrolling.** For a
+persistent one call `set_overlay_scrolling(false)` on the
+`Gtk::ScrolledWindow` and style `scrollbar slider`.
+
+**`gtk_viewport_scroll_to()` is a no-op on a page shown for the first
+time.** The viewport resolves the target from the descendant's *previous*
+allocation (before laying out its child in the same `size_allocate`), so a
+row that has never been allocated yields no bounds and the request is
+dropped silently. Issue the scroll from a tick callback once
+`gtk_widget_get_height(row) > 0` (see `settings/search.cpp`).
+
+**`GtkSearchBar`'s key-capture widget steals typing from other entries.**
+Set no capture widget; add your own `GTK_PHASE_CAPTURE` key controller that
+bails when the focus sits inside a `GtkEditable` / `GtkText` and forwards
+the key with `gtk_event_controller_key_forward()` otherwise.
+
+**`gtk_picture_set_filename()` decodes on the main thread.** Pointing a
+picture at a cached thumbnail PNG looks free but decodes it right there —
+41 wallpaper thumbnails cost ~300 ms before the settings window could
+appear. Decode through `g_file_read_async()` +
+`gdk_pixbuf_new_from_stream_async()` (a few at a time, see `wp_thumb_*` in
+`settings/main.cpp`) and set the paintable when it lands.
+
+**Homogeneous `GtkStack` / `AdwNavigationView` measure every page.** Both
+are homogeneous by default, so each layout pass measures all children —
+every label of every hidden page is shaped and every icon looked up for a
+page nobody is looking at. `set_hhomogeneous(FALSE)` /
+`set_vhomogeneous(FALSE)` limits measuring to the visible page; the window
+keeps its default size either way.
+
+**Startup work is measurable.** `HS_SETTINGS_TIMING=1` prints milliseconds
+since `main()` at each startup phase of the settings app (build, populate,
+present, realize, first frames, each config.json write). The baseline for
+an empty libadwaita window on the test laptop is ~370–640 ms to the first
+frame (GTK init, the theme CSS parse and EGL/Mesa loading), so compare
+against that, not against zero.
+
+## Hyprland
+
+**`j/binds` cannot describe Lua binds.** Every bind of a Lua config reports
+`dispatcher: "__lua"`; see [Hyprland IPC](10-hyprland-ipc.md) for the config
+replay that recovers the meaning.
+
+**`grim` hangs while DPMS is off.** No frame is rendered, so a screenshot
+waits forever; check `hyprctl -j monitors` → `dpmsStatus` before shooting
+and wrap `grim` in `timeout`.
+
+**Actions are Lua since 0.56.** `dispatch workspace 3` is a syntax error.
+Write `hl.dsp.focus({ workspace = 3 })`. `keyword monitor ...` is likewise
+rejected; use `eval hl.monitor({...})`. Only an `ok` reply means success.
+All Lua lives in `services/hyprland.cpp`.
+
+**`activewindow` data is `class,title`; split on the first comma only.**
+Titles contain commas.
+
+**Negative workspace ids are special workspaces.** Filter them out.
+
+**Replies can arrive out of order** relative to the events that triggered
+them. Serial-guard every refresh that can be re-triggered.
+
+**`install.sh --restart` sends stderr to /dev/null.** A dispatch that fails
+silently is a warning you never saw. Run from a terminal when debugging.
+
+## Config and settings
+
+**Absent module = enabled.** New modules default on. Don't change this
+without thinking about existing users' files.
+
+**The settings app may need shell state, not just config.** The wallpaper
+grid highlights the image on screen, which after a slideshow pick is *not*
+`wallpaper.current` — the shell never writes config.json. The settings app
+therefore watches `~/.cache/hypr-shell/wallpaper.json` (a `GFileMonitor`) and
+falls back to the config value; keep such state files tiny and JSON.
+
+**Reset every default at the top of `Config::load()`.** A key deleted from
+the file must revert; the parser only overwrites keys it finds.
+
+**Layout resolution is duplicated** in `Config::load()` and the settings
+app's `resolve_layout()`. Change both.
+
+**Format numbers for CSS/Lua with `g_ascii_dtostr`.** `std::to_string(0.88)`
+gives `0,88` in a comma-decimal locale and breaks the parser silently.
+
+**Desktop entries need an absolute `Exec` path.** Launchers don't have
+`~/.local/bin` in their PATH; that's why `.desktop.in` gets `@bindir@`
+substituted at build time.
+
+**Half-typed values arrive live.** The settings app saves on every
+keystroke, so the shell sees `%H:` before `%H:%M`. Parsers must tolerate
+garbage (clock falls back to `%H:%M`).
+
+**The shell never writes `config.json`.** Runtime state goes to
+`~/.cache/hypr-shell/`. A value that is both a config default and a runtime
+toggle (do-not-disturb) is adopted from config only on value-change
+*edges*, so unrelated saves from the settings app don't clobber the runtime
+state.
+
+**Raise the `loading` guard before the first widget write.** `populate()`
+sets `s->loading = true` so the handlers a widget write triggers do not save;
+it once did so ~250 lines in, after the control-center and taskbar rows, and
+those eight writes each rewrote config.json (fsync included) and made the
+shell reload it — on every launch. `HS_SETTINGS_TIMING=1` lists every save,
+so a launch must print none.
+
+**`~/.local/bin` is not on the shell's PATH.** Hyprland's autostart runs the
+shell with the session PATH, so anything the shell spawns by bare name must
+be in `/usr/bin` — `hypr-shell-settings` is not. `settings_executable()`
+(`services/session.cpp`) looks next to `/proc/self/exe` first; use it (or an
+absolute path) for anything else installed under `~/.local`.
+
+**Desktop entry icon**: the settings entry uses `Icon=dev.hyprshell.Settings`,
+GNOME Settings' icon bundled in `data/icons/` and installed under
+`<datadir>/icons/hicolor`. Docks match the running window to the entry
+through `StartupWMClass`; if a generic icon shows, the icon theme path does
+not include `~/.local/share/icons` (XDG_DATA_HOME / XDG_DATA_DIRS) — or a
+**stale `icon-theme.cache`** sits in `~/.local/share/icons/hicolor`: GTK
+trusts an existing cache over the directory listing, so an icon installed
+after the cache was written is invisible until `gtk-update-icon-cache -f -t`
+runs (install.sh does this).
+
+## Services
+
+**`Gio::DBus::Proxy` property casts must match the DBus type exactly**
+(`guint32` for `u`, `gint64` for `x`, ...). A wrong `Glib::Variant<T>` throws
+`std::bad_cast` at runtime, not compile time. Check with `busctl introspect`.
+
+**sysfs has no inotify.** Provide `refresh()` and call it when the UI opens.
+
+**GLib timeouts stand still during suspend.** `Glib::signal_timeout()` runs
+on CLOCK_MONOTONIC, which does not advance while the machine sleeps, so a
+"fire at the next minute" timer armed before suspend still has most of that
+minute left after resume — the clock label showed the pre-suspend time for
+up to a minute while the calendar (recomputed on open) was right. Anything
+that must track wall-clock time uses a `timerfd` on CLOCK_REALTIME armed
+with `TFD_TIMER_ABSTIME` for the absolute boundary and
+`TFD_TIMER_CANCEL_ON_SET` (the clock module, `schedule_next_minute()`):
+real time keeps counting through suspend, an expiry that passed while asleep
+fires on resume, and a stepped clock (NTP after resume, `date -s`) returns
+ECANCELED from `read()` so the timer is re-armed. Watch the fd with
+`Glib::signal_io()`. Elapsed-time counters (debounces, animations, polls)
+are fine on monotonic timeouts.
+
+**The compositor does not see controller input.** Hyprland counts only
+keyboard / pointer / touch towards idleness, so a gamepad session looks
+idle. `services/gamepad` reads the evdev nodes itself — only joystick nodes
+are readable (systemd's uaccess ACL), everything else fails with EACCES —
+and `Idle` holds an `idle-inhibit-v1` inhibitor for a few seconds. The
+inhibitor sits on a bare `wl_surface` with no role: Hyprland treats an
+inhibitor whose surface has no desktop role as "non-desktop, assumed
+visible" and inhibits unconditionally, and releasing it re-arms every idle
+notification with its full timeout (the idle clock restarts).
+
+**`nmcli` can exit 0 on failure.** Grep the output for `Error`. Use `-t`
+terse mode with `--escape yes` and unescape `\:`.
+
+**PulseAudio context**: create with `PA_CONTEXT_NOFAIL` so a PipeWire
+restart reconnects instead of leaving a dead context.
+
+**BlueZ and NM emit other `PropertiesChanged` before the property you set
+flips** (`Powered`, `WirelessEnabled`). Re-reading on each one bounces the
+switch. Keep a pending target value and prefer it until confirmed or timed
+out (`pending_power_`, `pending_wireless_`).
+
+**A persisted rfkill block makes `Adapter1.Powered = true` a silent no-op.**
+Run `rfkill unblock bluetooth` first, like `Bluez::set_enabled` does.
+
+**Re-registering a DBus object on the same connection errors.** When the
+notification daemon releases its bus name (`notifications.enabled = false`),
+keep the object registration and only unown/re-own the name.
+
+**Pairing needs a BlueZ agent.** We have none; `bluetoothctl pair` registers
+its own, so pairing shells out to it. PIN-entry devices (keyboards) won't
+pair from the panel.
+
+**Optimistic updates**: writers set local state and emit *before* the
+round-trip; otherwise sliders bounce.
+
+**Hyprland IPC has a small listen backlog.** An event burst (a window opening
+fires openwindow + activewindow + windowtitle + focusedmon …) used to open a
+dozen `.socket.sock` connections at once and some failed with EAGAIN
+("Resource temporarily unavailable"), leaving the losing module with stale
+state. `Hyprland::request()` queues requests and keeps at most four in
+flight; modules coalesce bursts (30 ms timer) before asking.
+
+**Poll only while someone is looking.** Services that need a timer to keep
+a value fresh (`SystemStats`, MPRIS positions) expose
+`register_consumer()` / `unregister_consumer()`; the panel that shows the
+value registers in `set_open(true)`. Likewise a panel's `signal_changed`
+handlers should do nothing while its popover is closed — the media card
+was fetching album art on every track change with the panel hidden.
+
+**Full-screen textures are 8–33 MB each.** Anything that caches decoded
+images (`LockWallpaperCache`, `WallpaperTextureCache`) must prune: keep only
+what the current config draws, unref `GdkTexture*` you own, and drop the
+unblurred decode once its blurred copy exists.
+
+**PAM blocks and sleeps.** `pam_authenticate` runs the conversation
+synchronously and `pam_unix` delays a failed attempt by ~2s, so it must not
+run on the main loop: `PamAuth` runs it on a thread and posts events through
+a `Glib::Dispatcher`. Test the stack outside the shell with a tiny ctypes
+script before blaming the shell — and never test a real lock without a
+second way in.
+
+## Source hygiene
+
+**Icon glyphs as `\uXXXX` escapes**, never literal Private Use Area
+characters (they render as boxes and get mangled).
+
+**Every `.cpp` must be listed in `meson.build`.** Meson does not glob.
+
+**No `std::regex`.** Use `Glib::Regex` (PCRE2, already linked): compile
+once (static, or per config change), pass `.c_str()` — it takes
+`Glib::UStringView`, not `std::string` — and write backreferences as `\1`.
+`std::regex` compiled per call and its template instantiations bloat the
+binary.
+
+**Rebuild widgets only when the structure changed.** Events like
+`windowtitle` fire constantly; the taskbar and workspaces keep their
+widgets and refresh labels/classes in place when the item set is the same.
+
+**Measuring memory**: `ps` RSS of the shell is mostly shared GPU driver
+libraries; compare `Pss` / `Private_Dirty` from
+`/proc/<pid>/smaps_rollup` and `pmap -x <pid>` instead.
+
+**The Segoe font is proprietary.** Strip `data/fonts/SegoeIcons.ttf` (and
+its install line) before publishing the repository.
+
+## AccountsService and polkit (settings app, Users page)
+
+- `SetIconFile` refuses files over 1 MiB and copies anything outside
+  `/usr/share` or its own icon dir into `/var/lib/AccountsService/icons/<user>`
+  — the `IconFile` property then points at that copy, not at `~/.face`. The
+  shell keeps reading `~/.face`; the page prefers it too for the current user.
+- Pass `G_DBUS_CALL_FLAGS_ALLOW_INTERACTIVE_AUTHORIZATION` and no timeout
+  (`G_MAXINT`) to calls that polkit may gate: the agent's prompt can sit for
+  a long time, and the default 25 s timeout would fail the call underneath it.
+- `change-own-password` is `auth_admin` on this distro: even changing your
+  own password prompts for an administrator password. GNOME avoids that by
+  driving `passwd` through a pty; we accept the prompt and say so in the dialog.
+- `g_get_real_name()` is cached by GLib for the process lifetime; read
+  `getpwuid_r` when the GECOS name may change at runtime.
+
+## libadwaita rows
+
+- `adw_action_row_add_suffix()` on an `AdwSwitchRow` lands *after* its
+  switch. For an icon before the switch (GNOME's Administrator row) build an
+  `AdwActionRow` with the icon and a `GtkSwitch` as suffixes yourself, and set
+  the switch as the activatable widget.
+- Adwaita's `dialog-information-symbolic` is a light bulb; the circled "i" is
+  `help-about-symbolic`.
+- An `AdwEntryRow` with `show-apply-button` only shows the apply button after
+  *user* edits (the row must have focus when the text changes), so
+  programmatic `gtk_editable_set_text` during a reload does not arm it.

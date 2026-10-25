@@ -1,0 +1,98 @@
+/* control center — Noctalia's ControlCenterPanel cards (audio / brightness /
+ * media / system monitor) in the shared panel design. Type scale (user
+ * request, "fonts match"): body 12pt (device names, uptime, player name,
+ * artist, album, gauge values), headings 14pt bold (name, track title). */
+popover.control-center-popover > contents {
+  background: @mSurface; /* mSurface */
+  border: 1px solid alpha(@mOnSurface, 0.08);
+  border-radius: 20px;
+  padding: 0;
+  box-shadow: 0 8px 24px alpha(@mShadow, 0.45);
+}
+.cc-card {
+  background: @mSurfaceVariant; /* mSurfaceVariant (NBox) */
+  border-radius: 16px;
+  padding: 9px;
+}
+.cc-device {
+  font-size: 12pt;
+  color: @mOnSurfaceVariant; /* mOnSurfaceVariant */
+}
+.cc-btn-icon {
+  font-family: "noctalia-tabler-icons";
+}
+/* NIconButton (Noctalia: 15px, glyph 7pt) grown to 20px / 12pt — user request:
+ * bigger icons, one 12pt body size across the cards */
+button.cc-mute-btn {
+  min-width: 20px; min-height: 20px; padding: 0; margin: 0;
+  border-radius: 999px; background: transparent; border: none; box-shadow: none;
+  color: @mOnSurface;
+}
+button.cc-mute-btn .cc-btn-icon { font-size: 12pt; }
+button.cc-mute-btn .cc-btn-icon.muted { color: @mError; } /* mError */
+button.cc-mute-btn:hover { background: @mHover; color: @mOnHover; }
+.cc-brightness-icon {
+  font-family: "noctalia-tabler-icons"; font-size: 12pt; color: @mOnSurface;
+  min-width: 20px;
+}
+/* NSlider heightRatio 0.5: 16px knob, 6px track; progress (0.6): 20 / 8.
+ * GTK scales the knob's margin negatively to overhang the track. */
+scale.cc-slider { padding: 0; }
+scale.cc-slider trough {
+  background: alpha(@mSurface, 0.5);
+  border: 1px solid alpha(@mOutline, 0.5);
+  border-radius: 999px;
+  min-height: 4px; /* + 1px borders = 6 */
+}
+scale.cc-slider highlight {
+  background: linear-gradient(to right, shade(@mPrimary, 0.83), @mPrimary);
+  border: none; border-radius: 999px; min-height: 4px; min-width: 4px;
+}
+scale.cc-slider slider {
+  background: @mSurface; /* mSurface */
+  border: 3px solid @mPrimary; /* mPrimary */
+  border-radius: 999px; box-shadow: none;
+  min-width: 10px; min-height: 10px; /* + 2×3 border = 16 */
+  margin: -5px;
+}
+scale.cc-slider slider:active { background: @mPrimaryHover; }
+scale.cc-slider:disabled slider { border-color: @mOutline; }
+scale.cc-slider:disabled highlight { background: @mOutline; }
+scale.cc-progress trough, scale.cc-progress highlight { min-height: 6px; }
+scale.cc-progress slider { min-width: 14px; min-height: 14px; margin: -6px; }
+/* media card */
+.cc-media { border-radius: 16px; }
+button.cc-player-btn { padding: 2px 6px; border-radius: 16px; background: transparent; border: none; box-shadow: none; }
+button.cc-player-btn:hover { background: alpha(@mOnSurface, 0.08); }
+.cc-caret { font-family: "noctalia-tabler-icons"; font-size: 18pt; color: @mOnSurfaceVariant; }
+.cc-player-name { font-size: 12pt; color: @mOnSurfaceVariant; }
+.cc-media-empty { font-family: "noctalia-tabler-icons"; font-size: 72pt; color: @mOnSurfaceVariant; }
+.cc-title { font-size: 14pt; font-weight: bold; color: @mOnSurface; text-shadow: 0 0 2px black; }
+.cc-artist { font-size: 12pt; color: @mSecondary; text-shadow: 0 0 2px black; } /* mSecondary */
+.cc-album { font-size: 12pt; color: @mOnSurfaceVariant; text-shadow: 0 0 2px black; }
+/* NIconButton 33px: mSurfaceVariant bg, mPrimary glyph 15pt, mOutline border */
+button.cc-media-btn {
+  min-width: 31px; min-height: 31px; padding: 0; border-radius: 999px;
+  background: @mSurfaceVariant; border: 1px solid @mOutline; box-shadow: none; color: @mPrimary;
+}
+button.cc-media-btn .cc-btn-icon { font-size: 15pt; }
+button.cc-media-btn:hover { background: @mHover; color: @mOnHover; }
+/* profile card buttons (settings, session): the app menu's flat round-button
+ * look — neutral glyph, no border or fill at rest, mHover disc on hover
+ * (user request) */
+button.cc-profile-btn {
+  min-width: 40px; min-height: 40px; padding: 0; border-radius: 999px;
+  background: transparent; border: none; box-shadow: none; color: @mOnSurface;
+  transition: background 150ms ease;
+}
+button.cc-profile-btn .cc-btn-icon { font-size: 16pt; }
+button.cc-profile-btn:hover { background: @mHover; color: @mOnHover; }
+/* profile card */
+.cc-avatar-ring {
+  border-radius: 999px; /* no accent ring around the picture (user request) */
+  background: @mSurfaceVariant;
+}
+.cc-avatar { border-radius: 999px; }
+.cc-avatar-fallback { font-family: "noctalia-tabler-icons"; font-size: 17pt; color: @mOnSurfaceVariant; }
+.cc-name { font-size: 14pt; font-weight: bold; color: @mOnSurface; }
+.cc-uptime { font-size: 12pt; color: @mOnSurfaceVariant; }
