@@ -207,20 +207,18 @@ void Calendar::set_system(System system) {
         system = System::Gregorian;
 
     if (system != system_) {
-        // keep the shown month: convert its 1st into the other system
-        if (system == System::Bikram) {
-            auto bs = nepali::from_gregorian(shown_year_, shown_month_, 1);
-            if (!bs)
-                bs = today_bs;
-            shown_year_ = bs->year;
-            shown_month_ = bs->month;
-        } else {
-            auto g = nepali::to_gregorian({shown_year_, shown_month_, 1});
-            auto now = Glib::DateTime::create_now_local();
-            shown_year_ = g ? static_cast<int>(g->get_year()) : now.get_year();
-            shown_month_ = g ? static_cast<int>(g->get_month()) : now.get_month();
-        }
+        // a switch lands on today's month in the other system (user request);
+        // converting the shown month's 1st instead showed AD October as BS
+        // Ashwin while today was already in Kartik
         system_ = system;
+        if (system_ == System::Bikram) {
+            shown_year_ = today_bs->year;
+            shown_month_ = today_bs->month;
+        } else {
+            auto now = Glib::DateTime::create_now_local();
+            shown_year_ = now.get_year();
+            shown_month_ = now.get_month();
+        }
     }
 
     syncing_buttons_ = true;
