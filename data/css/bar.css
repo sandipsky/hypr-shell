@@ -12,6 +12,8 @@ window.bar {
   --bar-pad-along: 7px;       /* .bar-inner padding along the bar (the bar's two ends) */
   --module-pad: 6px;          /* each module's padding along the bar */
   --module-pad-across: 8px;   /* vertical bars: module padding along the bar */
+  --pill-size: 28px;          /* hover pill thickness = an icon's circle (the workspace pills' 24px + margins) */
+  --pill-pad: 10px;           /* text modules: room inside the pill's round ends */
   --module-font: 13px;        /* module default text */
   --text-size: 16px;          /* clock, window title, stat percentages */
   --icon-size: 18px;          /* status glyphs */
@@ -29,6 +31,8 @@ window.bar.density-comfortable {
   --bar-pad-along: 9px;
   --module-pad: 8px;
   --module-pad-across: 10px;
+  --pill-size: 32px;
+  --pill-pad: 12px;
   --module-font: 14px;
   --text-size: 17px;
   --icon-size: 20px;
@@ -102,7 +106,8 @@ window.bar.density-comfortable.right .bar-start {
 
 /* every module gets the same padding each side (6px compact; 4px in a vertical
  * bar's start section), so any two neighbours sit 12px (8px) apart
- * (workspaces: 2px less + the buttons' 2px margin; taskbar: the same) */
+ * (workspaces: 2px less + the buttons' 2px margin; taskbar: the same; lone
+ * glyphs and text: see the pill shapes below) */
 .module {
   padding: 0 var(--module-pad);
   font-size: var(--module-font);
@@ -122,6 +127,53 @@ window.bar.density-comfortable.right .bar-start {
 .taskbar:hover,
 .active-window:hover {
   background: transparent;
+}
+
+/* One pill shape per kind of module, all --pill-size thick (user request —
+ * the padding-only pills came out as circles, ovals and slivers depending on
+ * the glyph): text is a stadium with --pill-pad inside its round ends, a lone
+ * glyph (.icon-only, set in C++) a circle — the glyph is centred in a
+ * pill-size square and the module adds no padding. The margin leaves the same
+ * gap between any two pills and the glyphs as far apart as the padding did. */
+.clock,
+.active-window,
+.sys-stat,
+.app-menu,
+.module.icon-only {
+  padding: 0 var(--pill-pad);
+  margin: 0 calc(var(--module-pad) - (var(--pill-size) - var(--icon-size)) / 2);
+  min-height: var(--pill-size);
+}
+
+/* vertical bars center the modules across the bar: min-width gives the text
+ * the same thickness (clock and title center themselves, the stat box
+ * stacks vertically there) */
+window.bar.left .clock,
+window.bar.left .active-window,
+window.bar.left .sys-stat,
+window.bar.left .module.icon-only,
+window.bar.right .clock,
+window.bar.right .active-window,
+window.bar.right .sys-stat,
+window.bar.right .module.icon-only {
+  padding: var(--pill-pad) 0;
+  margin: calc(var(--module-pad-across) - (var(--pill-size) - var(--icon-size)) / 2) 0;
+  min-width: var(--pill-size);
+}
+
+.module.icon-only,
+window.bar.left .module.icon-only,
+window.bar.right .module.icon-only {
+  padding: 0;
+}
+
+/* direct children only: the popovers hang off these overlays too */
+.icon-only > .icon,
+.icon-only > overlay > .icon,
+.icon-only > overlay > box > .icon,
+.icon-only > overlay > box > image {
+  min-width: var(--pill-size);
+  min-height: var(--pill-size);
 }
 
 /* cpu / memory / disk: glyph + percentage (hover pill like every other
@@ -262,6 +314,8 @@ window.bar.right .battery .icon {
   border-radius: 999px;
   background: @mPrimary; /* mPrimary */
   border: 1px solid @mSurface;
+  /* the overlay is the pill-size square now: back to the glyph's corner */
+  margin: calc((var(--pill-size) - var(--icon-size)) / 2);
 }
 
 /* taskbar (Noctalia's Taskbar widget) — app icons with a 4px indicator bar

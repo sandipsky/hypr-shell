@@ -22,6 +22,7 @@ constexpr const char* kBluetoothConnected = "\uECEA";
 Bluetooth::Bluetooth() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("bluetooth");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.add_css_class("icon");
     append(icon_);
 

@@ -26,6 +26,7 @@ constexpr const char* kHigh = "";   // volume     U+EB51 (two waves)
 Volume::Volume() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("volume");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.add_css_class("icon");
     append(icon_);
 

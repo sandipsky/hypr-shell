@@ -223,6 +223,11 @@ void AppMenu::apply_config() {
     if (!glyph_.get_visible() && !image_.get_visible() && !label_.get_visible())
         glyph_.set_visible(true);
     content_.set_spacing(glyph_.get_visible() || image_.get_visible() ? 6 : 0);
+    // without its label the module is a lone glyph: round hover pill (bar.css)
+    if (label_.get_visible())
+        remove_css_class("icon-only");
+    else
+        add_css_class("icon-only");
 }
 
 } // namespace hyprshell

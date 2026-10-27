@@ -13,6 +13,7 @@ constexpr const char* kSearch = "\uEB1C"; // tabler search glyph
 Launcher::Launcher() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("launcher");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.set_text(kSearch);
     icon_.add_css_class("icon");
     append(icon_);

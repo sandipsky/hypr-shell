@@ -110,6 +110,11 @@ void SystemStatModule::apply_config() {
     set_orientation(vertical ? Gtk::Orientation::VERTICAL : Gtk::Orientation::HORIZONTAL);
     set_spacing(vertical ? 0 : 4);
     text_.set_visible(settings.show_text);
+    // glyph only: round hover pill like the status icons (bar.css)
+    if (settings.show_text)
+        remove_css_class("icon-only");
+    else
+        add_css_class("icon-only");
     // order the two labels: text before (left / above) or after (right / below) the icon
     const bool text_first = settings.text_position == Config::StatModule::TextPosition::Before;
     if (text_first)

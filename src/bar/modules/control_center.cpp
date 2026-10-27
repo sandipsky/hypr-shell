@@ -16,6 +16,7 @@ constexpr const char* kIcon = "\uEC38";
 ControlCenter::ControlCenter() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("control-center-module");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.set_text(kIcon);
     icon_.add_css_class("icon");
     append(icon_);

@@ -16,6 +16,7 @@ constexpr const char* kClipboard = "\uEA6F"; // tabler clipboard glyph
 ClipboardModule::ClipboardModule() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("clipboard");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.set_text(kClipboard);
     icon_.add_css_class("icon");
     append(icon_);

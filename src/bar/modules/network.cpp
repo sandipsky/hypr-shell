@@ -55,6 +55,7 @@ const char* ethernet_icon(const NetworkManager& nm) {
 Network::Network() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("network");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.add_css_class("icon");
     append(icon_);
 

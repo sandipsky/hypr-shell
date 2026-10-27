@@ -21,6 +21,7 @@ constexpr const char* kBellOff = "\uECE9";
 Notifications::Notifications() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("notifications");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.add_css_class("icon");
 
     // unread dot at the icon's top-right corner (Noctalia's badge)

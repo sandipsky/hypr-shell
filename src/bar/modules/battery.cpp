@@ -30,6 +30,7 @@ constexpr const char* kSaverFrame = "";    // BatterySaver0    U+E863 (leaf)
 Battery::Battery() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("battery");
+    add_css_class("icon-only"); // round hover pill (bar.css)
 
     fill_.add_css_class("icon");
     fill_.add_css_class("icon-fill");

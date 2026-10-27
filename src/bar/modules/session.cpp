@@ -18,6 +18,7 @@ constexpr const char* kPower = "\uEB0D"; // tabler power glyph (\u escape — ne
 Session::Session() : Gtk::Box(Gtk::Orientation::HORIZONTAL, 0) {
     add_css_class("module");
     add_css_class("session");
+    add_css_class("icon-only"); // round hover pill (bar.css)
     icon_.set_text(kPower);
     icon_.add_css_class("icon");
     append(icon_);
