@@ -9,8 +9,10 @@
 // BS month lengths follow no arithmetic rule: they are published per year by
 // Nepal's calendar committee, so every converter carries a table. Ours covers
 // BS 2000..2090 (1943-04-14 .. 2034-04-13), the range shared by the common
-// nepali-date libraries; years past 2081 are the committee's projections and
-// may be revised. Conversion counts days from the epoch through Julian day
+// nepali-date libraries. 2081..2084 are checked month by month against the
+// published calendar (Hamro Patro, Oct 2026 — the libraries' 2081..2083 rows
+// were early projections and ran a day off); later years are projections
+// and may be revised. Conversion counts days from the epoch through Julian day
 // numbers, so a date is valid only while it stays inside the table.
 namespace hyprshell::nepali {
 
@@ -116,9 +118,9 @@ constexpr std::array<std::array<int, 12>, kLastYear - kFirstYear + 1> kMonthDays
     {31,31,31,32,31,31,30,29,30,29,30,30}, // 2078
     {31,31,32,31,31,31,30,29,30,29,30,30}, // 2079
     {31,32,31,32,31,30,30,30,29,29,30,30}, // 2080
-    {31,31,32,32,31,30,30,30,29,30,30,30}, // 2081
-    {30,32,31,32,31,30,30,30,29,30,30,30}, // 2082
-    {31,31,32,31,31,30,30,30,29,30,30,30}, // 2083
+    {31,32,31,32,31,30,30,30,29,30,29,31}, // 2081
+    {31,31,32,31,31,31,30,29,30,29,30,30}, // 2082
+    {31,31,32,31,31,31,30,29,30,29,30,30}, // 2083
     {31,31,32,31,31,30,30,30,29,30,30,30}, // 2084
     {31,32,31,32,30,31,30,30,29,30,30,30}, // 2085
     {30,32,31,32,31,30,30,30,29,30,30,30}, // 2086
